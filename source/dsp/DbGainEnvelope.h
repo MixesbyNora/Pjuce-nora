@@ -9,20 +9,29 @@ public:
     void prepare (double sampleRate) noexcept
     {
         fillCoefficients (attackCoefficients, CompressorParameters::attack, sampleRate);
-        fillCoefficients (releaseCoefficients, CompressorParameters::release, sampleRate);
+        minReleaseMs = 1000.0 / sampleRate;
         gainReductionDb = 0.0;
     }
 
     void setTimes (float attackMs, float releaseMs) noexcept
     {
         attackCoefficient = attackCoefficients[indexFor (attackMs, CompressorParameters::attack)];
-        releaseCoefficient = releaseCoefficients[indexFor (releaseMs, CompressorParameters::release)];
+        releaseTimeMs = juce::jmax (minReleaseMs, static_cast<double> (releaseMs));
     }
 
     float process (float targetReductionDb) noexcept
     {
-        const auto coefficient = static_cast<double> (targetReductionDb) > gainReductionDb
-            ? attackCoefficient : releaseCoefficient;
+        auto coefficient = attackCoefficient;
+        if (static_cast<double> (targetReductionDb) < gainReductionDb)
+        {
+            const auto depth = juce::jlimit (0.0, 1.0,
+                gainReductionDb / CompressorParameters::fullSpeedGrDb);
+            const auto effectiveMs = juce::jlimit (minReleaseMs, releaseTimeMs,
+                releaseTimeMs * std::pow (minReleaseMs / releaseTimeMs, depth));
+            // Calculated only while releasing. The user's Release is the
+            // slowest time constant; deep reduction can reach one sample.
+            coefficient = std::exp (-minReleaseMs / effectiveMs);
+        }
         gainReductionDb = targetReductionDb + coefficient * (gainReductionDb - targetReductionDb);
         return getGainReductionDb();
     }
@@ -47,14 +56,14 @@ private:
         for (std::size_t i = 0; i < Size; ++i)
         {
             const auto milliseconds = static_cast<double> (spec.minimum) + static_cast<double> (i) * spec.step;
-            // One time constant reaches 1 - exp(-1) of an attack, or exp(-1) of a release.
+            // One attack time constant reaches 1 - exp(-1) of the target.
             table[i] = std::exp (-1.0 / (sampleRate * milliseconds * 0.001));
         }
     }
 
     std::array<double, CompressorParameters::stepCount (CompressorParameters::attack)> attackCoefficients {};
-    std::array<double, CompressorParameters::stepCount (CompressorParameters::release)> releaseCoefficients {};
     double attackCoefficient = 0.0;
-    double releaseCoefficient = 0.0;
+    double minReleaseMs = 1.0;
+    double releaseTimeMs = CompressorParameters::release.defaultValue;
     double gainReductionDb = 0.0;
 };

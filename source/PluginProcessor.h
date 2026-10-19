@@ -35,7 +35,7 @@ public:
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 
-    // Positive dB of attenuation; safe for future message-thread meters to poll.
+    // Maximum positive attenuation in the most recent block; safe for UI polling.
     float getGainReductionDb() const noexcept
     {
         return currentGainReductionDb.load (std::memory_order_relaxed);

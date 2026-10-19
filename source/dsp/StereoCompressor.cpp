@@ -18,10 +18,11 @@ void StereoCompressor::setParameters (const CompressorParameters::Values& values
     envelope.setTimes (values.attackMs, values.releaseMs);
 }
 
-void StereoCompressor::process (juce::AudioBuffer<float>& buffer, int numInputChannels) noexcept
+float StereoCompressor::process (juce::AudioBuffer<float>& buffer, int numInputChannels) noexcept
 {
     const auto numChannels = juce::jmin (numInputChannels, buffer.getNumChannels());
     auto* const* channels = buffer.getArrayOfWritePointers();
+    auto blockPeakDb = 0.0f;
 
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
@@ -39,9 +40,11 @@ void StereoCompressor::process (juce::AudioBuffer<float>& buffer, int numInputCh
         // in dB with a single shared attack/release envelope.
         const auto levelDb = juce::Decibels::gainToDecibels (peak, -160.0f);
         const auto reductionDb = envelope.process (gainComputer.getGainReductionDb (levelDb));
+        blockPeakDb = juce::jmax (blockPeakDb, reductionDb);
         const auto outputGain = juce::Decibels::decibelsToGain (makeupDb.getNextValue() - reductionDb);
 
         for (int channel = 0; channel < numChannels; ++channel)
             channels[channel][sample] *= outputGain;
     }
+    return blockPeakDb;
 }

@@ -8,7 +8,8 @@ class StereoCompressor
 public:
     void prepare (double sampleRate, const CompressorParameters::Values& values) noexcept;
     void setParameters (const CompressorParameters::Values& values) noexcept;
-    void process (juce::AudioBuffer<float>& buffer, int numInputChannels) noexcept;
+    // Returns the block's maximum reduction for metering; it does not feed back into DSP.
+    float process (juce::AudioBuffer<float>& buffer, int numInputChannels) noexcept;
 
     float getGainReductionDb() const noexcept { return envelope.getGainReductionDb(); }
 

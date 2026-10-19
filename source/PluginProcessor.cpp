@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "PluginEditor.h"
 
 //==============================================================================
 PluginProcessor::PluginProcessor()
@@ -161,8 +162,8 @@ void PluginProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         buffer.clear (i, 0, buffer.getNumSamples());
 
     compressor.setParameters (readParameters());
-    compressor.process (buffer, totalNumInputChannels);
-    currentGainReductionDb.store (compressor.getGainReductionDb(), std::memory_order_relaxed);
+    const auto blockPeakDb = compressor.process (buffer, totalNumInputChannels);
+    currentGainReductionDb.store (blockPeakDb, std::memory_order_relaxed);
 }
 
 //==============================================================================
@@ -173,7 +174,7 @@ bool PluginProcessor::hasEditor() const
 
 juce::AudioProcessorEditor* PluginProcessor::createEditor()
 {
-    return new juce::GenericAudioProcessorEditor (*this);
+    return new PluginEditor (*this);
 }
 
 //==============================================================================

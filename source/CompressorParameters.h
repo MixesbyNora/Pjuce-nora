@@ -15,14 +15,17 @@ struct Specification
     float step;
 };
 
-// Edit parameter ranges, defaults, and resolution here. The time-coefficient
-// tables use these same bounds and steps, so they stay in sync with automation.
+// Edit parameter ranges, defaults, and resolution here. The attack-coefficient
+// table uses these same bounds and steps, so it stays in sync with automation.
 inline constexpr Specification input { "input", "Input", "dB", -12.0f, 12.0f, 0.0f, 0.01f };
 inline constexpr Specification threshold { "threshold", "Threshold", "dB", -40.0f, 0.0f, -18.0f, 0.01f };
 inline constexpr Specification attack { "attack", "Attack", "ms", 0.2f, 30.0f, 5.0f, 0.1f };
 inline constexpr Specification release { "release", "Release", "ms", 50.0f, 2000.0f, 200.0f, 1.0f };
 inline constexpr Specification makeup { "makeup", "Makeup", "dB", 0.0f, 24.0f, 0.0f, 0.01f };
 inline constexpr std::array specifications { input, threshold, attack, release, makeup };
+
+// Fixed, always-on program-dependent release; this is not a host parameter.
+inline constexpr float fullSpeedGrDb = 12.0f;
 
 constexpr std::size_t stepCount (const Specification& spec) noexcept
 {
