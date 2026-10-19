@@ -13,7 +13,6 @@ include(PamplejuceMacOS)
 # Couple tweaks that IMO should be JUCE defaults
 include(JUCEDefaults)
 
-# Change me!
 # This is the internal name of the project and the name of JUCE's shared code target
 # Note: This cannot have spaces (it may be 2024, but you can't have it all!)
 # Worry not, JUCE's PRODUCT_NAME can have spaces (and is what DAWs display)
@@ -25,13 +24,17 @@ set(PROJECT_NAME "Lumiere")
 #   set(PROJECT_NAME "MyPlugin_v${MAJOR_VERSION}")
 # Doing so enables major versions to show up in IDEs and DAWs as separate plugins
 # allowing you to change parameters and behavior without breaking existing user projects
-set(PRODUCT_NAME "Lumiere Test")
+set(PRODUCT_NAME "Lumiere Test v0.1")
 
-# Change me! Used for the MacOS bundle name and Installers
+# Used for the macOS bundle name and installers
 set(COMPANY_NAME "Beyond Analog")
 
-# Change me! Used for the MacOS bundle identifier (and signing)
-set(BUNDLE_ID "com.pamplejuce.pamplejuce")
+# Used for the macOS bundle identifier (and signing)
+set(BUNDLE_ID "com.beyondanalog.lumiere")
+
+# Preserve these IDs so hosts continue to recognize the existing plugin
+set(PLUGIN_MANUFACTURER_CODE BADA)
+set(PLUGIN_CODE NOR1)
 
 # Change me! Set the plugin formats you want built
 # Valid choices: AAX Unity VST VST3 AU AUv3 Standalone
@@ -71,22 +74,20 @@ juce_add_plugin("${PROJECT_NAME}"
     # Icons for the standalone app
     ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/packaging/icon.png"
 
-    # Change me!
     COMPANY_NAME "${COMPANY_NAME}"
     BUNDLE_ID "${BUNDLE_ID}"
+    IS_SYNTH FALSE
 
     # On MacOS, plugin is copied to /Users/yourname/Library/Audio/Plug-Ins/
     COPY_PLUGIN_AFTER_BUILD TRUE
 
-    # Change me!
     # A four-character plugin id
     # First character MUST be uppercase for AU formats
-    PLUGIN_MANUFACTURER_CODE BADA
+    PLUGIN_MANUFACTURER_CODE "${PLUGIN_MANUFACTURER_CODE}"
 
-    # Change me!
     # A unique four-character plugin id
     # Note: this must have at least one upper-case character
-    PLUGIN_CODE NOR1
+    PLUGIN_CODE "${PLUGIN_CODE}"
     FORMATS "${FORMATS}"
 
     # The name of your final executable
@@ -94,6 +95,14 @@ juce_add_plugin("${PROJECT_NAME}"
     # This can be different from PROJECT_NAME and can have spaces!
     # You might want to use v${MAJOR_VERSION} here once you go to v2...
     PRODUCT_NAME "${PRODUCT_NAME}")
+
+# Keep Xcode's AUv3 framework metadata consistent and copy signed bundles intact.
+if(CMAKE_GENERATOR STREQUAL "Xcode" AND TARGET ${PROJECT_NAME}_AUv3_Framework)
+    set_target_properties(${PROJECT_NAME}_AUv3_Framework PROPERTIES
+        XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${BUNDLE_ID}.internal")
+    set_target_properties(${PROJECT_NAME}_Standalone PROPERTIES
+        XCODE_ATTRIBUTE_COPY_PHASE_STRIP NO)
+endif()
 
 # This lets us use our code in both the JUCE targets and our Test target
 # Without running into ODR violations
@@ -138,7 +147,7 @@ target_compile_definitions(SharedCode
     VERSION="${CURRENT_VERSION}"
 
     # JucePlugin_Name is for some reason doesn't use the nicer PRODUCT_NAME
-    PRODUCT_NAME_WITHOUT_VERSION="Pamplejuce"
+    PRODUCT_NAME_WITHOUT_VERSION="Lumiere Test"
 )
 
 # Link to any other modules you added (with juce_add_module) here!
@@ -162,8 +171,8 @@ target_link_libraries(SharedCode
 # Link the JUCE plugin targets our SharedCode target
 target_link_libraries("${PROJECT_NAME}" PRIVATE SharedCode)
 
-# IPP support, comment out to disable
-include(PamplejuceIPP)
+# Intel IPP is disabled for local development
+# include(PamplejuceIPP)
 
 # Everything related to the tests target
 pamplejuce_add_tests()
