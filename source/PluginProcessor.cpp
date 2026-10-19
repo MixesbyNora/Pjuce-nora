@@ -11,20 +11,34 @@ PluginProcessor::PluginProcessor()
                      #endif
                        ),
        parameters (*this, nullptr, "PARAMETERS", createParameterLayout()),
-       gainDb (parameters.getRawParameterValue ("gain"))
+       input (parameters.getRawParameterValue (CompressorParameters::input.id)),
+       threshold (parameters.getRawParameterValue (CompressorParameters::threshold.id)),
+       attack (parameters.getRawParameterValue (CompressorParameters::attack.id)),
+       release (parameters.getRawParameterValue (CompressorParameters::release.id)),
+       makeup (parameters.getRawParameterValue (CompressorParameters::makeup.id))
 {
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::createParameterLayout()
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
-    layout.add (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "gain", 1 },
-        "Gain",
-        juce::NormalisableRange<float> { -60.0f, 12.0f, 0.01f },
-        0.0f,
-        juce::AudioParameterFloatAttributes().withLabel ("dB")));
+    for (const auto& spec : CompressorParameters::specifications)
+    {
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { spec.id, 1 }, spec.name,
+            juce::NormalisableRange<float> { spec.minimum, spec.maximum, spec.step },
+            spec.defaultValue, juce::AudioParameterFloatAttributes().withLabel (spec.unit)));
+    }
     return layout;
+}
+
+CompressorParameters::Values PluginProcessor::readParameters() const noexcept
+{
+    return { input->load (std::memory_order_relaxed),
+        threshold->load (std::memory_order_relaxed),
+        attack->load (std::memory_order_relaxed),
+        release->load (std::memory_order_relaxed),
+        makeup->load (std::memory_order_relaxed) };
 }
 
 PluginProcessor::~PluginProcessor()
@@ -101,9 +115,8 @@ void PluginProcessor::changeProgramName (int index, const juce::String& newName)
 void PluginProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     juce::ignoreUnused (samplesPerBlock);
-    smoothedGain.reset (sampleRate, 0.02);
-    smoothedGain.setCurrentAndTargetValue (
-        juce::Decibels::decibelsToGain (gainDb->load (std::memory_order_relaxed)));
+    compressor.prepare (sampleRate, readParameters());
+    currentGainReductionDb.store (0.0f, std::memory_order_relaxed);
 }
 
 void PluginProcessor::releaseResources()
@@ -147,11 +160,9 @@ void PluginProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, buffer.getNumSamples());
 
-    // Read the cached atomic once per block. The ramp advances once per sample
-    // across all channels, without allocating, locking, or calling UI code.
-    smoothedGain.setTargetValue (
-        juce::Decibels::decibelsToGain (gainDb->load (std::memory_order_relaxed)));
-    smoothedGain.applyGain (buffer, buffer.getNumSamples());
+    compressor.setParameters (readParameters());
+    compressor.process (buffer, totalNumInputChannels);
+    currentGainReductionDb.store (compressor.getGainReductionDb(), std::memory_order_relaxed);
 }
 
 //==============================================================================
