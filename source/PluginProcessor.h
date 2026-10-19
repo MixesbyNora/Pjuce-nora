@@ -1,7 +1,8 @@
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
-#include "dsp/StereoCompressor.h"
+#include "dsp/BaSignalPath.h"
+#include "GainLinkController.h"
 
 class PluginProcessor : public juce::AudioProcessor
 {
@@ -15,6 +16,8 @@ public:
     bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
 
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+    void processBlockBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+    juce::AudioProcessorParameter* getBypassParameter() const override;
 
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override;
@@ -41,9 +44,23 @@ public:
         return currentGainReductionDb.load (std::memory_order_relaxed);
     }
 
+    // Single UI consumer: each channel resets atomically after returning its peak.
+    LevelMeterPeaks::Readings readLevelPeaks() noexcept
+    {
+        auto readings = levelPeaks.read();
+        if (getTotalNumInputChannels() == 1)
+        {
+            readings.inR = readings.inL;
+            readings.outR = readings.outL;
+        }
+        return readings;
+    }
+
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     CompressorParameters::Values readParameters() const noexcept;
+    BaParameters::Values readBaParameters() const noexcept;
+    void processAudio (juce::AudioBuffer<float>&, juce::MidiBuffer&, bool forceBypass);
 
     juce::AudioProcessorValueTreeState parameters;
     const std::atomic<float>* input = nullptr;
@@ -52,8 +69,16 @@ private:
     const std::atomic<float>* release = nullptr;
     const std::atomic<float>* makeup = nullptr;
     const std::atomic<float>* scFilter = nullptr;
-    StereoCompressor compressor;
+    const std::atomic<float>* baBypass = nullptr;
+    const std::atomic<float>* baIn = nullptr;
+    const std::atomic<float>* baOut = nullptr;
+    const std::atomic<float>* baLfm = nullptr;
+    const std::atomic<float>* baMix = nullptr;
+    const std::atomic<float>* baMonitor = nullptr;
+    BaSignalPath signalPath;
+    std::unique_ptr<GainLinkController> gainLink;
     std::atomic<float> currentGainReductionDb { 0.0f };
+    LevelMeterPeaks levelPeaks;
 
     static_assert (std::atomic<float>::is_always_lock_free);
 

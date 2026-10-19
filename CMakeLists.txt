@@ -118,6 +118,15 @@ pamplejuce_shared_code_defaults()
 
 # Keep the plugin, editor, meter, and DSP sources explicit for Xcode.
 set(SourceFiles
+    source/PeakAccumulator.h
+    source/MeterBallistics.h
+    source/StereoLevelMeter.h
+    source/StereoLevelMeter.cpp
+    source/BaParameters.h
+    source/BaParameters.cpp
+    source/GainLink.h
+    source/GainLinkController.h
+    source/GainLinkController.cpp
     source/CompressorParameters.h
     source/GainReductionMeter.h
     source/GainReductionMeter.cpp
@@ -126,6 +135,11 @@ set(SourceFiles
     source/PluginProcessor.h
     source/PluginProcessor.cpp
     source/dsp/DbGainEnvelope.h
+    source/dsp/Biquad.h
+    source/dsp/LowFrequencyMono.h
+    source/dsp/LowFrequencyMono.cpp
+    source/dsp/BaSignalPath.h
+    source/dsp/BaSignalPath.cpp
     source/dsp/SidechainFilterSettings.h
     source/dsp/SidechainFilter.h
     source/dsp/SidechainFilter.cpp

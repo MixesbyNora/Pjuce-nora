@@ -1,18 +1,12 @@
 #pragma once
 
 #include "SidechainFilterSettings.h"
+#include "Biquad.h"
 
 class SidechainFilter
 {
 public:
-    struct Coefficients
-    {
-        double b0 = 1.0;
-        double b1 = 0.0;
-        double b2 = 0.0;
-        double a1 = 0.0;
-        double a2 = 0.0;
-    };
+    using Coefficients = DoubleBiquad::Coefficients;
     using ModeCoefficients = std::array<Coefficients, SidechainFilterSettings::maxStages>;
 
     void prepare (double sampleRate) noexcept;
@@ -23,11 +17,7 @@ public:
     const ModeCoefficients& getCoefficients (int mode) const noexcept;
 
 private:
-    struct State
-    {
-        double z1 = 0.0;
-        double z2 = 0.0;
-    };
+    using State = DoubleBiquad::State;
 
     static int boundedMode (int mode) noexcept;
     std::array<ModeCoefficients, SidechainFilterSettings::modes.size()> coefficients {};

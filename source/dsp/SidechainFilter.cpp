@@ -55,13 +55,7 @@ double SidechainFilter::processSample (int channel, double sample) noexcept
     const auto& mode = coefficients[static_cast<std::size_t> (activeMode)];
     for (std::size_t stage = 0; stage < mode.size(); ++stage)
     {
-        const auto& c = mode[stage];
-        auto& s = channelState[stage];
-        // Transposed direct form II; coefficients and both delays remain double.
-        const auto output = c.b0 * sample + s.z1;
-        s.z1 = c.b1 * sample - c.a1 * output + s.z2;
-        s.z2 = c.b2 * sample - c.a2 * output;
-        sample = output;
+        sample = DoubleBiquad::processSample (sample, mode[stage], channelState[stage]);
     }
     return sample;
 }

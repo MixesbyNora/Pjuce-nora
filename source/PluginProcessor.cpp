@@ -17,8 +17,15 @@ PluginProcessor::PluginProcessor()
        attack (parameters.getRawParameterValue (CompressorParameters::attack.id)),
        release (parameters.getRawParameterValue (CompressorParameters::release.id)),
        makeup (parameters.getRawParameterValue (CompressorParameters::makeup.id)),
-       scFilter (parameters.getRawParameterValue (CompressorParameters::scFilterId))
+       scFilter (parameters.getRawParameterValue (CompressorParameters::scFilterId)),
+       baBypass (parameters.getRawParameterValue (BaParameters::bypass.id)),
+       baIn (parameters.getRawParameterValue (BaParameters::inGain.id)),
+       baOut (parameters.getRawParameterValue (BaParameters::outGain.id)),
+       baLfm (parameters.getRawParameterValue (BaParameters::lfm.id)),
+       baMix (parameters.getRawParameterValue (BaParameters::mix.id)),
+       baMonitor (parameters.getRawParameterValue (BaParameters::monitorId))
 {
+    gainLink = std::make_unique<GainLinkController> (parameters);
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::createParameterLayout()
@@ -26,10 +33,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::createParam
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
     for (const auto& spec : CompressorParameters::specifications)
     {
+        const auto decimals = spec.step < 0.1f ? 2 : spec.step < 1.0f ? 1 : 0;
         layout.add (std::make_unique<juce::AudioParameterFloat> (
             juce::ParameterID { spec.id, 1 }, spec.name,
             juce::NormalisableRange<float> { spec.minimum, spec.maximum, spec.step },
-            spec.defaultValue, juce::AudioParameterFloatAttributes().withLabel (spec.unit)));
+            spec.defaultValue, juce::AudioParameterFloatAttributes().withLabel (spec.unit)
+                .withStringFromValueFunction ([decimals] (float value, int)
+                {
+                    if (std::abs (value) < 0.5f * std::pow (10.0f, -static_cast<float> (decimals)))
+                        value = 0.0f; // Avoid a display-only "-0.00" after normalized round-trips.
+                    return juce::String (value, decimals);
+                })));
     }
     juce::StringArray filterChoices;
     for (const auto& mode : SidechainFilterSettings::modes)
@@ -37,7 +51,21 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::createParam
     layout.add (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { CompressorParameters::scFilterId, 1 }, "SC Filter",
         filterChoices, SidechainFilterSettings::defaultMode));
+    BaParameters::appendLayout (layout);
     return layout;
+}
+
+BaParameters::Values PluginProcessor::readBaParameters() const noexcept
+{
+    return { baIn->load (std::memory_order_relaxed), baOut->load (std::memory_order_relaxed),
+        baLfm->load (std::memory_order_relaxed), baMix->load (std::memory_order_relaxed),
+        baBypass->load (std::memory_order_relaxed) >= 0.5f,
+        juce::roundToInt (baMonitor->load (std::memory_order_relaxed)) };
+}
+
+juce::AudioProcessorParameter* PluginProcessor::getBypassParameter() const
+{
+    return parameters.getParameter (BaParameters::bypass.id);
 }
 
 CompressorParameters::Values PluginProcessor::readParameters() const noexcept
@@ -123,9 +151,9 @@ void PluginProcessor::changeProgramName (int index, const juce::String& newName)
 //==============================================================================
 void PluginProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    juce::ignoreUnused (samplesPerBlock);
-    compressor.prepare (sampleRate, readParameters());
+    signalPath.prepare (sampleRate, samplesPerBlock, readParameters(), readBaParameters());
     currentGainReductionDb.store (0.0f, std::memory_order_relaxed);
+    levelPeaks.reset();
 }
 
 void PluginProcessor::releaseResources()
@@ -159,6 +187,16 @@ bool PluginProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 void PluginProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                                               juce::MidiBuffer& midiMessages)
 {
+    processAudio (buffer, midiMessages, false);
+}
+
+void PluginProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
+{
+    processAudio (buffer, midiMessages, true);
+}
+
+void PluginProcessor::processAudio (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages, bool forceBypass)
+{
     juce::ignoreUnused (midiMessages);
 
     juce::ScopedNoDenormals noDenormals;
@@ -169,8 +207,9 @@ void PluginProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, buffer.getNumSamples());
 
-    compressor.setParameters (readParameters());
-    const auto blockPeakDb = compressor.process (buffer, totalNumInputChannels);
+    auto baValues = readBaParameters();
+    baValues.bypassed = baValues.bypassed || forceBypass;
+    const auto blockPeakDb = signalPath.process (buffer, totalNumInputChannels, readParameters(), baValues, &levelPeaks);
     currentGainReductionDb.store (blockPeakDb, std::memory_order_relaxed);
 }
 
@@ -197,7 +236,11 @@ void PluginProcessor::setStateInformation (const void* data, int sizeInBytes)
     if (auto xml = getXmlFromBinary (data, sizeInBytes))
     {
         if (xml->hasTagName (parameters.state.getType()))
+        {
+            gainLink->beginStateRestore();
             parameters.replaceState (juce::ValueTree::fromXml (*xml));
+            gainLink->endStateRestore();
+        }
     }
 }
 
