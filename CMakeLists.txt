@@ -171,6 +171,12 @@ target_link_libraries(SharedCode
 # Link the JUCE plugin targets our SharedCode target
 target_link_libraries("${PROJECT_NAME}" PRIVATE SharedCode)
 
+# JUCE's disabled ARA/LV2 support leaves empty objects in the shared-code archive.
+if(APPLE)
+    set_property(TARGET "${PROJECT_NAME}" APPEND PROPERTY
+        STATIC_LIBRARY_OPTIONS -no_warning_for_no_symbols)
+endif()
+
 # Intel IPP is disabled for local development
 # include(PamplejuceIPP)
 
