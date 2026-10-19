@@ -26,6 +26,7 @@ inline constexpr std::array specifications { input, threshold, attack, release, 
 
 // Fixed, always-on program-dependent release; this is not a host parameter.
 inline constexpr float fullSpeedGrDb = 12.0f;
+inline constexpr const char* scFilterId = "scFilter";
 
 constexpr std::size_t stepCount (const Specification& spec) noexcept
 {
@@ -39,5 +40,6 @@ struct Values
     float attackMs = attack.defaultValue;
     float releaseMs = release.defaultValue;
     float makeupDb = makeup.defaultValue;
+    int scFilterMode = 0;
 };
 }

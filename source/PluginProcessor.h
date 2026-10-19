@@ -51,6 +51,7 @@ private:
     const std::atomic<float>* attack = nullptr;
     const std::atomic<float>* release = nullptr;
     const std::atomic<float>* makeup = nullptr;
+    const std::atomic<float>* scFilter = nullptr;
     StereoCompressor compressor;
     std::atomic<float> currentGainReductionDb { 0.0f };
 

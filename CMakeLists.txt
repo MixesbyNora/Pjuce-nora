@@ -126,6 +126,9 @@ set(SourceFiles
     source/PluginProcessor.h
     source/PluginProcessor.cpp
     source/dsp/DbGainEnvelope.h
+    source/dsp/SidechainFilterSettings.h
+    source/dsp/SidechainFilter.h
+    source/dsp/SidechainFilter.cpp
     source/dsp/SoftKneeGainComputer.h
     source/dsp/StereoCompressor.h
     source/dsp/StereoCompressor.cpp)

@@ -16,7 +16,8 @@ PluginProcessor::PluginProcessor()
        threshold (parameters.getRawParameterValue (CompressorParameters::threshold.id)),
        attack (parameters.getRawParameterValue (CompressorParameters::attack.id)),
        release (parameters.getRawParameterValue (CompressorParameters::release.id)),
-       makeup (parameters.getRawParameterValue (CompressorParameters::makeup.id))
+       makeup (parameters.getRawParameterValue (CompressorParameters::makeup.id)),
+       scFilter (parameters.getRawParameterValue (CompressorParameters::scFilterId))
 {
 }
 
@@ -30,6 +31,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::createParam
             juce::NormalisableRange<float> { spec.minimum, spec.maximum, spec.step },
             spec.defaultValue, juce::AudioParameterFloatAttributes().withLabel (spec.unit)));
     }
+    juce::StringArray filterChoices;
+    for (const auto& mode : SidechainFilterSettings::modes)
+        filterChoices.add (mode.name);
+    layout.add (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { CompressorParameters::scFilterId, 1 }, "SC Filter",
+        filterChoices, SidechainFilterSettings::defaultMode));
     return layout;
 }
 
@@ -39,7 +46,8 @@ CompressorParameters::Values PluginProcessor::readParameters() const noexcept
         threshold->load (std::memory_order_relaxed),
         attack->load (std::memory_order_relaxed),
         release->load (std::memory_order_relaxed),
-        makeup->load (std::memory_order_relaxed) };
+        makeup->load (std::memory_order_relaxed),
+        juce::roundToInt (scFilter->load (std::memory_order_relaxed)) };
 }
 
 PluginProcessor::~PluginProcessor()

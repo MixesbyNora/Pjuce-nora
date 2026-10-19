@@ -2,6 +2,7 @@
 
 #include "DbGainEnvelope.h"
 #include "SoftKneeGainComputer.h"
+#include "SidechainFilter.h"
 
 class StereoCompressor
 {
@@ -16,6 +17,7 @@ public:
 private:
     SoftKneeGainComputer gainComputer;
     DbGainEnvelope envelope;
+    SidechainFilter sidechainFilter;
     juce::SmoothedValue<float> inputDb;
     juce::SmoothedValue<float> makeupDb;
 };

@@ -3,6 +3,7 @@
 void StereoCompressor::prepare (double sampleRate, const CompressorParameters::Values& values) noexcept
 {
     envelope.prepare (sampleRate);
+    sidechainFilter.prepare (sampleRate);
     inputDb.reset (sampleRate, 0.02);
     makeupDb.reset (sampleRate, 0.02);
     inputDb.setCurrentAndTargetValue (values.inputDb);
@@ -16,6 +17,7 @@ void StereoCompressor::setParameters (const CompressorParameters::Values& values
     makeupDb.setTargetValue (values.makeupDb);
     gainComputer.setThresholdDb (values.thresholdDb);
     envelope.setTimes (values.attackMs, values.releaseMs);
+    sidechainFilter.setMode (values.scFilterMode);
 }
 
 float StereoCompressor::process (juce::AudioBuffer<float>& buffer, int numInputChannels) noexcept
@@ -32,7 +34,11 @@ float StereoCompressor::process (juce::AudioBuffer<float>& buffer, int numInputC
         for (int channel = 0; channel < numChannels; ++channel)
         {
             channels[channel][sample] *= inputGain;
-            peak = juce::jmax (peak, std::abs (channels[channel][sample]));
+            // Filter only a detector copy. Off returns the original sample
+            // exactly, preserving the previous float peak/log calculation.
+            const auto detectionSample = static_cast<float> (
+                sidechainFilter.processSample (channel, channels[channel][sample]));
+            peak = juce::jmax (peak, std::abs (detectionSample));
         }
 
         // Feedforward: detect the louder input channel, before gain reduction.

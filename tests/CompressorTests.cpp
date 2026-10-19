@@ -63,10 +63,10 @@ bool bufferIsFinite (const juce::AudioBuffer<float>& buffer)
 }
 }
 
-TEST_CASE ("Compressor exposes the five stable parameters and persists state", "[compressor][state]")
+TEST_CASE ("Compressor exposes six stable parameters and persists state", "[compressor][state]")
 {
     PluginProcessor processor;
-    REQUIRE (processor.getParameters().size() == 5);
+    REQUIRE (processor.getParameters().size() == 6);
     CHECK (findParameter (processor, "gain") == nullptr);
 
     struct Expected
@@ -95,6 +95,13 @@ TEST_CASE ("Compressor exposes the five stable parameters and persists state", "
     setParameter (processor, "attack", 10.0f);
     setParameter (processor, "release", 500.0f);
     setParameter (processor, "makeup", 6.0f);
+    auto* choice = dynamic_cast<juce::AudioParameterChoice*> (findParameter (processor, "scFilter"));
+    REQUIRE (choice != nullptr);
+    CHECK (choice->getName (32) == "SC Filter");
+    CHECK (choice->getIndex() == 0);
+    const juce::StringArray expectedChoices { "Off", "HP 80 Hz", "HP 120 Hz", "Tilt Wide", "Tilt Focused", "Band 730 Hz", "Custom" };
+    CHECK (choice->choices == expectedChoices);
+    setParameter (processor, "scFilter", 6.0f);
     juce::MemoryBlock state;
     processor.getStateInformation (state);
     PluginProcessor restored;
