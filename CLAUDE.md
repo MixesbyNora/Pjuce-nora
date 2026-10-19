@@ -156,3 +156,12 @@ Some useful CPM libraries:
 ## Code Style
 
 Uses `.clang-format` with Allman-style braces, 4-space indentation, no column limit.
+
+## Local Notes
+- Dev machine is a Mac. Configure with: cmake -B Builds -G Xcode
+- Build only the plugin targets: Lumiere_VST3, Lumiere_AU, Lumiere_Standalone
+  (cmake --build Builds --config Debug --target <name>)
+- The Benchmarks target currently fails to build. Don't build it unless asked.
+- Never edit anything in JUCE/ or modules/.
+- After every change, build all three plugin targets and fix errors and warnings before finishing.
+- Make small changes and briefly explain what you changed. If something is unclear, ask.
