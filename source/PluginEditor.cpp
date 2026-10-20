@@ -9,7 +9,7 @@ PluginEditor::PluginEditor (PluginProcessor& processorToUse)
     addAndMakeVisible (inputMeter);
     addAndMakeVisible (outputMeter);
     setResizable (false, false);
-    setSize (640, 856);
+    setSize (640, 936);
     meter.setGainReductionDb (processorRef.getGainReductionDb());
     startTimerHz (30);
 }

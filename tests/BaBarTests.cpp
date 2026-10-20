@@ -84,7 +84,7 @@ void dispatchLink()
 TEST_CASE ("BA parameter types ranges defaults skew text and host bypass are exposed", "[ba][parameters]")
 {
     PluginProcessor processor;
-    REQUIRE (processor.getParameters().size() == 14);
+    REQUIRE (processor.getParameters().size() == 16);
     CHECK (processor.getBypassParameter() == parameter (processor, "bypass"));
     CHECK (dynamic_cast<juce::AudioParameterBool*> (parameter (processor, "bypass")) != nullptr);
     CHECK (dynamic_cast<juce::AudioParameterBool*> (parameter (processor, "ioLink")) != nullptr);

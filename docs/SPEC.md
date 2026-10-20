@@ -1,5 +1,38 @@
 # Lumiere Specification
 
+## Transformer saturation (basic)
+
+The wet path now runs IN -> compressor (including makeup) -> transformer ->
+OUT -> LFM -> Mix -> bypass -> monitor. The compressor detector and input meter
+remain upstream of the transformer; the output meter still measures the final
+monitored signal. L/R have independent filter and ADAA histories with identical
+settings. The generic editor retains all existing controls and meters.
+
+`xfrmOut` is a boolean, default false: **In** when false, **Out** when true.
+`xfrmAmount` is 0–100%, step 0.1%, default 0%. Amount controls drive, linearly
+in dB from -24 dB to +12 dB, with 20 ms smoothing. It is not a wet/dry mix.
+Zero amount and Out fade to exact unprocessed samples over 10 ms, then skip
+the entire stage. Filter and previous-sample state reset while skipped and
+re-engagement fades back in. Existing parameter IDs/order are retained.
+
+The model uses a +12 dB low shelf at 120 Hz, Q 0.5, a normalized symmetric
+`tanh(d*x)/d` curve, and the algebraic reciprocal shelf (-12 dB at the same
+frequency/Q). The inverse pair cancels to numerical precision with an identity
+nonlinearity. All shelf, drive, smoothing, and ADAA tunables live in
+`source/dsp/TransformerSettings.h`; coefficients and state use double precision.
+
+First-order ADAA uses `F(u) = log(cosh(u))`, evaluated stably as
+`abs(u) + log1p(exp(-2*abs(u))) - log(2)`, with `tanh` of the midpoint for tiny
+sample differences. As agreed, ADAA is applied to the nonlinear residual:
+`y = x + (ADAA(d*x, previousDriven) - midpoint(d*x, previousDriven)) / d`.
+The undelayed linear path preserves small-signal unity instead of the
+high-frequency loss from literal first-order ADAA's two-sample average.
+There is no allocation, locking, logging, or UI access in processing.
+
+Tube saturation, SAT MIX, AIR, HR (headroom), oversampling, and CH MODE remain
+deferred. This is a basic transformer-style curve, not a physical transformer
+model.
+
 ## FB/FF
 
 `fbff` / **FB/FF** ranges from 0 to 100 in 0.1 steps, defaulting to 100
@@ -69,7 +102,7 @@ the BA signal path. Parameter definitions are centralized in `source/BaParameter
 | `mix` | Mix | 0 to 100%, 0.1% steps | 100% |
 | `monitor` | Monitor | LR / M / S / D | LR |
 
-Signal order is dry input copy -> IN gain -> existing compressor -> OUT gain ->
+Signal order is dry input copy -> IN gain -> existing compressor -> transformer -> OUT gain ->
 LFM -> linear dry/wet mix -> dry bypass crossfade -> monitor. IN, OUT, and Mix
 smooth over 20 ms. Bypass crossfades over 10 ms, keeps the entire wet chain
 running, and reports zero gain reduction while enabled. Hosts using either the
@@ -85,7 +118,7 @@ Monitor is applied last: LR passes the final signal; M sends its mid to both
 channels; S sends its side to both channels; D sends the final mixed signal
 minus the untouched dry input, after the bypass crossfade. Before bypass this
 equals `Mix * (wet - dry)`: silent at 0%, half the full Delta at 50%, and
-`wet - dry` at 100%. Wet includes IN gain, compression, OUT gain, and LFM;
+`wet - dry` at 100%. Wet includes IN gain, compression, transformer, OUT gain, and LFM;
 dry is captured before IN gain. Delta is silent when fully bypassed or when
 the wet chain is neutral. Choices and bypass still crossfade over 10 ms.
 In mono, M is the mono signal and S is silence.
@@ -102,7 +135,7 @@ without allocating, locking, or logging in the audio callback. The temporary
 generic editor is enlarged to fit all controls beside the gain-reduction meter.
 
 Oversampling and HR (headroom) remain deferred. Stereo CH MODE, DC Threshold,
-Release Mod controls, and saturation remain out of scope. Input/output meters
+Release Mod controls, and tube saturation remain out of scope. Input/output meters
 are implemented below.
 
 ## Bottom bar meters

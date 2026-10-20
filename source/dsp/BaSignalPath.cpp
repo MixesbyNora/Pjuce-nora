@@ -6,6 +6,7 @@ void BaSignalPath::prepare (double sampleRate, int maximumBlockSize,
     chunkCapacity = juce::jmax (1, maximumBlockSize);
     dry.setSize (2, chunkCapacity);
     compressor.prepare (sampleRate, compressorValues);
+    transformer.prepare (sampleRate, values.transformerAmountPercent, values.transformerOut);
     lfm.prepare (sampleRate, values.lfmHz);
     inputGain.reset (sampleRate, BaParameters::gainRampSeconds);
     outputGain.reset (sampleRate, BaParameters::gainRampSeconds);
@@ -36,6 +37,7 @@ float BaSignalPath::process (juce::AudioBuffer<float>& buffer, int channels,
     LevelMeterPeaks* meters) noexcept
 {
     compressor.setParameters (compressorValues);
+    transformer.setParameters (values.transformerAmountPercent, values.transformerOut);
     inputGain.setTargetValue (juce::Decibels::decibelsToGain (values.inGainDb));
     outputGain.setTargetValue (juce::Decibels::decibelsToGain (values.outGainDb));
     mix.setTargetValue (values.mixPercent * 0.01f);
@@ -69,6 +71,7 @@ float BaSignalPath::process (juce::AudioBuffer<float>& buffer, int channels,
                 inputPeaks[static_cast<std::size_t> (channel)] = juce::jmax (inputPeaks[static_cast<std::size_t> (channel)],
                     PeakAccumulator::findPeak (pointers[static_cast<std::size_t> (channel)], samples));
         peakDb = juce::jmax (peakDb, compressor.process (wet, channels));
+        transformer.process (wet, channels);
         for (int sample = 0; sample < samples; ++sample)
         {
             const auto gain = outputGain.getNextValue();

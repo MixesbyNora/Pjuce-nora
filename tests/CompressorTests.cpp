@@ -66,7 +66,7 @@ bool bufferIsFinite (const juce::AudioBuffer<float>& buffer)
 TEST_CASE ("Compressor and BA bar expose stable parameters and persist state", "[compressor][state]")
 {
     PluginProcessor processor;
-    REQUIRE (processor.getParameters().size() == 14);
+    REQUIRE (processor.getParameters().size() == 16);
     CHECK (findParameter (processor, "gain") == nullptr);
 
     struct Expected
@@ -97,6 +97,8 @@ TEST_CASE ("Compressor and BA bar expose stable parameters and persist state", "
     setParameter (processor, "release", 500.0f);
     setParameter (processor, "makeup", 6.0f);
     setParameter (processor, "fbff", 25.0f);
+    setParameter (processor, "xfrmOut", 1.0f);
+    setParameter (processor, "xfrmAmount", 36.5f);
     auto* choice = dynamic_cast<juce::AudioParameterChoice*> (findParameter (processor, "scFilter"));
     REQUIRE (choice != nullptr);
     CHECK (choice->getName (32) == "SC Filter");

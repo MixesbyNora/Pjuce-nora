@@ -135,6 +135,10 @@ set(SourceFiles
     source/PluginProcessor.h
     source/PluginProcessor.cpp
     source/dsp/DbGainEnvelope.h
+    source/dsp/TransformerSettings.h
+    source/dsp/TanhADAA.h
+    source/dsp/TransformerSaturation.h
+    source/dsp/TransformerSaturation.cpp
     source/dsp/Biquad.h
     source/dsp/LowFrequencyMono.h
     source/dsp/LowFrequencyMono.cpp

@@ -2,6 +2,7 @@
 
 #include "StereoCompressor.h"
 #include "LowFrequencyMono.h"
+#include "TransformerSaturation.h"
 #include "../PeakAccumulator.h"
 
 class BaSignalPath
@@ -16,6 +17,7 @@ public:
 private:
     static float crossfade (float dry, float wet, float amount) noexcept;
     StereoCompressor compressor;
+    TransformerSaturation transformer;
     LowFrequencyMono lfm;
     juce::AudioBuffer<float> dry;
     int chunkCapacity = 1;
