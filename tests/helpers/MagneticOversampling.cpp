@@ -41,8 +41,9 @@ double difference (const Spectrum& a, const Spectrum& b, int lastBin)
 }
 }
 
-Processor::Processor (int multiplier, int channels, int capacity, MagneticPrototype::PlayPreisachCore::Parameters parameters)
-    : filters (static_cast<std::size_t> (channels))
+Processor::Processor (int multiplier, int channels, int capacity, MagneticPrototype::PlayPreisachCore::Parameters parameters, Evaluation method)
+    : filters (static_cast<std::size_t> (channels)), intervalCores { IntervalCore (parameters), IntervalCore (parameters) },
+      turningPointCores { TurningPointCore (parameters), TurningPointCore (parameters) }, evaluation (method)
 {
     jassert (channels >= 1 && channels <= 2);
     jassert (std::find (factors.begin(), factors.end(), multiplier) != factors.end());
@@ -67,6 +68,11 @@ void Processor::resetCores()
 {
     for (auto& core : cores)
         core.reset();
+    for (auto& core : intervalCores)
+        core.reset();
+    for (auto& core : turningPointCores)
+        core.reset();
+    linearPrevious.fill (0.0);
 }
 void Processor::reset()
 {
@@ -77,7 +83,25 @@ void Processor::process (juce::AudioBuffer<double>& audio, bool identity) noexce
 {
     juce::dsp::AudioBlock<double> block (audio);
     auto high = filters.processSamplesUp (block);
-    if (! identity)
+    if (evaluation == Evaluation::interval)
+        for (std::size_t channel = 0; channel < high.getNumChannels(); ++channel)
+        {
+            auto* samples = high.getChannelPointer (channel);
+            for (std::size_t sample = 0; sample < high.getNumSamples(); ++sample)
+            {
+                const auto field = samples[sample];
+                samples[sample] = identity ? 0.5 * (field + linearPrevious[channel]) : intervalCores[channel].processField (field);
+                linearPrevious[channel] = field;
+            }
+        }
+    else if (! identity && evaluation == Evaluation::turningPoint)
+        for (std::size_t channel = 0; channel < high.getNumChannels(); ++channel)
+        {
+            auto* samples = high.getChannelPointer (channel);
+            for (std::size_t sample = 0; sample < high.getNumSamples(); ++sample)
+                samples[sample] = turningPointCores[channel].processField (samples[sample]);
+        }
+    else if (! identity)
         for (std::size_t channel = 0; channel < high.getNumChannels(); ++channel)
         {
             auto* samples = high.getChannelPointer (channel);
@@ -87,10 +111,10 @@ void Processor::process (juce::AudioBuffer<double>& audio, bool identity) noexce
     filters.processSamplesDown (block);
 }
 
-Render renderTone (int multiplier, int bin, double peak, MagneticPrototype::PlayPreisachCore::Parameters parameters)
+Render renderTone (int multiplier, int bin, double peak, MagneticPrototype::PlayPreisachCore::Parameters parameters, Evaluation method)
 {
     juce::ScopedNoDenormals noDenormals;
-    Processor processor (multiplier, 1, blockSize, parameters);
+    Processor processor (multiplier, 1, blockSize, parameters, method);
     juce::AudioBuffer<double> audio (1, blockSize);
     std::vector<double> output (static_cast<std::size_t> (size));
     const auto omega = 2.0 * juce::MathConstants<double>::pi * bin / size;
@@ -113,7 +137,7 @@ Render renderTone (int multiplier, int bin, double peak, MagneticPrototype::Play
     return { transform (output, processor.latency()), processor.latency() };
 }
 
-Case compare (double rate, double requestedFrequency, double peak)
+Case compare (double rate, double requestedFrequency, double peak, Evaluation method)
 {
     const auto bin = std::clamp (2 * static_cast<int> (std::round ((requestedFrequency * size / rate - 1.0) / 2.0)) + 1, 1, size / 2 - 1);
     const auto reference32 = MagneticAnalysis::toneSpectrum (32, bin, peak, {});
@@ -137,7 +161,7 @@ Case compare (double rate, double requestedFrequency, double peak)
     const auto passbandLast = static_cast<int> (std::floor (std::min (20000.0, rate * 0.4) * size / rate));
     for (std::size_t f = 0; f < factors.size(); ++f)
     {
-        const auto rendered = renderTone (factors[f], bin, peak);
+        const auto rendered = renderTone (factors[f], bin, peak, {}, method);
         double aliasPower = 0.0, audioBandAliasPower = 0.0, peakAliasPower = 0.0, peakAliasHz = 0.0;
         for (int i = 1; i < size / 2; ++i)
             if (i % bin != 0)
@@ -163,10 +187,10 @@ Case compare (double rate, double requestedFrequency, double peak)
     return result;
 }
 
-Filter measureFilter (int multiplier)
+Filter measureFilter (int multiplier, Evaluation method)
 {
     juce::ScopedNoDenormals noDenormals;
-    Processor processor (multiplier);
+    Processor processor (multiplier, 1, blockSize, {}, method);
     juce::AudioBuffer<double> audio (1, blockSize);
     Filter result;
     result.latencySamples = processor.latency();
@@ -192,14 +216,21 @@ Response responseAt (const Filter& filter, double rate, double frequency)
     return { 20.0 * std::log10 (std::abs (transfer)), std::arg (transfer) * 180.0 / juce::MathConstants<double>::pi };
 }
 
-std::array<double, 2> timing (int multiplier)
+std::array<double, 2> timing (int multiplier, Evaluation method, TimingInput stimulus)
 {
     juce::ScopedNoDenormals noDenormals;
-    Processor processor (multiplier);
+    Processor processor (multiplier, 1, blockSize, {}, method);
     juce::AudioBuffer<double> audio (1, blockSize);
     std::array<double, blockSize> input {};
+    std::uint32_t random = 12345;
     for (std::size_t i = 0; i < input.size(); ++i)
-        input[i] = 4.0 * std::sin (2.0 * juce::MathConstants<double>::pi * static_cast<double> (i) / blockSize);
+    {
+        random = random * 1664525U + 1013904223U;
+        input[i] = stimulus == TimingInput::noise ? static_cast<double> (random) / 4294967295.0 * 8.0 - 4.0
+            : (stimulus == TimingInput::quietHighSine ? 0.05 : 4.0)
+                * std::sin (2.0 * juce::MathConstants<double>::pi * static_cast<double> (i)
+                    * (stimulus == TimingInput::quietHighSine ? 53.0 : 1.0) / blockSize);
+    }
     std::array<double, 5> elapsed {};
     double checksum = 0.0;
     constexpr int samples = 32768;

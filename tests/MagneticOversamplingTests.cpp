@@ -167,7 +167,11 @@ TEST_CASE ("Oversampling separates ultrasonic filter transition aliases and veri
 
 TEST_CASE ("Export offline filtered oversampling comparison", "[magnetic-os-report]")
 {
-    const auto* path = std::getenv ("LUMIERE_MAGNETIC_OS_REPORT_DIR");
+    const auto* intervalPath = std::getenv ("LUMIERE_MAGNETIC_INTERVAL_REPORT_DIR");
+    const auto* turningPath = std::getenv ("LUMIERE_MAGNETIC_TURNING_REPORT_DIR");
+    const auto method = turningPath != nullptr ? MagneticOversampling::Evaluation::turningPoint
+        : intervalPath != nullptr ? MagneticOversampling::Evaluation::interval : MagneticOversampling::Evaluation::point;
+    const auto* path = turningPath != nullptr ? turningPath : intervalPath != nullptr ? intervalPath : std::getenv ("LUMIERE_MAGNETIC_OS_REPORT_DIR");
     if (path == nullptr)
     {
         SUCCEED ("Set LUMIERE_MAGNETIC_OS_REPORT_DIR for the full filtered comparison; no Benchmarks target.");
@@ -176,13 +180,14 @@ TEST_CASE ("Export offline filtered oversampling comparison", "[magnetic-os-repo
     const auto directory = juce::File (juce::String::fromUTF8 (path));
     REQUIRE (directory.createDirectory().wasOk());
     std::ofstream results (directory.getChildFile ("comparison.csv").getFullPathName().toStdString());
-    results << "# Offline normalized H/M; linear-phase FIR, -120 dB stopband target; 32x/64x references, adaptive 128x if disagreement exceeds -100 dBr.\n"
+    results << "# " << (turningPath != nullptr ? "Quadratic turning points; " : intervalPath != nullptr ? "Interval mean; " : "Point samples; ")
+        << "offline normalized H/M; linear-phase FIR, -120 dB stopband target; 32x/64x references, adaptive 128x if disagreement exceeds -100 dBr.\n"
         "sample_rate_hz,requested_frequency_hz,frequency_hz,field_peak,factor,alias_dbr,audio_band_alias_dbr,peak_alias_hz,aligned_residual_dbr,passband_residual_dbr,gain_error_db,phase_error_deg,latency_samples,reference_32v64_dbr,reference_factor,reference_last_dbr\n" << std::setprecision (12);
     for (double rate : { 44100.0, 48000.0, 96000.0, 192000.0 })
         for (double frequency : { 50.0, 1000.0, 7000.0, 10000.0 })
             for (double peak : { 0.05, 1.0, 4.0 })
             {
-                const auto result = MagneticOversampling::compare (rate, frequency, peak);
+                const auto result = MagneticOversampling::compare (rate, frequency, peak, method);
                 REQUIRE (finiteNumber (result.referenceConvergenceDbr));
                 for (const auto& row : result.comparisons)
                 {
@@ -197,15 +202,20 @@ TEST_CASE ("Export offline filtered oversampling comparison", "[magnetic-os-repo
             }
     REQUIRE (results.good());
     std::ofstream responses (directory.getChildFile ("filters.csv").getFullPathName().toStdString());
-    responses << "# Linear identity round trip, no core; phase removes reported FIR latency.\n"
+    responses << "# Linear identity round trip, no core; interval candidate includes its two-tap averaging response and half-internal-sample delay.\n"
         "sample_rate_hz,factor,frequency_hz,gain_db,delay_removed_phase_deg,latency_samples,latency_ms\n" << std::setprecision (12);
     std::ofstream costs (directory.getChildFile ("cost.csv").getFullPathName().toStdString());
-    costs << "# " << juce::SystemStats::getCpuModel().toStdString() << "; " << (JUCE_DEBUG ? "Debug" : "Non-Debug")
+#if defined(JUCE_DEBUG) && JUCE_DEBUG
+    constexpr auto configuration = "Debug";
+#else
+    constexpr auto configuration = "Release";
+#endif
+    costs << "# " << juce::SystemStats::getCpuModel().toStdString() << "; " << configuration
         << "; median 5 x 32768 mono base samples; includes filters/core/copy/checksum, excludes prepare/FFT.\n"
         "factor,ns_per_base_mono_sample,latency_samples,checksum\n" << std::setprecision (12);
     for (int factor : MagneticOversampling::factors)
     {
-        const auto filter = MagneticOversampling::measureFilter (factor);
+        const auto filter = MagneticOversampling::measureFilter (factor, method);
         for (double rate : { 44100.0, 48000.0, 96000.0, 192000.0 })
             for (double frequency : { 20.0, 50.0, 1000.0, 7000.0, 10000.0, 15000.0, 18000.0, 20000.0 })
             {
@@ -215,7 +225,7 @@ TEST_CASE ("Export offline filtered oversampling comparison", "[magnetic-os-repo
                 responses << rate << ',' << factor << ',' << frequency << ',' << response.gainDb << ','
                     << response.delayRemovedPhaseDegrees << ',' << filter.latencySamples << ',' << filter.latencySamples * 1000.0 / rate << '\n';
             }
-        const auto cost = MagneticOversampling::timing (factor);
+        const auto cost = MagneticOversampling::timing (factor, method);
         REQUIRE (cost[0] > 0.0);
         REQUIRE (finiteNumber (cost[1]));
         costs << factor << ',' << cost[0] << ',' << filter.latencySamples << ',' << cost[1] << '\n';

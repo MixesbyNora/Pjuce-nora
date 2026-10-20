@@ -102,3 +102,7 @@ the SVG from the captured CSVs.
 Future production choices require Release profiling, additional input material,
 and voltage/flux/circuit coupling. No candidate is automatically enabled in the
 plugin by this experiment.
+
+The [Release follow-up](MagneticAntialiasingFollowup.md) now profiles this baseline
+and compares interval integration and turning-point reconstruction. The Debug
+results in this document's original export remain unchanged.

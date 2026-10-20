@@ -1,0 +1,159 @@
+{
+  "experiment": "magnetic-antialiasing-followup-v1",
+  "captured_at": "2026-10-20T13:21:20.922287-07:00",
+  "base_commit": "5d9299ccba1568803bc2f250893ea62cbce49125",
+  "scope": "Tests-only normalized H-to-M; no live plugin changes or new parameters",
+  "model": "preisach-play-core-v1",
+  "core_parameters": {
+    "memory": 0.35,
+    "width": 1.0
+  },
+  "methods": [
+    "original point",
+    "exact monotone linear-segment interval mean (tiny-delta midpoint fallback)",
+    "local quadratic turning-point estimate with three-actual-sample startup guard"
+  ],
+  "factors": [
+    1,
+    2,
+    4,
+    8,
+    16
+  ],
+  "stimuli_per_method": 48,
+  "comparison_rows_per_method": 240,
+  "sample_rates_hz": [
+    44100,
+    48000,
+    96000,
+    192000
+  ],
+  "nominal_tones_hz": [
+    50,
+    1000,
+    7000,
+    10000
+  ],
+  "normalized_field_peaks": [
+    0.05,
+    1,
+    4
+  ],
+  "filter": {
+    "type": "JUCE linear-phase half-band equiripple FIR",
+    "precision": "double; factory initially rounds coefficients through float",
+    "stopband_target_db": -120,
+    "transition_width_first": 0.04,
+    "transition_width_later": 0.08,
+    "integer_latency_filter": false
+  },
+  "reference": {
+    "initial_factors": [
+      32,
+      64
+    ],
+    "adaptive_factor": 128,
+    "extend_above_dbr": -100,
+    "fft_size": 16384,
+    "fft_precision": "float"
+  },
+  "screen": {
+    "band_hz": [
+      20,
+      20000
+    ],
+    "limit_dbr": -80,
+    "audibility_standard": false
+  },
+  "build": {
+    "configuration": "Release",
+    "architecture": "arm64",
+    "cpu": "Apple M2 Pro",
+    "verified_compile_optimization": "-O3",
+    "verified_compile_and_link_lto": "-flto",
+    "settings_changed": false,
+    "grid_header_label_correction": "Initial exporter comments inferred -Ofast from CMake. Copied cost comments corrected to verified -O3/LTO; numeric data unchanged."
+  },
+  "profile": {
+    "file": "profiling.csv",
+    "sweeps": 3,
+    "median_repetitions_per_measurement": 5,
+    "mono_base_samples_per_repetition": 32768,
+    "block_size": 256,
+    "summary": "median of the three five-run medians",
+    "stimuli": [
+      "H peak 4 at 1/256 cycles per sample",
+      "H peak 0.05 at 53/256 cycles per sample",
+      "H peak 4 seeded repeating 256-sample noise"
+    ],
+    "method_order": "rotated per sweep",
+    "factor_order": "alternated per sweep",
+    "includes": "FIR/core/copy/checksum",
+    "excludes": "prepare and FFT",
+    "concurrent_experiments": false
+  },
+  "source_provenance": "Point baseline captured first; interval and final startup-corrected turning captured subsequently. Same canonical core and reference configuration throughout. Final harness sources hashed below.",
+  "source_files_unchanged": 44,
+  "source_snapshot_sha256": "7750ca07de27ecd981ef26b194550cf85acd9c8060fbb52ca19aa8d8435f94a5",
+  "binary_isolation": {
+    "VST3": 0,
+    "AU": 0,
+    "Standalone": 0,
+    "Tests": 87
+  },
+  "validation": {
+    "Debug": {
+      "cases": 103,
+      "assertions": 280221
+    },
+    "Release": {
+      "cases": 103,
+      "assertions": 280221
+    },
+    "Release_with_turning_grid": {
+      "cases": 103,
+      "assertions": 282522
+    },
+    "matched_profile": {
+      "cases": 1,
+      "assertions": 272
+    }
+  },
+  "plugin_builds": [
+    "Lumiere_VST3 Debug",
+    "Lumiere_AU Debug",
+    "Lumiere_Standalone Debug"
+  ],
+  "build_errors": 0,
+  "build_warnings": 0,
+  "benchmarks_built": false,
+  "analysis_source_sha256": {
+    "tests/helpers/MagneticIntervalCore.h": "2df11134944b98458236d348f25961211b2f29782d50550bd531b685a189e651",
+    "tests/helpers/MagneticAnalysis.h": "5a26b8822873ce0c525a91d87cbac6c76f9b3affbf6047ff8482c7d48fbaf99a",
+    "tests/helpers/MagneticOversampling.h": "163a31ade8688d74bb32a6782d7051310c30cb7fe2765c4ae3d9f16b77c8168b",
+    "tests/helpers/MagneticIntervalCore.cpp": "8cf74f5618c5f9a9843c3c7380add2e67aa0b9d6cd5c869557584744ae6d135a",
+    "tests/helpers/MagneticOversampling.cpp": "6591884140c782ef62e83a63477fc39ec0551daf10d1942bc26f12ccbb85470e",
+    "tests/helpers/MagneticTurningPointCore.h": "2be0c26641fe05c1011108ffaa37d8cac1ea64d51f9831569cd6e03182bd29f0",
+    "tests/helpers/MagneticAnalysis.cpp": "f1db3816e95ff296cb3f3c7118bd9480d1a1df202be16a5ec7ec68946b8630ad",
+    "tests/MagneticIntervalTests.cpp": "9da144d8ad1ac20f6dbde86f6378e0c68581b1e8888485efd06a0800da355abf",
+    "tests/MagneticOversamplingTests.cpp": "8fde76e39153cd139fde5f737665b63aa3795bcae0acca5fc661dbe674afe1d5",
+    "source/experimental/PlayPreisachCore.cpp": "dfed984e076e42c84789dba32ce0de837cfd60bd790daa4468b1cda86d1fda5c",
+    "source/experimental/PlayPreisachCore.h": "34871e9f265cd1f6d6f4c91689081c771da91c7e3bc79fd572bd46ddf09f4ddd",
+    "source/experimental/MagneticCoreSettings.h": "5a77616c70f9b7779c703a51063fe7c11180eaacd11930f6c5777c87de76fe6b",
+    "tools/render_magnetic_antialiasing_report.py": "2d2bd24636c85d9230ff3d49b231fed154f5bed82b18c9fe8a96653030907240",
+    "CMakeLists.txt": "d4ee88297857f53770f350fb5586e27d52c60e4dc38b5eac54fa2f88d8b0bb7a",
+    "cmake/SharedCodeDefaults.cmake": "c5ec6000121f1a9e087e60f7e8d5dcc05a49c95149668b5f40979fb217e4e386"
+  },
+  "csv_sha256": {
+    "profiling.csv": "21ec95cb5d6136c43882cd1d0389344234b442317449304cd4ede13fba737fbc",
+    "interval/cost.csv": "b60b51ce752f4037568a1781d0c31ead1ba638766e5d596ba46c99d05ada66e3",
+    "interval/comparison.csv": "4e43a63b6b8f4f8cbdf9aa5e0fb5ebd9db93c383b0e3b6cf9b0f26f1af51fa63",
+    "interval/filters.csv": "d975ccde709441db6cd05f5bbfda740b073aebfbb424ac29a8e943a2d1416c53",
+    "point/cost.csv": "26821453e323c95821f634d79d3c8c10d9d3932508d04dff24afd0dd15f37733",
+    "point/comparison.csv": "6817b2111ab72f63e5c30dea2477600e9477da439c0990ef8af90238f5b6f1b3",
+    "point/filters.csv": "efc8592dbe0006c5b0b347629fb201c5c2f9398d655614a934812891e958ec59",
+    "turning/cost.csv": "5a0383bea6bd155c5aab9c115ac017511899cb7455c50ea928279345f1cdefdd",
+    "turning/comparison.csv": "ce17562182ee584931931c8b076efe4538a9b43a62d4750853d4a505b08319be",
+    "turning/filters.csv": "e8b6ae64b5b51946f446cb28c34822557dce41f39670771fe6ee610f3d42e895"
+  }
+}

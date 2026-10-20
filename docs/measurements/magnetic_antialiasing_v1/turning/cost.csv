@@ -1,0 +1,7 @@
+# Apple M2 Pro; Release (-O3, LTO); median 5 x 32768 mono base samples; includes filters/core/copy/checksum, excludes prepare/FFT.
+factor,ns_per_base_mono_sample,latency_samples,checksum
+1,83.6423339844,0,-95.5817684914
+2,314.378112793,99,-630.569856738
+4,566.23840332,123.5,-176.817813095
+8,1070.73846436,135.75,457.868176738
+16,2061.48910522,141.875,575.996985948

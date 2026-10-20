@@ -1,5 +1,13 @@
 # Lumiere Specification
 
+## Offline magnetic antialiasing follow-up
+
+The Tests-only Release comparison retains the original 16x point-sampled
+reference and evaluates interval integration and quadratic turning-point
+reconstruction. It records CPU, alias metrics, gain/phase, residuals and filter
+response without changing any live DSP, voicing, parameters, editor or latency.
+See [MagneticAntialiasingFollowup.md](MagneticAntialiasingFollowup.md).
+
 ## Offline magnetic oversampling comparison
 
 The Tests-only harness compares 1x/2x/4x/8x/16x processing of the unchanged
