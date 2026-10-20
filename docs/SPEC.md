@@ -1,5 +1,25 @@
 # Lumiere Specification
 
+## Offline magnetic artifact refinement
+
+A separate Tests-only five-point quartic turning-point experiment targets the
+close 19/20 kHz pair and band-limited impulse state offset. It compares original
+16x point sampling, quadratic 8x/16x, and quartic 8x/16x/32x with independently
+converged references across the prior 108-stimulus grid, including calibration,
+tail checks, full-band diagnostics and Release CPU profiles. The extra two
+internal samples of lookahead are included in offline alignment only. No live
+DSP, model constants, parameters, voicing, UI, meters or latency change. See
+[MagneticArtifactRefinement.md](MagneticArtifactRefinement.md).
+
+## Offline multitone and transient validation
+
+The Tests-only validation compares the unchanged 8x turning-point experiment and
+original 16x core with analytic-input high-rate references. It checks multitone
+intermodulation/off-grid artifacts, transient residuals and peak error, retained
+magnetization and silent-tail drift across four sample rates and three field
+scales. It adds no live DSP, host controls, UI or latency. See
+[MagneticMultitoneTransientValidation.md](MagneticMultitoneTransientValidation.md).
+
 ## Offline magnetic antialiasing follow-up
 
 The Tests-only Release comparison retains the original 16x point-sampled

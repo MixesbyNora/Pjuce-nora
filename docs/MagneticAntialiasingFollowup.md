@@ -5,6 +5,9 @@ and tests two alternatives. Everything is confined to Tests. The live compressor
 tanh transformer, saved favorite voicing, generic editor, meters, parameters and
 host latency are unchanged. No production oversampling mode is selected.
 
+The next [multitone/transient validation](MagneticMultitoneTransientValidation.md)
+tests these unchanged candidates beyond steady single tones.
+
 ## Baseline and comparison
 
 The baseline is the original point-sampled `preisach-play-core-v1` with the same

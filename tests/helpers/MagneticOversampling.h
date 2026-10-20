@@ -3,6 +3,7 @@
 #include "MagneticAnalysis.h"
 #include "MagneticIntervalCore.h"
 #include "MagneticTurningPointCore.h"
+#include "MagneticQuarticCore.h"
 #include <juce_dsp/juce_dsp.h>
 
 // Test/offline harness only. No live plugin target references this file.
@@ -13,7 +14,7 @@ inline constexpr float firstTransition = 0.04f;
 inline constexpr float laterTransition = 0.08f;
 inline constexpr float stopbandDb = -120.0f;
 inline constexpr int blockSize = 256;
-enum class Evaluation { point, interval, turningPoint };
+enum class Evaluation { point, interval, turningPoint, quartic };
 enum class TimingInput { slowSine, quietHighSine, noise };
 
 class Processor
@@ -24,7 +25,7 @@ public:
     void reset();
     void resetCores();
     void process (juce::AudioBuffer<double>&, bool identity = false) noexcept;
-    double latency() const noexcept { return filters.getLatencyInSamples() + (evaluation == Evaluation::interval ? 0.5 / static_cast<double> (factor()) : 0.0); }
+    double latency() const noexcept { return filters.getLatencyInSamples() + (evaluation == Evaluation::interval ? 0.5 / static_cast<double> (factor()) : evaluation == Evaluation::quartic ? 2.0 / static_cast<double> (factor()) : 0.0); }
     std::size_t factor() const noexcept { return filters.getOversamplingFactor(); }
 
 private:
@@ -32,6 +33,8 @@ private:
     std::array<MagneticPrototype::PlayPreisachCore, 2> cores;
     std::array<IntervalCore, 2> intervalCores;
     std::array<TurningPointCore, 2> turningPointCores;
+    std::array<QuarticCore, 2> quarticCores;
+    std::array<std::array<double, 2>, 2> identityDelay {};
     std::array<double, 2> linearPrevious {};
     Evaluation evaluation;
 };

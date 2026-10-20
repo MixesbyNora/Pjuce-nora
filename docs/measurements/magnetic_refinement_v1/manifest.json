@@ -1,0 +1,214 @@
+{
+  "version": 1,
+  "generated_utc": "2026-10-20T22:31:41.293900+00:00",
+  "scope": "Tests-only quartic extrema and oversampling research; live source, model constants, parameter identity, UI, meters and plugin latency unchanged",
+  "git_head": "5f841f8ef76fc18b97bf1b3752d221a0cec630dc",
+  "grid": {
+    "signals": 9,
+    "rates_hz": [
+      44100,
+      48000,
+      96000,
+      192000
+    ],
+    "field_scales": [
+      0.05,
+      1,
+      4
+    ],
+    "methods": 6,
+    "stimuli": 108,
+    "comparison_rows": 648
+  },
+  "pass_counts": {
+    "point16": 94,
+    "quadratic8": 96,
+    "quadratic16": 107,
+    "quartic8": 104,
+    "quartic16": 108,
+    "quartic32": 108
+  },
+  "reference": "Unchanged analytic-input adaptive 32x through 1024x original-core / real-FIR decimation; DC-20 kHz convergence below -100 dBr and band max <=1e-4; applicable tail convergence also required",
+  "reference_full_agreement_count": 80,
+  "historical_controls": {
+    "matched_rows": 216,
+    "maximum_band_residual_difference_db": 4.984883616998559e-10,
+    "reference_factors_all_match": true,
+    "prior_report": "../magnetic_validation_v1/manifest.json"
+  },
+  "latency": "New quartic candidate adds 2 internal samples; identity and trace alignment include that delay; live latency unchanged",
+  "release_flags": [
+    "-O3",
+    "-flto"
+  ],
+  "profiling": "Median of five 32768-sample mono runs; three stimuli; prepare/FFT excluded; no concurrent builds/tests during timing segment",
+  "tests": {
+    "debug": {
+      "cases": 115,
+      "assertions": 280584
+    },
+    "release_full_export": {
+      "cases": 115,
+      "assertions": 281382
+    },
+    "final_strict_debug_focus": {
+      "cases": 4,
+      "assertions": 83
+    },
+    "final_strict_release_full": {
+      "cases": 115,
+      "assertions": 280584
+    }
+  },
+  "builds": {
+    "configuration": "Debug",
+    "targets": [
+      "Lumiere_VST3",
+      "Lumiere_AU",
+      "Lumiere_Standalone",
+      "Tests"
+    ],
+    "release_targets": [
+      "Tests"
+    ],
+    "warnings": 0,
+    "errors": 0,
+    "benchmarks_built": false
+  },
+  "protected_source_hashes_unchanged": {
+    "source/BaParameters.cpp": "1cf0b4a12ffad830ca7ea980878869d9a791105f8c58d5a28ebe65b2971bf6d8",
+    "source/BaParameters.h": "952cc816cdae88d73273ddca850d7713bccb74507a81aa8f6372348ddc48b303",
+    "source/CompressorParameters.h": "da5821e314189ca6aa576edaf8e79caae63b1e61f6092bb99db8336a6fe06d41",
+    "source/GainLink.h": "6358758e9091d715d428e25017c9574cdd910d22d18f556e794810261d8e92b6",
+    "source/GainLinkController.cpp": "c6ed43e5192cdf0cb38a47010829c765d050a88339a0ec0247f0e45f7a63a53e",
+    "source/GainLinkController.h": "ad2c596b720698638014271e6dcc018e2cc6614e0a845b25da49287a8709aa2e",
+    "source/GainReductionMeter.cpp": "d1fe9571eba9979d661fb437aac1879ce14f29c921e89cb479434e79419e4b8e",
+    "source/GainReductionMeter.h": "85102121a6df7c5a89e610e798ab227af0862129cf176ec6d2842f93c5929705",
+    "source/MeterBallistics.h": "22c8d5554879352cf4753cae65cfde2a7b6fd8aac85d93f8605426d0f2cd9d63",
+    "source/PeakAccumulator.h": "132b8f137729d76f80ea0a818e6fe9cb0060cff2ce9bf6dc1428dba5db47b5bc",
+    "source/PluginEditor.cpp": "3a799b3e410704b2617b538cf2c68f196eedbf6cecf96bec3b4b5caa29c0995e",
+    "source/PluginEditor.h": "728bdb0fc036105a7a2a98a17b101a5d7ed9ac71df8c83548fa82050940fd2da",
+    "source/PluginProcessor.cpp": "81f9d1d491d51ad13e0db92dbd6f175889b364d1b2a7e473d233b9338f60b209",
+    "source/PluginProcessor.h": "59d58b5012ee430e95cc80adf836b78a97eca67a5bae7e35cb7e9a4d6b398a44",
+    "source/StereoLevelMeter.cpp": "1b0adc5586a13a2edb0faad6f64366ce74d76ef73b935dde1815c80da5f6c897",
+    "source/StereoLevelMeter.h": "8105e20658c26defba4217f6db832b87b40cde8fd7d7c88e752f90a17527212f",
+    "source/TransformerMeasurement.cpp": "56256d46de0d633ed401d35883f29336a249339fc4df7e7c96e4b54a29a0ecb1",
+    "source/TransformerMeasurement.h": "6c2a31b1803380cdac4036a0ce96ac7cd630b90a11ab11ce761a4e0c8f2278e1",
+    "source/TransformerMeasurementView.cpp": "2009ddaa0192f01f74d825524a1000706d28df830f644b3554a7cec9e32c3539",
+    "source/TransformerMeasurementView.h": "81f5e8321b2cc0de91374ceb21ce8c05f3c9bfb53bba8dff9d801646b7d6684e",
+    "source/TransformerVoicing.h": "06239bf71f647570cefc880ad8206ef10f22594aafc12d2306649916845a4cdf",
+    "source/TransformerVoicingPanel.cpp": "a0b5a4b8eab7b94b67f0ac636ef95e1430b5cc8f51e529196dd2a747411eda85",
+    "source/TransformerVoicingPanel.h": "78b9efcbe211fa777b1e5199c7328bfe45ebd1e4235023099e2b71a08c104af3",
+    "source/TransformerVoicingState.cpp": "8992154314a4842bd9bafdab1c31c16c988f3fe96aaa2666b943e7ac63e9a2f3",
+    "source/TransformerVoicingState.h": "3f1b5c2293076b4b4efc52e3abcfa9f9d8d606635b826bad2c4651be124723fc",
+    "source/dsp/BaSignalPath.cpp": "935492ab541bb5d0247348ddece1743ae99e487e81793f768314f4564e5f62c8",
+    "source/dsp/BaSignalPath.h": "86940095a2efb0eafe781dbae1ceeb8d239dc36932d67f0108c7f7ad6c17a117",
+    "source/dsp/Biquad.h": "160f9c599126e0b8e07beeed52e32d4685c627711768d2aee46898598882eba5",
+    "source/dsp/DbGainEnvelope.h": "7f7e28417a9b357472350e714ee52b0a07ad33950bf04cf7cec8b0e61ffdab85",
+    "source/dsp/LowFrequencyMono.cpp": "b87a8f91abc9b3f78c485b19d6767fdc360377678a35bb271a6862a4d0f65b16",
+    "source/dsp/LowFrequencyMono.h": "de3249b7d44483f124f91c411d0fe8c2286380a40b1abed24bc00a6af8ceffcd",
+    "source/dsp/SidechainFilter.cpp": "08b8babd695d540484caa6382238ead64333dd469d261866dd0ddb26f55fc035",
+    "source/dsp/SidechainFilter.h": "d0ab58ae43e7fc7183d76f6fa8312f9bb367cbbc29a4bd0049917059a59d6dd6",
+    "source/dsp/SidechainFilterSettings.h": "d2bdf914d69b9487c1d28079d008153cf6c411ebb33dadf06081b60c038ebda6",
+    "source/dsp/SoftKneeGainComputer.h": "98127952a75316da79908a9e1498215bc2b0b2b8f2d13845a73a52e6390babab",
+    "source/dsp/StereoCompressor.cpp": "d8c088e38499b512b1c6d4daecc05fa4552f67bf26c92ff063706120410fa61b",
+    "source/dsp/StereoCompressor.h": "30ab15f2200515611f231b2b09797bd3699629ec96cbe1baba17104981c1113b",
+    "source/dsp/TanhADAA.h": "b3f1b6afbf5a8b2d57ab3bb45fcfe3f11d5dc20ea8c81dcf776fe3611214eb81",
+    "source/dsp/TransformerSaturation.cpp": "50b60181a1386b1ea39cf4ef4579b9952d0d2e97f2ac8f3d171c9172d7650fc6",
+    "source/dsp/TransformerSaturation.h": "a8c29e675ee828aa98568daa39ab247c0afdae7db829fddd54c6ef66dd153cf3",
+    "source/dsp/TransformerSettings.h": "50ffced77bb74ae054970165e532b11c6de22ccb6cc4240e33e938f06685e1f3",
+    "source/experimental/MagneticCoreSettings.h": "5a77616c70f9b7779c703a51063fe7c11180eaacd11930f6c5777c87de76fe6b",
+    "source/experimental/PlayPreisachCore.cpp": "dfed984e076e42c84789dba32ce0de837cfd60bd790daa4468b1cda86d1fda5c",
+    "source/experimental/PlayPreisachCore.h": "34871e9f265cd1f6d6f4c91689081c771da91c7e3bc79fd572bd46ddf09f4ddd"
+  },
+  "binary_isolation": {
+    "Builds/Lumiere_artefacts/Debug/VST3/Lumiere Test v0.1.vst3/Contents/MacOS/Lumiere Test v0.1": {
+      "MagneticPrototype::": 0,
+      "MagneticOversampling::": 0,
+      "MagneticValidation::": 0,
+      "QuarticCore": 0
+    },
+    "Builds/Lumiere_artefacts/Debug/AU/Lumiere Test v0.1.component/Contents/MacOS/Lumiere Test v0.1": {
+      "MagneticPrototype::": 0,
+      "MagneticOversampling::": 0,
+      "MagneticValidation::": 0,
+      "QuarticCore": 0
+    },
+    "Builds/Lumiere_artefacts/Debug/Standalone/Lumiere Test v0.1.app/Contents/MacOS/Lumiere Test v0.1": {
+      "MagneticPrototype::": 0,
+      "MagneticOversampling::": 0,
+      "MagneticValidation::": 0,
+      "QuarticCore": 0
+    },
+    "Builds/Debug/Tests": {
+      "MagneticPrototype::": 35,
+      "MagneticOversampling::": 78,
+      "MagneticValidation::": 87,
+      "QuarticCore": 10
+    }
+  },
+  "source_sha256": {
+    "tests/MagneticRefinementTests.cpp": "f7da143bdbc40c0af96e66bddbde9877642ed9761bc0768c570050a99b063404",
+    "tests/helpers/MagneticQuarticCore.h": "32f1e82673c8cdc2fcad4c6126e8835543c31d6889d9c3808e8addc6d3fe094b",
+    "tests/helpers/MagneticOversampling.h": "ba1ec770802112ec9aea83c35735fadbe2583c6d62d44c1b4f0f440ba2b9b53a",
+    "tests/helpers/MagneticOversampling.cpp": "439de1a209d44980dffef409c90904e66acd28d7a90402c4f1f2b55994298dc6",
+    "tests/helpers/MagneticValidation.h": "7e6bbe749c77746b4a732f78888874417f9e85dc617e9015aa9a9611731f8a52",
+    "tests/helpers/MagneticValidation.cpp": "9659755769ec566b01ba91b41d198d79ff2d0efe01adf03f345b7da97f2b0c51",
+    "tools/render_magnetic_refinement_report.py": "29e25083f28603633243e594f68e01a72da6e088c95acdc25baf6a5deb7b4ecf",
+    "tools/render_magnetic_validation_report.py": "d69e818e7c1050b0d25e2af2379d08b6cd2ca87bc7f94e04d97441fc0837e6ac",
+    "docs/MagneticArtifactRefinement.md": "58a28fd0cbadd6a9c33d610c959616cfbc98df0b002aa3d74bf8412d354cac0f",
+    "docs/SPEC.md": "5682e2cc8c7dd9bc0d5c3c62eb4b8a083c3df98d5ff940bdedac417db8812191"
+  },
+  "artifacts_sha256": {
+    "README.md": "1a55b8812d3503c3009f30e0348d8909b1b61f25be4f939f0d8663a9387e31cf",
+    "bandlimited_impulse.csv": "7887bbdc622e5ab8500d37d3220d8b2596992e358e229f1f26c274da21db4aa0",
+    "close_high.csv": "0ecd2cdb797a3590092a154d5d1556c51893523863289aeb938181c43d63d8a5",
+    "close_high_spectrum.csv": "e435f3118358c1ec75e8b00a14bd57c30eebe230371c0556c0161bc02835abbe",
+    "comparison.csv": "f0f7018b719da89501a46f170aa8ffe0d391d664ec5f286ff0250451e2339763",
+    "impulse.pdf": "6b0eef68e12990b9ca47ae036cc8e7f1bce82e0e8b4709457a86a75d40350a82",
+    "impulse.png": "bfd8eb7418db7ae88639f5271a95a885d1fc02b534d84367c0d703b2e678a082",
+    "impulse.svg": "846963f6f4a6d526cc74eb75ce82e7cd2563bb54191850d3841541deb7d59416",
+    "refinement.pdf": "a349a747603dedc39ab4d45f807dcc208fcfe6333c033ea59b7afca0c5ed96c7",
+    "refinement.png": "16918ee40d2ccaeee97811dc6d540f3e795c9bf06475bdd887474ced79cec3ce",
+    "refinement.svg": "3957e7e4361d174afd6373bd758a8df8fddb7e015609319b7f4d7a71c96e601d",
+    "spectrum.pdf": "8e1d6f94171c07f294403596230a19a7ca760193c159f481bcfb5f1d76217174",
+    "spectrum.png": "30e0b32b1282b4d2cef0181a069b5fa0df365d016b0ee6d2837730f20974e57c",
+    "spectrum.svg": "859434d894ba042071d511705aff5e69eeed4ed4da3a91778ddb1beef8b0604d",
+    "timing.csv": "c19320179c3e46cb647ed1a7c2fcc3b96b033544b3f8ac6cd095a28757c8fc5c"
+  },
+  "build_test_log_sha256": {
+    "/private/tmp/lumiere-refinement-debug-build.log": "370424905a13e76ae16e68735c172ba56564fd1ee9696fe568c2deaafbcd19f2",
+    "/private/tmp/lumiere-refinement-release-build.log": "8b33232db725346fe5b712d45bbc2887cfe5054db9b7d1ad72b3a4515fd6a8cf",
+    "/private/tmp/lumiere-refinement-debug-tests.log": "af5b117affeb0c6892f82a7f577d4a29ed6e94a2663ffbe1cc867ce73636b921",
+    "/private/tmp/lumiere-refinement-release-tests.log": "67251e7776c2966f893b2bfc76aec9fb170026ce08c11fa1b78e6e7a2a93d8a6",
+    "/private/tmp/lumiere-refinement-debug-final-focus.log": "7ebbc7bf7f78c26b009b226714f8c8d1a606ec0a12027a3310e0a15925be2874",
+    "/private/tmp/lumiere-refinement-release-final-tests.log": "f9cb7b713370bcf51144a2ead71ba4939d4cd4ebcb7a9720ca250f5ca8ee3355"
+  },
+  "plotting": {
+    "ReportLab": "4.4.9",
+    "NumPy": "2.3.5",
+    "mask": "Impulse display DC-20k finite-window mask, double FFT; C++ CSV metrics retained separately"
+  },
+  "limitations": [
+    "Not a hardware fit or voltage/flux/circuit model",
+    "No arbitrary-signal alias elimination claim",
+    "Full-Nyquist reference convergence separate from audible-band agreement",
+    "Quartic assumes at most one stationary point per internal interval",
+    "Off-grid mask misses coincident aliases",
+    "Very small residual rankings limited by reference convergence",
+    "Local CPU measurements vary with workload and machine"
+  ],
+  "export_source_sha256": {
+    "tests/MagneticRefinementTests.cpp": "609ec75b87efafa768308e6f8687411c6923d9f4ba2d2e6cb7c517d7db3fb9b8",
+    "tests/helpers/MagneticQuarticCore.h": "32f1e82673c8cdc2fcad4c6126e8835543c31d6889d9c3808e8addc6d3fe094b",
+    "tests/helpers/MagneticOversampling.h": "ba1ec770802112ec9aea83c35735fadbe2583c6d62d44c1b4f0f440ba2b9b53a",
+    "tests/helpers/MagneticOversampling.cpp": "439de1a209d44980dffef409c90904e66acd28d7a90402c4f1f2b55994298dc6",
+    "tests/helpers/MagneticValidation.h": "7e6bbe749c77746b4a732f78888874417f9e85dc617e9015aa9a9611731f8a52",
+    "tests/helpers/MagneticValidation.cpp": "9659755769ec566b01ba91b41d198d79ff2d0efe01adf03f345b7da97f2b0c51",
+    "tools/render_magnetic_refinement_report.py": "29e25083f28603633243e594f68e01a72da6e088c95acdc25baf6a5deb7b4ecf",
+    "tools/render_magnetic_validation_report.py": "d69e818e7c1050b0d25e2af2379d08b6cd2ca87bc7f94e04d97441fc0837e6ac",
+    "docs/MagneticArtifactRefinement.md": "58a28fd0cbadd6a9c33d610c959616cfbc98df0b002aa3d74bf8412d354cac0f",
+    "docs/SPEC.md": "5682e2cc8c7dd9bc0d5c3c62eb4b8a083c3df98d5ff940bdedac417db8812191"
+  },
+  "export_to_final_change": "Only the new exact-quartic/invalid-input unit checks were tightened to zero relative epsilon after the full export; processing and exporters are unchanged. Final focused Debug and full Release reruns pass."
+}

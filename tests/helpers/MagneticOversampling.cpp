@@ -43,10 +43,10 @@ double difference (const Spectrum& a, const Spectrum& b, int lastBin)
 
 Processor::Processor (int multiplier, int channels, int capacity, MagneticPrototype::PlayPreisachCore::Parameters parameters, Evaluation method)
     : filters (static_cast<std::size_t> (channels)), intervalCores { IntervalCore (parameters), IntervalCore (parameters) },
-      turningPointCores { TurningPointCore (parameters), TurningPointCore (parameters) }, evaluation (method)
+      turningPointCores { TurningPointCore (parameters), TurningPointCore (parameters) }, quarticCores { QuarticCore (parameters), QuarticCore (parameters) }, evaluation (method)
 {
     jassert (channels >= 1 && channels <= 2);
-    jassert (std::find (factors.begin(), factors.end(), multiplier) != factors.end());
+    jassert (multiplier >= 1 && multiplier <= 32 && (multiplier & (multiplier - 1)) == 0);
     if (multiplier > 1)
     {
         filters.clearOversamplingStages();
@@ -72,6 +72,10 @@ void Processor::resetCores()
         core.reset();
     for (auto& core : turningPointCores)
         core.reset();
+    for (auto& core : quarticCores)
+        core.reset();
+    for (auto& delay : identityDelay)
+        delay.fill (0.0);
     linearPrevious.fill (0.0);
 }
 void Processor::reset()
@@ -83,7 +87,19 @@ void Processor::process (juce::AudioBuffer<double>& audio, bool identity) noexce
 {
     juce::dsp::AudioBlock<double> block (audio);
     auto high = filters.processSamplesUp (block);
-    if (evaluation == Evaluation::interval)
+    if (evaluation == Evaluation::quartic)
+        for (std::size_t channel = 0; channel < high.getNumChannels(); ++channel)
+        {
+            auto* samples = high.getChannelPointer (channel);
+            for (std::size_t sample = 0; sample < high.getNumSamples(); ++sample)
+            {
+                const auto field = samples[sample];
+                samples[sample] = identity ? identityDelay[channel][0] : quarticCores[channel].processField (field);
+                identityDelay[channel][0] = identityDelay[channel][1];
+                identityDelay[channel][1] = field;
+            }
+        }
+    else if (evaluation == Evaluation::interval)
         for (std::size_t channel = 0; channel < high.getNumChannels(); ++channel)
         {
             auto* samples = high.getChannelPointer (channel);

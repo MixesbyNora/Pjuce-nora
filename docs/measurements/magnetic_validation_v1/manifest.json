@@ -1,0 +1,175 @@
+{
+  "experiment": "magnetic-multitone-transient-validation-v1",
+  "captured_at": "2026-10-20T15:11:20.111404-07:00",
+  "base_commit": "5f841f8ef76fc18b97bf1b3752d221a0cec630dc",
+  "scope": "Tests-only normalized H-to-M; no live DSP/UI/parameter/voicing/latency changes",
+  "model": "preisach-play-core-v1",
+  "core_parameters": {
+    "memory": 0.35,
+    "width": 1.0
+  },
+  "candidates": {
+    "turning8": "unchanged quadratic turning-point kernel at 8x",
+    "point16": "unchanged original core at 16x"
+  },
+  "rates_hz": [
+    44100,
+    48000,
+    96000,
+    192000
+  ],
+  "nominal_field_scales": [
+    0.05,
+    1,
+    4
+  ],
+  "stimuli": [
+    "low_high",
+    "close_high",
+    "six_tone",
+    "bandlimited_impulse",
+    "low_burst",
+    "high_burst",
+    "gaussian_pulse",
+    "bipolar_pulse",
+    "fast_attack_decay"
+  ],
+  "stimulus_count": 108,
+  "rows": 216,
+  "samples_per_window": 16384,
+  "reference": {
+    "input": "analytic at internal rate; independent of sampled candidate input",
+    "core": "original point kernel",
+    "output": "real double JUCE FIR decimation",
+    "factors": [
+      32,
+      64,
+      128,
+      256,
+      512,
+      1024
+    ],
+    "actual_max_factor": 512,
+    "band_hz": [
+      0,
+      20000
+    ],
+    "rms_goal_dbr": -100,
+    "band_max_error_over_band_peak_goal": 0.0001,
+    "tail_mean_goal_dbr": -100,
+    "band_converged_stimuli": 108,
+    "full_agreement_stimuli": 80,
+    "full_agreement_scope": "maximum unbandlimited sample difference <= 1e-4 at chosen comparison step; full-band disagreement remains diagnostic"
+  },
+  "method_correction": "Development pass mixed full-band peak convergence with an audio-band screen. Final pass uses same precision target within DC-20kHz, reports full-band diagnostics separately, and extends references to 1024x if needed. No kernel or live processing changed.",
+  "filters": {
+    "type": "JUCE equiripple half-band FIR",
+    "precision": "double; initial coefficient design rounds through float",
+    "first_transition": 0.04,
+    "later_transition": 0.08,
+    "stopband_target_db": -120
+  },
+  "alignment": {
+    "reference_delay": "measured decimator impulse centroid",
+    "candidate_delay": "reported FIR round-trip latency",
+    "fractional_method": "257-tap Kaiser-windowed sinc, beta 12, fixed unit DC gain",
+    "unit_test_complex_error_goal_db": -100,
+    "fitted_delay_or_gain": false
+  },
+  "analysis": {
+    "fft_precision": "float; residual differences formed first in double",
+    "primary_band_hz": [
+      0,
+      20000
+    ],
+    "off_grid_band_hz": [
+      20,
+      20000
+    ],
+    "multitone_lattice_bins": 3,
+    "peak": "DC-20kHz finite-window FFT mask plus inverse; full-band peaks exported separately",
+    "dc_removed": false,
+    "tail_samples": 1024,
+    "maximum_plot_cases": "worst converged band residual, independently selected for multitone/transient"
+  },
+  "quality_screens": {
+    "band_residual_dbr": -80,
+    "off_grid_dbr": -80,
+    "absolute_band_peak_error_db": 0.1,
+    "tail_mean_error_dbr": -80,
+    "tail_drift_dbr": -100,
+    "identity_error_dbr": -95,
+    "audibility_standard": false
+  },
+  "results": {
+    "turning8_pass": 96,
+    "point16_pass": 94,
+    "reference_unresolved": 0,
+    "late_tail_drift_failures": 0,
+    "note": "quality screen outcomes are measurements, not failed implementation tests"
+  },
+  "build": {
+    "configurations": [
+      "Debug",
+      "Release"
+    ],
+    "architecture": "arm64",
+    "release_optimization": "-O3 and LTO; build settings unchanged",
+    "plugin_targets": [
+      "Lumiere_VST3",
+      "Lumiere_AU",
+      "Lumiere_Standalone"
+    ],
+    "tests_target": "Tests",
+    "warnings": 0,
+    "errors": 0,
+    "benchmarks_built": false
+  },
+  "validation": {
+    "Debug": {
+      "cases": 110,
+      "assertions": 280500
+    },
+    "Release_with_full_grid": {
+      "cases": 110,
+      "assertions": 284180
+    }
+  },
+  "binary_isolation": {
+    "VST3": 0,
+    "AU": 0,
+    "Standalone": 0,
+    "Tests_validation_symbols": 74
+  },
+  "source_files_unchanged": 44,
+  "source_snapshot_sha256": "7750ca07de27ecd981ef26b194550cf85acd9c8060fbb52ca19aa8d8435f94a5",
+  "source_sha256": {
+    "tests/helpers/MagneticTurningPointCore.h": "2be0c26641fe05c1011108ffaa37d8cac1ea64d51f9831569cd6e03182bd29f0",
+    "tests/helpers/MagneticOversampling.cpp": "6591884140c782ef62e83a63477fc39ec0551daf10d1942bc26f12ccbb85470e",
+    "tests/helpers/MagneticOversampling.h": "163a31ade8688d74bb32a6782d7051310c30cb7fe2765c4ae3d9f16b77c8168b",
+    "source/experimental/PlayPreisachCore.cpp": "dfed984e076e42c84789dba32ce0de837cfd60bd790daa4468b1cda86d1fda5c",
+    "source/experimental/PlayPreisachCore.h": "34871e9f265cd1f6d6f4c91689081c771da91c7e3bc79fd572bd46ddf09f4ddd",
+    "source/experimental/MagneticCoreSettings.h": "5a77616c70f9b7779c703a51063fe7c11180eaacd11930f6c5777c87de76fe6b",
+    "CMakeLists.txt": "d4ee88297857f53770f350fb5586e27d52c60e4dc38b5eac54fa2f88d8b0bb7a",
+    "tests/helpers/MagneticValidation.h": "f0255f17b5eaf391bf3446268dfb122c7f0f85f6d9c515b3d875b327177c0833",
+    "tests/helpers/MagneticValidation.cpp": "14d4d3df551d6708f0f602dc42df2422de511555534e3486e328f535bd82298c",
+    "tests/MagneticValidationTests.cpp": "69581a70aa26dae99badc55955db9fba46cd2e327bcd069202f8f2fcdee19c7b",
+    "tools/render_magnetic_validation_report.py": "d69e818e7c1050b0d25e2af2379d08b6cd2ca87bc7f94e04d97441fc0837e6ac"
+  },
+  "csv_sha256": {
+    "stimuli.csv": "f15ced67474f0d4e916dbd319a4a282e5c349af6f25d04c9364a29722b2b4732",
+    "intermodulation.csv": "ccf394152dc0e5301712fd46eacdf3ead4da7c3d3aae56c6fd57da887c05fbba",
+    "convergence.csv": "4e02d2cfc243b04ea5ab988b16fd77adb1dcd3d964408ad05db5edb78b7a0bc8",
+    "comparison.csv": "408131b9f8266f478091190ed92bad8e7812035da16139afdcf95dc7c529b2f8",
+    "worst_transient.csv": "57126a70855b5e7d05073aeb70e1aa7a4174c74dd9fe7e6e9c42d434756015ad",
+    "worst_multitone.csv": "0d852239401a0e255f275f451268efc33884ab4d65c0fcb33e3d24ebd2cb6c62"
+  },
+  "csv_rows": {
+    "stimuli.csv": 108,
+    "intermodulation.csv": 144,
+    "convergence.csv": 148,
+    "comparison.csv": 216,
+    "worst_transient.csv": 16384,
+    "worst_multitone.csv": 8191
+  }
+}
