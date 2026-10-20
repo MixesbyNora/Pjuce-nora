@@ -269,7 +269,7 @@ TEST_CASE ("LFM attenuates low side content and preserves mid and high side cont
     CHECK (identical (render (values, 1), signal (1, 4096)));
 }
 
-TEST_CASE ("Monitor mid side and delta are post-bypass and delta ignores Mix", "[ba][monitor]")
+TEST_CASE ("Monitor mid and side are post-bypass", "[ba][monitor]")
 {
     for (int mode : { 1, 2 })
     {
@@ -287,24 +287,117 @@ TEST_CASE ("Monitor mid side and delta are post-bypass and delta ignores Mix", "
         }
     }
     BaParameters::Values values;
-    values.monitor = 3;
-    const auto delta = render (values);
-    CHECK (delta.getMagnitude (0, delta.getNumSamples()) < 0.00001f);
-    auto compressing = neutral();
-    compressing.thresholdDb = -30.0f;
-    const auto wetDelta = render (values, 2, compressing);
-    CHECK (wetDelta.getMagnitude (0, wetDelta.getNumSamples()) > 0.01f);
-    values.mixPercent = 0.0f;
-    CHECK (identical (wetDelta, render (values, 2, compressing)));
-    values.bypassed = true;
-    const auto bypassedDelta = render (values, 2, compressing);
-    CHECK (bypassedDelta.getMagnitude (0, bypassedDelta.getNumSamples()) < 0.00001f);
-    values = {};
     values.monitor = 1;
     CHECK (identical (render (values, 1), signal (1, 4096)));
     values.monitor = 2;
     const auto monoSide = render (values, 1);
     CHECK (monoSide.getMagnitude (0, monoSide.getNumSamples()) < 0.00001f);
+}
+
+TEST_CASE ("Processor Delta respects Mix and nulls against the untouched input", "[ba][monitor][delta]")
+{
+    auto dry = signal (2, 8192);
+    // Different channel content exercises stereo linking and the LFM wet path.
+    for (int i = 0; i < dry.getNumSamples(); ++i)
+    {
+        const auto phase = 2.0f * juce::MathConstants<float>::pi * static_cast<float> (i) / 48000.0f;
+        dry.setSample (0, i, 0.125f + 0.2f * std::sin (phase * 110.0f));
+        dry.setSample (1, i, -0.0625f + 0.15f * std::sin (phase * 731.0f));
+    }
+    const auto renderMonitor = [&dry] (int mode, float mixPercent, bool bypassed, bool neutralChain = false)
+    {
+        PluginProcessor processor;
+        // These host-notifying parameters are owned by the processor's APVTS;
+        // exercise its real parameter reads and processBlock, not BaSignalPath directly.
+        set (processor, "monitor", static_cast<float> (mode));
+        set (processor, "mix", mixPercent);
+        set (processor, "bypass", bypassed ? 1.0f : 0.0f);
+        set (processor, "threshold", neutralChain ? 0.0f : -30.0f);
+        if (! neutralChain)
+        {
+            set (processor, "inGain", 6.0f);
+            set (processor, "input", 3.0f);
+            set (processor, "makeup", 3.0f);
+            set (processor, "outGain", -3.0f);
+            set (processor, "lfm", 88.0f);
+            set (processor, "fbff", 35.0f);
+            set (processor, "scFilter", 3.0f);
+        }
+        processor.prepareToPlay (48000.0, 256);
+        auto audio = dry;
+        juce::MidiBuffer midi;
+        processor.processBlock (audio, midi);
+        return audio;
+    };
+
+    const auto wet = renderMonitor (0, 100.0f, false);
+    const auto fullDelta = renderMonitor (3, 100.0f, false);
+    const auto halfDelta = renderMonitor (3, 50.0f, false);
+    const auto dryDelta = renderMonitor (3, 0.0f, false);
+    for (int channel = 0; channel < 2; ++channel)
+    {
+        CAPTURE (channel);
+        CHECK (juce::Decibels::gainToDecibels (dryDelta.getMagnitude (channel, 0, dryDelta.getNumSamples()), -160.0f) < -100.0f);
+        const auto fullRms = fullDelta.getRMSLevel (channel, 0, fullDelta.getNumSamples());
+        REQUIRE (fullRms > 0.001f);
+        const auto halfRms = halfDelta.getRMSLevel (channel, 0, halfDelta.getNumSamples());
+        CHECK (juce::Decibels::gainToDecibels (halfRms / fullRms)
+            == Catch::Approx (juce::Decibels::gainToDecibels (0.5f)).margin (0.05f));
+        auto fullError = 0.0f;
+        auto halfError = 0.0f;
+        for (int i = 0; i < dry.getNumSamples(); ++i)
+        {
+            fullError = juce::jmax (fullError, std::abs (fullDelta.getSample (channel, i)
+                - (wet.getSample (channel, i) - dry.getSample (channel, i))));
+            halfError = juce::jmax (halfError, std::abs (halfDelta.getSample (channel, i)
+                - 0.5f * fullDelta.getSample (channel, i)));
+        }
+        CHECK (fullError < 0.0000001f);
+        CHECK (halfError < 0.0000001f);
+    }
+    for (float mixPercent : { 0.0f, 50.0f, 100.0f })
+    {
+        CAPTURE (mixPercent);
+        const auto bypassed = renderMonitor (3, mixPercent, true);
+        const auto neutralDelta = renderMonitor (3, mixPercent, false, true);
+        CHECK (juce::Decibels::gainToDecibels (bypassed.getMagnitude (0, bypassed.getNumSamples()), -160.0f) < -100.0f);
+        CHECK (juce::Decibels::gainToDecibels (neutralDelta.getMagnitude (0, neutralDelta.getNumSamples()), -160.0f) < -100.0f);
+    }
+}
+
+TEST_CASE ("Processor Delta retains monitor bypass and Mix crossfades", "[ba][monitor][delta][smoothing]")
+{
+    PluginProcessor processor;
+    set (processor, "threshold", 0.0f);
+    set (processor, "outGain", 6.0f);
+    processor.prepareToPlay (48000.0, 256);
+    juce::MidiBuffer midi;
+    const auto process = [&processor, &midi]
+    {
+        auto audio = signal (2, 1024);
+        processor.processBlock (audio, midi);
+        return audio;
+    };
+    const auto wet = 0.125f * juce::Decibels::decibelsToGain (6.0f);
+    const auto delta = wet - 0.125f;
+    set (processor, "monitor", 3.0f);
+    const auto monitorRamp = process();
+    CHECK (monitorRamp.getSample (0, 0) == Catch::Approx (wet - 0.125f / 480.0f).margin (0.000001f));
+    CHECK (monitorRamp.getSample (0, 479) == Catch::Approx (delta).margin (0.000001f));
+    set (processor, "bypass", 1.0f);
+    const auto bypassRamp = process();
+    CHECK (bypassRamp.getSample (0, 0) == Catch::Approx (delta * (1.0f - 1.0f / 480.0f)).margin (0.000001f));
+    CHECK (bypassRamp.getSample (0, 239) == Catch::Approx (delta * 0.5f).margin (0.000001f));
+    CHECK (bypassRamp.getMagnitude (479, 545) < 0.00001f);
+    set (processor, "bypass", 0.0f);
+    const auto enabledRamp = process();
+    CHECK (enabledRamp.getSample (0, 0) == Catch::Approx (delta / 480.0f).margin (0.000001f));
+    CHECK (enabledRamp.getSample (0, 479) == Catch::Approx (delta).margin (0.000001f));
+    set (processor, "mix", 0.0f);
+    const auto mixRamp = process();
+    CHECK (mixRamp.getSample (0, 0) == Catch::Approx (delta * (1.0f - 1.0f / 960.0f)).margin (0.000001f));
+    CHECK (mixRamp.getSample (0, 479) == Catch::Approx (delta * 0.5f).margin (0.000001f));
+    CHECK (mixRamp.getMagnitude (959, 65) < 0.00001f);
 }
 
 TEST_CASE ("Mix gain bypass monitor and LFM changes use finite bounded crossfades", "[ba][smoothing]")

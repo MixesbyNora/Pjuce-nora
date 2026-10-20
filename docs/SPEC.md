@@ -82,8 +82,12 @@ mono layouts skip LFM. The sidechain and LFM share the same double-precision
 transposed direct form II calculation without changing sidechain coefficients.
 
 Monitor is applied last: LR passes the final signal; M sends its mid to both
-channels; S sends its side to both channels; D sends fully wet minus dry,
-independent of Mix, and is silent when bypassed. Choices crossfade over 10 ms.
+channels; S sends its side to both channels; D sends the final mixed signal
+minus the untouched dry input, after the bypass crossfade. Before bypass this
+equals `Mix * (wet - dry)`: silent at 0%, half the full Delta at 50%, and
+`wet - dry` at 100%. Wet includes IN gain, compression, OUT gain, and LFM;
+dry is captured before IN gain. Delta is silent when fully bypassed or when
+the wet chain is neutral. Choices and bypass still crossfade over 10 ms.
 In mono, M is the mono signal and S is silence.
 
 IN/OUT Link compensates the other gain by the inverse change, retaining any

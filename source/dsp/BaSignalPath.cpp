@@ -76,8 +76,6 @@ float BaSignalPath::process (juce::AudioBuffer<float>& buffer, int channels,
             auto right = channels > 1 ? pointers[1][sample] * gain : left;
             if (channels > 1)
                 lfm.process (left, right);
-            const auto wetLeft = left;
-            const auto wetRight = right;
             const auto dryLeft = dry.getSample (0, sample);
             const auto dryRight = channels > 1 ? dry.getSample (1, sample) : dryLeft;
             const auto wetAmount = mix.getNextValue();
@@ -91,9 +89,10 @@ float BaSignalPath::process (juce::AudioBuffer<float>& buffer, int channels,
             {
                 const auto mid = (left + right) * 0.5f;
                 const auto side = channels > 1 ? (left - right) * 0.5f : 0.0f;
-                const auto deltaAmount = 1.0f - bypassAmount;
-                const auto deltaLeft = (wetLeft - dryLeft) * deltaAmount;
-                const auto deltaRight = (wetRight - dryRight) * deltaAmount;
+                // Compare the same mixed, bypass-crossfaded signal as LR
+                // against the untouched input, before any monitor routing.
+                const auto deltaLeft = left - dryLeft;
+                const auto deltaRight = right - dryRight;
                 left = weights[0] * left + weights[1] * mid + weights[2] * side + weights[3] * deltaLeft;
                 right = weights[0] * right + weights[1] * mid + weights[2] * side + weights[3] * deltaRight;
             }
