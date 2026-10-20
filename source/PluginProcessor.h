@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "dsp/BaSignalPath.h"
 #include "GainLinkController.h"
+#include "TransformerVoicingState.h"
 
 class PluginProcessor : public juce::AudioProcessor
 {
@@ -37,6 +38,9 @@ public:
 
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
+
+    TransformerVoicingState& getTransformerVoicing() noexcept { return transformerVoicing; }
+    juce::String exportTransformerVoicing() const;
 
     // Maximum positive attenuation in the most recent block; safe for UI polling.
     float getGainReductionDb() const noexcept
@@ -82,6 +86,7 @@ private:
     std::unique_ptr<GainLinkController> gainLink;
     std::atomic<float> currentGainReductionDb { 0.0f };
     LevelMeterPeaks levelPeaks;
+    TransformerVoicingState transformerVoicing;
 
     static_assert (std::atomic<float>::is_always_lock_free);
 

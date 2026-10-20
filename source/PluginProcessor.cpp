@@ -104,12 +104,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::createParam
 
 BaParameters::Values PluginProcessor::readBaParameters() const noexcept
 {
+    const auto voicing = transformerVoicing.readAudio();
     return { baIn->load (std::memory_order_relaxed), baOut->load (std::memory_order_relaxed),
         baLfm->load (std::memory_order_relaxed), baMix->load (std::memory_order_relaxed),
         baBypass->load (std::memory_order_relaxed) >= 0.5f,
         juce::roundToInt (baMonitor->load (std::memory_order_relaxed)),
         xfrmOut->load (std::memory_order_relaxed) >= 0.5f,
-        xfrmAmount->load (std::memory_order_relaxed) };
+        xfrmAmount->load (std::memory_order_relaxed), voicing.voicing, voicing.levelMatch };
 }
 
 juce::AudioProcessorParameter* PluginProcessor::getBypassParameter() const
@@ -274,10 +275,25 @@ juce::AudioProcessorEditor* PluginProcessor::createEditor()
     return new PluginEditor (*this);
 }
 
+juce::String PluginProcessor::exportTransformerVoicing() const
+{
+    auto json = juce::JSON::parse (transformerVoicing.toJson());
+    auto context = std::make_unique<juce::DynamicObject>();
+    for (auto* p : getParameters())
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
+            context->setProperty (ranged->paramID, ranged->convertFrom0to1 (ranged->getValue()));
+    json.getDynamicObject()->setProperty ("processorParameters", juce::var (context.release()));
+    json.getDynamicObject()->setProperty ("sampleRate", getSampleRate());
+    return juce::JSON::toString (json, true);
+}
+
 //==============================================================================
 void PluginProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
-    if (auto xml = parameters.copyState().createXml())
+    auto state = parameters.copyState();
+    state.addChild (juce::ValueTree ("TRANSFORMER_VOICING",
+        { { "json", transformerVoicing.toJson() } }), -1, nullptr);
+    if (auto xml = state.createXml())
         copyXmlToBinary (*xml, destData);
 }
 
@@ -287,8 +303,13 @@ void PluginProcessor::setStateInformation (const void* data, int sizeInBytes)
     {
         if (xml->hasTagName (parameters.state.getType()))
         {
+            auto state = juce::ValueTree::fromXml (*xml);
+            const auto voicing = state.getChildWithName ("TRANSFORMER_VOICING");
+            if (! transformerVoicing.restoreJson (voicing.getProperty ("json").toString()))
+                transformerVoicing.resetAll();
+            state.removeChild (voicing, nullptr);
             gainLink->beginStateRestore();
-            parameters.replaceState (juce::ValueTree::fromXml (*xml));
+            parameters.replaceState (state);
             gainLink->endStateRestore();
         }
     }

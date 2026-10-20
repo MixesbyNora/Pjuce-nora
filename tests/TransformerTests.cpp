@@ -6,6 +6,7 @@
 #include <complex>
 #include <cstdint>
 #include <limits>
+#include <fstream>
 
 namespace
 {
@@ -70,6 +71,43 @@ double harmonic (const juce::AudioBuffer<float>& audio, double frequency, double
     }
     return std::abs (sum) * 2.0 / count;
 }
+}
+
+TEST_CASE ("Transformer original voicing remains bit-identical through drive and bypass automation", "[transformer][voicing-reference]")
+{
+    auto audio = sine (48000.0, 73.0, -3.0, 8192);
+    TransformerSaturation stage;
+    stage.prepare (48000.0, 100.0f, false);
+    for (int start = 0; start < audio.getNumSamples(); start += 128)
+    {
+        if (start == 2048)
+            stage.setParameters (25.0f, false);
+        if (start == 4096)
+            stage.setParameters (25.0f, true);
+        if (start == 6144)
+            stage.setParameters (100.0f, false);
+        std::array<float*, 2> pointers { audio.getWritePointer (0, start), audio.getWritePointer (1, start) };
+        juce::AudioBuffer<float> block (pointers.data(), 2, 128);
+        stage.process (block, 2);
+    }
+    if (const auto* path = std::getenv ("LUMIERE_TRANSFORMER_REFERENCE_EXPORT"))
+    {
+        std::ofstream output (path, std::ios::binary);
+        for (int channel = 0; channel < 2; ++channel)
+            output.write (reinterpret_cast<const char*> (audio.getReadPointer (channel)), 8192 * sizeof (float));
+        REQUIRE (output.good());
+        return;
+    }
+    const auto path = juce::File (__FILE__).getSiblingFile ("data").getChildFile ("TransformerAudioReference.bin");
+    std::ifstream input (path.getFullPathName().toStdString(), std::ios::binary);
+    REQUIRE (input.good());
+    std::array<float, 8192> reference {};
+    for (int channel = 0; channel < 2; ++channel)
+    {
+        input.read (reinterpret_cast<char*> (reference.data()), sizeof (reference));
+        REQUIRE (input.good());
+        CHECK (std::memcmp (reference.data(), audio.getReadPointer (channel), sizeof (reference)) == 0);
+    }
 }
 
 TEST_CASE ("Transformer parameters append stable IDs with In Out text and percent parsing", "[transformer][parameters]")

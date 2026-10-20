@@ -1,5 +1,38 @@
 # Lumiere Specification
 
+## Transformer development voicing
+
+The generic controls and meters remain in place, with a collapsible right-hand
+Transformer Voicing panel. Private controls adjust drive calibration (-12 to
++12 dB), LF emphasis (0 to +24 dB), and shelf frequency (30 to 500 Hz). Their
+defaults preserve the original 0 dB calibration, +12 dB shelf and 120 Hz corner.
+Voicing uses a 20 ms crossfade between fixed-size filter/state banks.
+
+A/B slots, copy-to-other, fixed Original audition, reset, and versioned JSON
+copy/paste are available. Both slots and audition state are saved with the
+project separately from the unchanged 16 host parameters. Optional RMS level
+matching defaults off and acts only on the transformer output; it skips exact
+Out/zero-Amount bypass. Old project states restore the original voicing.
+
+See [TransformerVoicing.md](TransformerVoicing.md) for the listening workflow,
+report command, published VTB1148 reference constraints and their limitations.
+The first panel tunes the existing tanh model. A Preisach core and further
+harmonic/memory controls remain deferred.
+
+### Transformer measurement view
+
+The collapsible panel's Measurements tab compares captured A/B transformer
+voicings using internal offline tones on a low-priority worker. It shows
+fundamental gain versus input level, H2/H3/H5/H7 in dBc, RMS gain and a full
+CSV copy. The grid is fixed at 48 kHz with seven frequencies, four input levels
+and Amount 25/50/100%, discarding 250 ms startup and analyzing one second.
+Matching is off and the transformer is In for measurement. The rest of the
+plugin chain is excluded; live audio and parameter state are unchanged.
+Results are marked stale after edits; cancellation discards partial results.
+The display floor is -140 dBc, and harmonics at/above Nyquist are NA.
+No oversampling or magnetic model is added. The chosen tanh voicing is stored
+as `docs/voicings/tanh-favorite-v1.json`, without changing factory defaults.
+
 ## Transformer saturation (basic)
 
 The wet path now runs IN -> compressor (including makeup) -> transformer ->

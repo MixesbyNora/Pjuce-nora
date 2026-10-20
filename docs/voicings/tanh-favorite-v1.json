@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "model": "transformer-tanh-residual-adaa-v1",
+  "A": { "driveCalibrationDb": 0.0, "emphasisDb": 12.0, "cornerHz": 120.0 },
+  "B": { "driveCalibrationDb": -6.099999904632568, "emphasisDb": 6.099999904632568, "cornerHz": 103.0 },
+  "selected": "B",
+  "reference": false,
+  "levelMatch": false,
+  "processorParameters": {
+    "input": -2.682209014892578e-7,
+    "threshold": -8.940696716308594e-7,
+    "attack": 30.0,
+    "release": 250.0,
+    "makeup": 0.0,
+    "scFilter": 2.0,
+    "bypass": 0.0,
+    "inGain": 3.576278686523438e-7,
+    "outGain": 3.576278686523438e-7,
+    "ioLink": 1.0,
+    "lfm": 0.0,
+    "mix": 100.0,
+    "monitor": 0.0,
+    "fbff": 0.0,
+    "xfrmOut": 0.0,
+    "xfrmAmount": 100.0
+  },
+  "sampleRate": 48000.0
+}

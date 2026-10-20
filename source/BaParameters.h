@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
+#include "TransformerVoicing.h"
 
 namespace BaParameters
 {
@@ -49,6 +50,8 @@ struct Values
     int monitor = monitorInitial;
     bool transformerOut = xfrmOut.initial;
     float transformerAmountPercent = xfrmAmount.initial;
+    TransformerVoicing::Values transformerVoicing;
+    bool voicingLevelMatch = false;
 };
 
 void appendLayout (juce::AudioProcessorValueTreeState::ParameterLayout& layout);

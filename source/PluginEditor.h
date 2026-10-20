@@ -3,6 +3,7 @@
 #include "GainReductionMeter.h"
 #include "StereoLevelMeter.h"
 #include "PluginProcessor.h"
+#include "TransformerVoicingPanel.h"
 
 class PluginEditor : public juce::AudioProcessorEditor, private juce::Timer
 {
@@ -20,6 +21,8 @@ private:
     juce::GenericAudioProcessorEditor parameterEditor;
     GainReductionMeter meter;
     StereoLevelMeter inputMeter { "IN" }, outputMeter { "OUT" };
+    TransformerVoicingPanel voicingPanel;
+    juce::TextButton voicingToggle { "Hide voicing" };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginEditor)
 };

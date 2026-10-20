@@ -128,6 +128,15 @@ set(SourceFiles
     source/GainLinkController.h
     source/GainLinkController.cpp
     source/CompressorParameters.h
+    source/TransformerVoicing.h
+    source/TransformerMeasurement.h
+    source/TransformerMeasurement.cpp
+    source/TransformerMeasurementView.h
+    source/TransformerMeasurementView.cpp
+    source/TransformerVoicingState.h
+    source/TransformerVoicingState.cpp
+    source/TransformerVoicingPanel.h
+    source/TransformerVoicingPanel.cpp
     source/GainReductionMeter.h
     source/GainReductionMeter.cpp
     source/PluginEditor.h

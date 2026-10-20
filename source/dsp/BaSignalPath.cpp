@@ -6,7 +6,8 @@ void BaSignalPath::prepare (double sampleRate, int maximumBlockSize,
     chunkCapacity = juce::jmax (1, maximumBlockSize);
     dry.setSize (2, chunkCapacity);
     compressor.prepare (sampleRate, compressorValues);
-    transformer.prepare (sampleRate, values.transformerAmountPercent, values.transformerOut);
+    transformer.prepare (sampleRate, values.transformerAmountPercent, values.transformerOut,
+        values.transformerVoicing, values.voicingLevelMatch);
     lfm.prepare (sampleRate, values.lfmHz);
     inputGain.reset (sampleRate, BaParameters::gainRampSeconds);
     outputGain.reset (sampleRate, BaParameters::gainRampSeconds);
@@ -38,6 +39,7 @@ float BaSignalPath::process (juce::AudioBuffer<float>& buffer, int channels,
 {
     compressor.setParameters (compressorValues);
     transformer.setParameters (values.transformerAmountPercent, values.transformerOut);
+    transformer.setVoicing (values.transformerVoicing, values.voicingLevelMatch);
     inputGain.setTargetValue (juce::Decibels::decibelsToGain (values.inGainDb));
     outputGain.setTargetValue (juce::Decibels::decibelsToGain (values.outGainDb));
     mix.setTargetValue (values.mixPercent * 0.01f);

@@ -1,15 +1,26 @@
 #include "PluginEditor.h"
 
 PluginEditor::PluginEditor (PluginProcessor& processorToUse)
-    : AudioProcessorEditor (processorToUse), processorRef (processorToUse), parameterEditor (processorToUse)
+    : AudioProcessorEditor (processorToUse), processorRef (processorToUse), parameterEditor (processorToUse),
+      voicingPanel (processorToUse.getTransformerVoicing(), [&processorToUse] { return processorToUse.exportTransformerVoicing(); })
 {
     parameterEditor.setResizable (false, false);
     addAndMakeVisible (parameterEditor);
     addAndMakeVisible (meter);
     addAndMakeVisible (inputMeter);
     addAndMakeVisible (outputMeter);
+    addAndMakeVisible (voicingPanel);
+    addAndMakeVisible (voicingToggle);
+    voicingToggle.setComponentID ("voicingToggle");
+    voicingToggle.onClick = [this]
+    {
+        const auto show = ! voicingPanel.isVisible();
+        voicingPanel.setVisible (show);
+        voicingToggle.setButtonText (show ? "Hide voicing" : "Show voicing");
+        setSize (show ? 960 : 640, 936);
+    };
     setResizable (false, false);
-    setSize (640, 936);
+    setSize (960, 936);
     meter.setGainReductionDb (processorRef.getGainReductionDb());
     startTimerHz (30);
 }
@@ -35,6 +46,14 @@ void PluginEditor::resized()
     bottom.removeFromTop (4);
     outputMeter.setBounds (bottom);
     area.removeFromBottom (16);
+    if (voicingPanel.isVisible())
+    {
+        auto panel = area.removeFromRight (300);
+        panel.removeFromTop (32);
+        voicingPanel.setBounds (panel);
+        area.removeFromRight (20);
+    }
+    voicingToggle.setBounds (getWidth() - 316, 18, voicingPanel.isVisible() ? 300 : 148, 24);
     meter.setBounds (area.removeFromRight (160));
     area.removeFromRight (16);
     area.removeFromTop (32);
@@ -43,6 +62,7 @@ void PluginEditor::resized()
 
 void PluginEditor::timerCallback()
 {
+    voicingPanel.refresh();
     meter.setGainReductionDb (processorRef.getGainReductionDb());
     const auto peaks = processorRef.readLevelPeaks();
     inputMeter.setLevelsDb (juce::Decibels::gainToDecibels (peaks.inL, -60.0f),
