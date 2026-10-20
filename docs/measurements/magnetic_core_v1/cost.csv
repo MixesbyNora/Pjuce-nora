@@ -1,0 +1,4 @@
+# Local Debug timing; median of 5 x 32768 mono samples; includes loop/checksum; not a realtime deadline guarantee.
+# Apple M2 Pro
+ns_per_mono_sample,core_bytes,max_play_updates,max_tanh_calls,checksum
+391.115814209,408,16,17,2.31148238245

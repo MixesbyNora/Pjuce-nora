@@ -1,0 +1,31 @@
+{
+  "model": "preisach-play-core-v1",
+  "base_commit": "ccf77c0",
+  "scope": "Offline normalized H-to-M constitutive law; Tests target only",
+  "calibration": "Heuristic density; not VTB1148 identification or measured B-H data",
+  "parameters": {
+    "memory": 0.35,
+    "width": 1.0
+  },
+  "settings": {
+    "operators": 16,
+    "minimum_radius": 0.02,
+    "maximum_radius": 1.2,
+    "weight_falloff": 0.5,
+    "saturation_field": 1.0,
+    "maximum_field": 32.0
+  },
+  "spectral_method": {
+    "fft_size": 16384,
+    "references": [
+      4,
+      8
+    ],
+    "warmup_windows": 1,
+    "analysis_windows": 1,
+    "carrier": "nearest odd coherent bin; actual frequency in CSV",
+    "alias_units": "dB relative to reference in-band RMS magnetization"
+  },
+  "local_cost_configuration": "Debug arm64, Apple M2 Pro, five runs of 32768 mono samples",
+  "live_plugin_changed": false
+}

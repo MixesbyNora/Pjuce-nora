@@ -1,5 +1,16 @@
 # Lumiere Specification
 
+## Offline magnetic-core experiment (step 1)
+
+An experimental generalized Preisach/play core is linked exclusively into Tests.
+It maps normalized H to bounded M using 16 continuous play states, with fixed
+storage/work and offline checks for remanence, return-point memory, stability,
+sample-rate consistency and spectral folding. All tuning is in
+`source/experimental/MagneticCoreSettings.h`. It is not connected to the live
+audio path, UI or host parameters. The saved tanh favorite remains unchanged.
+The prototype is uncalibrated and requires further antialiasing/circuit work
+before live use. See [MagneticCorePrototype.md](MagneticCorePrototype.md).
+
 ## Transformer development voicing
 
 The generic controls and meters remain in place, with a collapsible right-hand

@@ -220,6 +220,12 @@ endif()
 # Everything related to the tests target
 pamplejuce_add_tests()
 
+# Step-one magnetic experiment is offline-only: never link it into SharedCode/plugins.
+target_sources(Tests PRIVATE
+    source/experimental/MagneticCoreSettings.h
+    source/experimental/PlayPreisachCore.h
+    source/experimental/PlayPreisachCore.cpp)
+
 # A separate target for Benchmarks (keeps the Tests target fast)
 pamplejuce_add_benchmarks()
 
