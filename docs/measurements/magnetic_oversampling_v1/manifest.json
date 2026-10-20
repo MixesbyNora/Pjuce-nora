@@ -1,0 +1,73 @@
+{
+  "experiment": "magnetic-filtered-oversampling-v1",
+  "base_commit": "ebc671e",
+  "core_model": "preisach-play-core-v1",
+  "core_parameters": {
+    "memory": 0.35,
+    "width": 1.0
+  },
+  "scope": "Tests-only normalized H-to-M comparison; no live plugin changes",
+  "candidate_factors": [
+    1,
+    2,
+    4,
+    8,
+    16
+  ],
+  "reference": {
+    "initial_factors": [
+      32,
+      64
+    ],
+    "adaptive_factor": 128,
+    "extend_above_dbr": -100,
+    "worst_final_dbr": -100.544346494,
+    "extended_stimuli": 3
+  },
+  "filters": {
+    "type": "JUCE half-band equiripple FIR",
+    "processing": "double",
+    "coefficient_note": "JUCE factory initially rounds FIR coefficients through float",
+    "first_transition_width": 0.04,
+    "later_transition_width": 0.08,
+    "stopband_design_target_db": -120,
+    "integer_latency_filter": false
+  },
+  "spectral": {
+    "fft_size": 16384,
+    "fft_precision": "float",
+    "candidate_windows": {
+      "identity_filter_warmup": 1,
+      "core_warmup": 1,
+      "analysis": 1
+    },
+    "latency_alignment": "complex phase rotation by reported FIR delay",
+    "screen_band_hz": [
+      20,
+      20000
+    ],
+    "screen_dbr": -80,
+    "normalization": "final reference full-band RMS below base Nyquist"
+  },
+  "build": "Debug arm64",
+  "cpu": "Apple M2 Pro",
+  "source_files_unchanged": 44,
+  "tests": {
+    "cases": 95,
+    "assertions": 130103
+  },
+  "analysis_source_sha256": {
+    "tests/helpers/MagneticAnalysis.cpp": "f1db3816e95ff296cb3f3c7118bd9480d1a1df202be16a5ec7ec68946b8630ad",
+    "tests/helpers/MagneticOversampling.cpp": "934a24dac31aa3fac576b8df1db2692503a1dfe84ea4f6c62a86f42d9d48b53f",
+    "tests/helpers/MagneticOversampling.h": "a5e998cd5f9a9f863f0265dcbed2ce97c9add26054c8dccefa24f57c128f658a",
+    "tests/MagneticOversamplingTests.cpp": "2bae39f8c882a70e96cb34d04ce9079b83079f664713d7917466eabfec6f2c15",
+    "source/experimental/PlayPreisachCore.cpp": "dfed984e076e42c84789dba32ce0de837cfd60bd790daa4468b1cda86d1fda5c",
+    "source/experimental/PlayPreisachCore.h": "34871e9f265cd1f6d6f4c91689081c771da91c7e3bc79fd572bd46ddf09f4ddd",
+    "source/experimental/MagneticCoreSettings.h": "5a77616c70f9b7779c703a51063fe7c11180eaacd11930f6c5777c87de76fe6b"
+  },
+  "csv_sha256": {
+    "comparison.csv": "06af6ccea254ac7ac13c344f63eb4a8d14da054624890b203565bb9b29407816",
+    "filters.csv": "efc8592dbe0006c5b0b347629fb201c5c2f9398d655614a934812891e958ec59",
+    "cost.csv": "a4872d3731ffbeb2a8597372a74deae33003d8ec31b998712b47d4c907248b52"
+  }
+}

@@ -1,5 +1,14 @@
 # Lumiere Specification
 
+## Offline magnetic oversampling comparison
+
+The Tests-only harness compares 1x/2x/4x/8x/16x processing of the unchanged
+experimental core using double-precision linear-phase FIR interpolation and
+decimation. A 48-stimulus grid uses 32x/64x reference convergence checks and
+records aliases, aligned residuals, fundamental gain/phase, filter response,
+latency and local CPU cost. It adds no live DSP, host parameters, UI controls
+or plugin latency. See [MagneticOversamplingComparison.md](MagneticOversamplingComparison.md).
+
 ## Offline magnetic-core experiment (step 1)
 
 An experimental generalized Preisach/play core is linked exclusively into Tests.

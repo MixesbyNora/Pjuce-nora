@@ -1,5 +1,9 @@
 # Magnetic core experiment — step 1
 
+Follow-up: [filtered oversampling comparison](MagneticOversamplingComparison.md)
+tests 2x/4x/8x/16x candidates against 32x/64x offline references, retaining this
+original core and live-plugin isolation.
+
 This is an **offline constitutive-law prototype**, linked only into `Tests`.
 The live transformer, compressor, parameter/state format, generic editor,
 measurement panel and saved tanh favorite are unchanged. There is no model

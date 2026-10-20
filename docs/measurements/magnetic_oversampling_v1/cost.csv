@@ -1,0 +1,7 @@
+# Apple M2 Pro; Debug; median 5 x 32768 mono base samples; includes filters/core/copy/checksum, excludes prepare/FFT.
+factor,ns_per_base_mono_sample,latency_samples,checksum
+1,387.727111816,0,-95.5817684914
+2,1375.62561035,99,-630.569856738
+4,2737.36700439,123.5,-176.817813095
+8,5452.32009888,135.75,457.868176738
+16,10891.9537964,141.875,575.996985948
