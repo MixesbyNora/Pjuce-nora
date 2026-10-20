@@ -18,6 +18,7 @@ PluginProcessor::PluginProcessor()
        release (parameters.getRawParameterValue (CompressorParameters::release.id)),
        makeup (parameters.getRawParameterValue (CompressorParameters::makeup.id)),
        scFilter (parameters.getRawParameterValue (CompressorParameters::scFilterId)),
+       fbff (parameters.getRawParameterValue (CompressorParameters::fbff.id)),
        baBypass (parameters.getRawParameterValue (BaParameters::bypass.id)),
        baIn (parameters.getRawParameterValue (BaParameters::inGain.id)),
        baOut (parameters.getRawParameterValue (BaParameters::outGain.id)),
@@ -52,6 +53,33 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::createParam
         juce::ParameterID { CompressorParameters::scFilterId, 1 }, "SC Filter",
         filterChoices, SidechainFilterSettings::defaultMode));
     BaParameters::appendLayout (layout);
+    const auto& blend = CompressorParameters::fbff;
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { blend.id, 2 }, blend.name,
+        juce::NormalisableRange<float> { blend.minimum, blend.maximum, blend.step },
+        blend.defaultValue, juce::AudioParameterFloatAttributes()
+            .withStringFromValueFunction ([] (float value, int)
+            {
+                const auto tenths = juce::roundToInt (value * 10.0f);
+                if (tenths == 0)
+                    return juce::String ("FB");
+                if (tenths == 500)
+                    return juce::String ("50/50");
+                if (tenths == 1000)
+                    return juce::String ("FF");
+                return juce::String (value, tenths % 10 == 0 ? 0 : 1) + "% FF";
+            })
+            .withValueFromStringFunction ([] (const juce::String& text)
+            {
+                const auto trimmed = text.trim();
+                if (trimmed.equalsIgnoreCase ("FB"))
+                    return 0.0f;
+                if (trimmed.equalsIgnoreCase ("FF"))
+                    return 100.0f;
+                if (trimmed == "50/50")
+                    return 50.0f;
+                return trimmed.getFloatValue();
+            })));
     return layout;
 }
 
@@ -75,7 +103,8 @@ CompressorParameters::Values PluginProcessor::readParameters() const noexcept
         attack->load (std::memory_order_relaxed),
         release->load (std::memory_order_relaxed),
         makeup->load (std::memory_order_relaxed),
-        juce::roundToInt (scFilter->load (std::memory_order_relaxed)) };
+        juce::roundToInt (scFilter->load (std::memory_order_relaxed)),
+        fbff->load (std::memory_order_relaxed) };
 }
 
 PluginProcessor::~PluginProcessor()

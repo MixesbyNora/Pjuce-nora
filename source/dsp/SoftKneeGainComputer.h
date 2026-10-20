@@ -5,6 +5,8 @@
 class SoftKneeGainComputer
 {
 public:
+    static constexpr float ratio = 4.0f;
+
     void setThresholdDb (float newThresholdDb) noexcept
     {
         thresholdDb = newThresholdDb;
@@ -27,7 +29,6 @@ public:
     }
 
 private:
-    static constexpr float ratio = 4.0f;
     static constexpr float kneeDb = 6.0f;
     float thresholdDb = 0.0f;
 };

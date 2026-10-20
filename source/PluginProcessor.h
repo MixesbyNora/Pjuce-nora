@@ -69,6 +69,7 @@ private:
     const std::atomic<float>* release = nullptr;
     const std::atomic<float>* makeup = nullptr;
     const std::atomic<float>* scFilter = nullptr;
+    const std::atomic<float>* fbff = nullptr;
     const std::atomic<float>* baBypass = nullptr;
     const std::atomic<float>* baIn = nullptr;
     const std::atomic<float>* baOut = nullptr;

@@ -12,10 +12,11 @@
 
 namespace
 {
-juce::AudioBuffer<float> renderUnfilteredReference()
+juce::AudioBuffer<float> renderUnfilteredReference (float fbffPercent = CompressorParameters::fbff.defaultValue)
 {
     StereoCompressor compressor;
     CompressorParameters::Values values { -3.0f, -22.0f, 0.2f, 130.0f, 6.0f };
+    values.fbffPercent = fbffPercent;
     compressor.prepare (48000.0, values);
     juce::AudioBuffer<float> result (2, 8192);
     juce::AudioBuffer<float> block (2, 128);
@@ -25,6 +26,7 @@ juce::AudioBuffer<float> renderUnfilteredReference()
             values = { 6.0f, -30.0f, 5.0f, 2000.0f, 12.0f };
         if (start == 4096)
             values = { 0.0f, -18.0f, 30.0f, 50.0f, 0.0f };
+        values.fbffPercent = fbffPercent;
         compressor.setParameters (values);
         for (int i = 0; i < block.getNumSamples(); ++i)
         {
@@ -83,6 +85,23 @@ TEST_CASE ("Off preserves the pre-filter compressor audio reference", "[sidechai
             output.write (reinterpret_cast<const char*> (audio.getReadPointer (channel)),
                 static_cast<std::streamsize> (audio.getNumSamples()) * static_cast<std::streamsize> (sizeof (float)));
         REQUIRE (output.good());
+    }
+}
+
+TEST_CASE ("Full feedforward is bit-identical to the audio captured before FB FF", "[fbff][audio]")
+{
+    // Full stereo float PCM captured before this change, including parameter
+    // automation, transients, and release tails. No second DSP implementation.
+    const auto path = juce::File (__FILE__).getSiblingFile ("data").getChildFile ("FeedforwardAudioReference.bin");
+    std::ifstream input (path.getFullPathName().toStdString(), std::ios::binary);
+    REQUIRE (input.good());
+    const auto audio = renderUnfilteredReference (100.0f);
+    std::array<float, 8192> reference {};
+    for (int channel = 0; channel < 2; ++channel)
+    {
+        input.read (reinterpret_cast<char*> (reference.data()), sizeof (reference));
+        REQUIRE (input.good());
+        CHECK (std::memcmp (reference.data(), audio.getReadPointer (channel), sizeof (reference)) == 0);
     }
 }
 

@@ -6,8 +6,10 @@ void StereoCompressor::prepare (double sampleRate, const CompressorParameters::V
     sidechainFilter.prepare (sampleRate);
     inputDb.reset (sampleRate, 0.02);
     makeupDb.reset (sampleRate, 0.02);
+    feedbackAmount.reset (sampleRate, CompressorParameters::fbffSmoothingSeconds);
     inputDb.setCurrentAndTargetValue (values.inputDb);
     makeupDb.setCurrentAndTargetValue (values.makeupDb);
+    feedbackAmount.setCurrentAndTargetValue ((100.0f - values.fbffPercent) * 0.01f);
     setParameters (values);
 }
 
@@ -15,6 +17,7 @@ void StereoCompressor::setParameters (const CompressorParameters::Values& values
 {
     inputDb.setTargetValue (values.inputDb);
     makeupDb.setTargetValue (values.makeupDb);
+    feedbackAmount.setTargetValue ((100.0f - values.fbffPercent) * 0.01f);
     gainComputer.setThresholdDb (values.thresholdDb);
     envelope.setTimes (values.attackMs, values.releaseMs);
     sidechainFilter.setMode (values.scFilterMode);
@@ -41,11 +44,13 @@ float StereoCompressor::process (juce::AudioBuffer<float>& buffer, int numInputC
             peak = juce::jmax (peak, std::abs (detectionSample));
         }
 
-        // Feedforward: detect the louder input channel, before gain reduction.
-        // Convert the instantaneous peak to dB; smooth the curve's attenuation
-        // in dB with a single shared attack/release envelope.
-        const auto levelDb = juce::Decibels::gainToDecibels (peak, -160.0f);
-        const auto reductionDb = envelope.process (gainComputer.getGainReductionDb (levelDb));
+        // Blend in the detector using the previous sample's applied attenuation.
+        // A single curve and envelope serve every FB/FF setting, before makeup.
+        constexpr auto detectorFloorDb = -160.0f;
+        const auto levelDb = juce::Decibels::gainToDecibels (peak, detectorFloorDb);
+        const auto detectDb = juce::jmax (detectorFloorDb,
+            levelDb - feedbackAmount.getNextValue() * envelope.getGainReductionDb());
+        const auto reductionDb = envelope.process (gainComputer.getGainReductionDb (detectDb));
         blockPeakDb = juce::jmax (blockPeakDb, reductionDb);
         const auto outputGain = juce::Decibels::decibelsToGain (makeupDb.getNextValue() - reductionDb);
 

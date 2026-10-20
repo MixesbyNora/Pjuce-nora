@@ -28,7 +28,7 @@ TEST_CASE ("Editor contains fixed-size generic controls and a separate meter", "
     REQUIRE (dynamic_cast<PluginEditor*> (editor.get()) != nullptr);
     CHECK_FALSE (editor->isResizable());
     CHECK (editor->getWidth() == 640);
-    CHECK (editor->getHeight() == 816);
+    CHECK (editor->getHeight() == 856);
 
     juce::GenericAudioProcessorEditor* controls = nullptr;
     GainReductionMeter* meter = nullptr;

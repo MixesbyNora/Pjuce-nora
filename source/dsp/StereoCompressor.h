@@ -20,4 +20,5 @@ private:
     SidechainFilter sidechainFilter;
     juce::SmoothedValue<float> inputDb;
     juce::SmoothedValue<float> makeupDb;
+    juce::SmoothedValue<float> feedbackAmount;
 };

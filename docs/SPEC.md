@@ -1,5 +1,30 @@
 # Lumiere Specification
 
+## FB/FF
+
+`fbff` / **FB/FF** ranges from 0 to 100 in 0.1 steps, defaulting to 100
+(full feedforward). Zero is full feedback and 50 is the equal blend. The generic
+editor displays FB, 50/50, FF, or the percentage followed by `% FF`; those labels
+and numeric values can be typed into the control. The feedback amount ramps
+linearly over 20 ms when the parameter changes.
+
+For each sample, with `b = 1 - fbff / 100` (smoothed):
+
+```
+levelDb = dB(peak of the filtered detector channels)
+detectDb = max(-160, levelDb - b * previousAppliedReductionDb)
+appliedReductionDb = envelope(gainComputer(detectDb))
+```
+
+The previous reduction is read before advancing the existing envelope. Detection
+remains after input gain and before makeup. The single gain computer and envelope
+preserve stereo linking and program-dependent release, and the meter still reads
+the applied reduction. Full FF preserves the previous audio bit for bit. No second
+compressor or output crossfade is used: blending inside one detector avoids two
+independent envelope histories and keeps the feedback approximation independent
+of the particular gain curve. The MXXX version used a literal blend of two
+compressors; an A/B comparison against that version is pending.
+
 ## Sidechain Filter
 
 `scFilter` / **SC Filter** is a stepped `AudioParameterChoice`, defaulting to

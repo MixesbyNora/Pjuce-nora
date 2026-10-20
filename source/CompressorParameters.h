@@ -23,6 +23,9 @@ inline constexpr Specification attack { "attack", "Attack", "ms", 0.2f, 30.0f, 5
 inline constexpr Specification release { "release", "Release", "ms", 50.0f, 2000.0f, 200.0f, 1.0f };
 inline constexpr Specification makeup { "makeup", "Makeup", "dB", 0.0f, 24.0f, 0.0f, 0.01f };
 inline constexpr std::array specifications { input, threshold, attack, release, makeup };
+// Appended to the host layout separately to preserve all existing parameter indices.
+inline constexpr Specification fbff { "fbff", "FB/FF", "", 0.0f, 100.0f, 100.0f, 0.1f };
+inline constexpr double fbffSmoothingSeconds = 0.02;
 
 // Fixed, always-on program-dependent release; this is not a host parameter.
 inline constexpr float fullSpeedGrDb = 12.0f;
@@ -41,5 +44,6 @@ struct Values
     float releaseMs = release.defaultValue;
     float makeupDb = makeup.defaultValue;
     int scFilterMode = 0;
+    float fbffPercent = fbff.defaultValue;
 };
 }
