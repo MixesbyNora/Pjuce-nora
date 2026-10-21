@@ -1,0 +1,398 @@
+{
+  "version": 1,
+  "generated_utc": "2026-10-21T15:48:42.960248+00:00",
+  "model": "voltage-driven-play-transformer-v1",
+  "scope": "Tests-only audio coupling, with all 44 pre-existing source files unchanged; no live DSP, UI, parameter, favorite voicing or latency change",
+  "git_head": "abb5c3744f5b2eb5ef2e0649e50237e3a667ed24",
+  "equations": [
+    "B=H+k*M",
+    "D*x=H+tau*dB/dt",
+    "y=x-H/D"
+  ],
+  "settings": {
+    "corner_hz": 5,
+    "field_scale": 40,
+    "drive_db": 0,
+    "magnetization_weight": 4,
+    "memory": 0.35,
+    "width": 1,
+    "oversampling": 16,
+    "newton_iterations": 12,
+    "maximum_iterations": 48,
+    "scaled_equation_tolerance": 1e-13,
+    "input_limit_linear": 16
+  },
+  "circuit_assumptions": "Ideal normalized 1:1 transformer, finite source/winding resistance, nonlinear magnetizing branch, resistive referred load folded into constants; fixed insertion loss normalized out; no leakage/capacitance/eddy dynamics or electrical/hardware calibration",
+  "quartic_candidate": "Preserved separately, not inserted into the implicit circuit solve; future field samples are unknown. Fresh complete-chain measurements do not inherit prior H-to-M scores.",
+  "grid": {
+    "cases": 108,
+    "passed": 108,
+    "converged": 108,
+    "rates_hz": [
+      44100,
+      48000,
+      96000,
+      192000
+    ],
+    "nominal_input_peak_bounds": [
+      0.05,
+      1,
+      4
+    ],
+    "reference_factors": [
+      64
+    ],
+    "worst_band_residual_dbr": -104.107709707692,
+    "worst_linear_calibration_dbr": -104.16163905491318,
+    "maximum_scaled_equation_residual": 9.999998336674936e-14,
+    "maximum_solver_iterations": 5,
+    "full_band_reference_agreement": 108
+  },
+  "reference": "Analytic voltage at 32x/64x, optionally through 512x, same implicit circuit solver, independent of candidate interpolation; real FIR decimation and explicit convergence checks; no fitted gain/phase/DC removal",
+  "latency_base_samples": 141.875,
+  "alignment": "257-tap Kaiser fractional delay removes FIR delay; circuit phase retained",
+  "tones": {
+    "rows": 84,
+    "requested_hz": [
+      20,
+      50,
+      60,
+      200,
+      1000,
+      5000,
+      8000
+    ],
+    "input_dbfs": [
+      -60,
+      -24,
+      -6,
+      6
+    ],
+    "models": [
+      "linear",
+      "magnetic16",
+      "tanh_favorite"
+    ],
+    "harmonics_above_nyquist": "blank",
+    "matching": false
+  },
+  "listening": {
+    "wav_files": 21,
+    "fixtures": [
+      "synthetic_bass",
+      "synthetic_percussion",
+      "synthetic_low_high"
+    ],
+    "rate_hz": 48000,
+    "channels": 2,
+    "seconds": 6,
+    "format": "IEEE float32",
+    "matching": "whole-file RMS, linked gain across channels to source; raw and matched outputs retained",
+    "matched_rms_tolerance_db": 0.0001,
+    "highest_absolute_sample": 0.5798859000205994,
+    "qa": {
+      "synthetic_bass_magnetic16_raw.wav": {
+        "frames": 288000,
+        "peak": 0.3759419620037079,
+        "rms": 0.10943925313548822
+      },
+      "synthetic_percussion_source.wav": {
+        "frames": 288000,
+        "peak": 0.5798859000205994,
+        "rms": 0.05838269464117064
+      },
+      "synthetic_percussion_magnetic16_raw.wav": {
+        "frames": 288000,
+        "peak": 0.5656017661094666,
+        "rms": 0.058095122560367425
+      },
+      "synthetic_low_high_source.wav": {
+        "frames": 288000,
+        "peak": 0.37754249572753906,
+        "rms": 0.14957389603901866
+      },
+      "synthetic_low_high_linear_raw.wav": {
+        "frames": 288000,
+        "peak": 0.37869328260421753,
+        "rms": 0.14920207612993117
+      },
+      "synthetic_low_high_tanh_favorite_raw.wav": {
+        "frames": 288000,
+        "peak": 0.29724735021591187,
+        "rms": 0.1274045989715447
+      },
+      "synthetic_bass_linear_matched.wav": {
+        "frames": 288000,
+        "peak": 0.3826838433742523,
+        "rms": 0.1099649970007884
+      },
+      "synthetic_bass_magnetic16_matched.wav": {
+        "frames": 288000,
+        "peak": 0.3777479827404022,
+        "rms": 0.10996500097199965
+      },
+      "synthetic_bass_source.wav": {
+        "frames": 288000,
+        "peak": 0.3616020381450653,
+        "rms": 0.10996499617415711
+      },
+      "synthetic_percussion_linear_matched.wav": {
+        "frames": 288000,
+        "peak": 0.5647763609886169,
+        "rms": 0.0583826927391956
+      },
+      "synthetic_bass_linear_raw.wav": {
+        "frames": 288000,
+        "peak": 0.38166046142578125,
+        "rms": 0.10967092816985438
+      },
+      "synthetic_percussion_tanh_favorite_matched.wav": {
+        "frames": 288000,
+        "peak": 0.48925966024398804,
+        "rms": 0.0583826974058936
+      },
+      "synthetic_percussion_linear_raw.wav": {
+        "frames": 288000,
+        "peak": 0.5631173849105835,
+        "rms": 0.058211201428402776
+      },
+      "synthetic_percussion_tanh_favorite_raw.wav": {
+        "frames": 288000,
+        "peak": 0.40361353754997253,
+        "rms": 0.04816265928762327
+      },
+      "synthetic_low_high_tanh_favorite_matched.wav": {
+        "frames": 288000,
+        "peak": 0.3489704728126526,
+        "rms": 0.14957389827783668
+      },
+      "synthetic_low_high_magnetic16_matched.wav": {
+        "frames": 288000,
+        "peak": 0.37940216064453125,
+        "rms": 0.1495738961223728
+      },
+      "synthetic_low_high_magnetic16_raw.wav": {
+        "frames": 288000,
+        "peak": 0.37778598070144653,
+        "rms": 0.14893673518739942
+      },
+      "synthetic_bass_tanh_favorite_matched.wav": {
+        "frames": 288000,
+        "peak": 0.33898821473121643,
+        "rms": 0.10996499800646682
+      },
+      "synthetic_bass_tanh_favorite_raw.wav": {
+        "frames": 288000,
+        "peak": 0.295352578163147,
+        "rms": 0.09580995472268079
+      },
+      "synthetic_low_high_linear_matched.wav": {
+        "frames": 288000,
+        "peak": 0.3796370029449463,
+        "rms": 0.1495738982466725
+      },
+      "synthetic_percussion_magnetic16_matched.wav": {
+        "frames": 288000,
+        "peak": 0.5684015154838562,
+        "rms": 0.05838269611934046
+      }
+    },
+    "user_recordings": false
+  },
+  "profiling": {
+    "flags": [
+      "-O3",
+      "-flto"
+    ],
+    "runs": 5,
+    "frames_per_run": 16384,
+    "channels": [
+      1,
+      2
+    ],
+    "includes": [
+      "16x FIR",
+      "circuit",
+      "copies",
+      "stimulus generation"
+    ],
+    "excludes": [
+      "prepare",
+      "FFT",
+      "file output"
+    ],
+    "concurrent_builds_or_tests_during_profile": false,
+    "solver_failure_column": "channel 0; elapsed timing includes all channels",
+    "readiness": "Offline only; stereo at 48k ~86%, 96k ~170%, 192k ~334% of one core audio-time budget; optimize before live integration"
+  },
+  "tests": {
+    "debug": {
+      "cases": 122,
+      "assertions": 280760
+    },
+    "release_full_export": {
+      "cases": 122,
+      "assertions": 281859
+    }
+  },
+  "builds": {
+    "debug_targets": [
+      "Lumiere_VST3",
+      "Lumiere_AU",
+      "Lumiere_Standalone",
+      "Tests"
+    ],
+    "release_targets": [
+      "Tests"
+    ],
+    "warnings": 0,
+    "errors": 0,
+    "benchmarks_built": false
+  },
+  "protected_source_hashes_unchanged": {
+    "source/BaParameters.cpp": "1cf0b4a12ffad830ca7ea980878869d9a791105f8c58d5a28ebe65b2971bf6d8",
+    "source/BaParameters.h": "952cc816cdae88d73273ddca850d7713bccb74507a81aa8f6372348ddc48b303",
+    "source/CompressorParameters.h": "da5821e314189ca6aa576edaf8e79caae63b1e61f6092bb99db8336a6fe06d41",
+    "source/GainLink.h": "6358758e9091d715d428e25017c9574cdd910d22d18f556e794810261d8e92b6",
+    "source/GainLinkController.cpp": "c6ed43e5192cdf0cb38a47010829c765d050a88339a0ec0247f0e45f7a63a53e",
+    "source/GainLinkController.h": "ad2c596b720698638014271e6dcc018e2cc6614e0a845b25da49287a8709aa2e",
+    "source/GainReductionMeter.cpp": "d1fe9571eba9979d661fb437aac1879ce14f29c921e89cb479434e79419e4b8e",
+    "source/GainReductionMeter.h": "85102121a6df7c5a89e610e798ab227af0862129cf176ec6d2842f93c5929705",
+    "source/MeterBallistics.h": "22c8d5554879352cf4753cae65cfde2a7b6fd8aac85d93f8605426d0f2cd9d63",
+    "source/PeakAccumulator.h": "132b8f137729d76f80ea0a818e6fe9cb0060cff2ce9bf6dc1428dba5db47b5bc",
+    "source/PluginEditor.cpp": "3a799b3e410704b2617b538cf2c68f196eedbf6cecf96bec3b4b5caa29c0995e",
+    "source/PluginEditor.h": "728bdb0fc036105a7a2a98a17b101a5d7ed9ac71df8c83548fa82050940fd2da",
+    "source/PluginProcessor.cpp": "81f9d1d491d51ad13e0db92dbd6f175889b364d1b2a7e473d233b9338f60b209",
+    "source/PluginProcessor.h": "59d58b5012ee430e95cc80adf836b78a97eca67a5bae7e35cb7e9a4d6b398a44",
+    "source/StereoLevelMeter.cpp": "1b0adc5586a13a2edb0faad6f64366ce74d76ef73b935dde1815c80da5f6c897",
+    "source/StereoLevelMeter.h": "8105e20658c26defba4217f6db832b87b40cde8fd7d7c88e752f90a17527212f",
+    "source/TransformerMeasurement.cpp": "56256d46de0d633ed401d35883f29336a249339fc4df7e7c96e4b54a29a0ecb1",
+    "source/TransformerMeasurement.h": "6c2a31b1803380cdac4036a0ce96ac7cd630b90a11ab11ce761a4e0c8f2278e1",
+    "source/TransformerMeasurementView.cpp": "2009ddaa0192f01f74d825524a1000706d28df830f644b3554a7cec9e32c3539",
+    "source/TransformerMeasurementView.h": "81f5e8321b2cc0de91374ceb21ce8c05f3c9bfb53bba8dff9d801646b7d6684e",
+    "source/TransformerVoicing.h": "06239bf71f647570cefc880ad8206ef10f22594aafc12d2306649916845a4cdf",
+    "source/TransformerVoicingPanel.cpp": "a0b5a4b8eab7b94b67f0ac636ef95e1430b5cc8f51e529196dd2a747411eda85",
+    "source/TransformerVoicingPanel.h": "78b9efcbe211fa777b1e5199c7328bfe45ebd1e4235023099e2b71a08c104af3",
+    "source/TransformerVoicingState.cpp": "8992154314a4842bd9bafdab1c31c16c988f3fe96aaa2666b943e7ac63e9a2f3",
+    "source/TransformerVoicingState.h": "3f1b5c2293076b4b4efc52e3abcfa9f9d8d606635b826bad2c4651be124723fc",
+    "source/dsp/BaSignalPath.cpp": "935492ab541bb5d0247348ddece1743ae99e487e81793f768314f4564e5f62c8",
+    "source/dsp/BaSignalPath.h": "86940095a2efb0eafe781dbae1ceeb8d239dc36932d67f0108c7f7ad6c17a117",
+    "source/dsp/Biquad.h": "160f9c599126e0b8e07beeed52e32d4685c627711768d2aee46898598882eba5",
+    "source/dsp/DbGainEnvelope.h": "7f7e28417a9b357472350e714ee52b0a07ad33950bf04cf7cec8b0e61ffdab85",
+    "source/dsp/LowFrequencyMono.cpp": "b87a8f91abc9b3f78c485b19d6767fdc360377678a35bb271a6862a4d0f65b16",
+    "source/dsp/LowFrequencyMono.h": "de3249b7d44483f124f91c411d0fe8c2286380a40b1abed24bc00a6af8ceffcd",
+    "source/dsp/SidechainFilter.cpp": "08b8babd695d540484caa6382238ead64333dd469d261866dd0ddb26f55fc035",
+    "source/dsp/SidechainFilter.h": "d0ab58ae43e7fc7183d76f6fa8312f9bb367cbbc29a4bd0049917059a59d6dd6",
+    "source/dsp/SidechainFilterSettings.h": "d2bdf914d69b9487c1d28079d008153cf6c411ebb33dadf06081b60c038ebda6",
+    "source/dsp/SoftKneeGainComputer.h": "98127952a75316da79908a9e1498215bc2b0b2b8f2d13845a73a52e6390babab",
+    "source/dsp/StereoCompressor.cpp": "d8c088e38499b512b1c6d4daecc05fa4552f67bf26c92ff063706120410fa61b",
+    "source/dsp/StereoCompressor.h": "30ab15f2200515611f231b2b09797bd3699629ec96cbe1baba17104981c1113b",
+    "source/dsp/TanhADAA.h": "b3f1b6afbf5a8b2d57ab3bb45fcfe3f11d5dc20ea8c81dcf776fe3611214eb81",
+    "source/dsp/TransformerSaturation.cpp": "50b60181a1386b1ea39cf4ef4579b9952d0d2e97f2ac8f3d171c9172d7650fc6",
+    "source/dsp/TransformerSaturation.h": "a8c29e675ee828aa98568daa39ab247c0afdae7db829fddd54c6ef66dd153cf3",
+    "source/dsp/TransformerSettings.h": "50ffced77bb74ae054970165e532b11c6de22ccb6cc4240e33e938f06685e1f3",
+    "source/experimental/MagneticCoreSettings.h": "5a77616c70f9b7779c703a51063fe7c11180eaacd11930f6c5777c87de76fe6b",
+    "source/experimental/PlayPreisachCore.cpp": "dfed984e076e42c84789dba32ce0de837cfd60bd790daa4468b1cda86d1fda5c",
+    "source/experimental/PlayPreisachCore.h": "34871e9f265cd1f6d6f4c91689081c771da91c7e3bc79fd572bd46ddf09f4ddd"
+  },
+  "binary_isolation": {
+    "Builds/Lumiere_artefacts/Debug/VST3/Lumiere Test v0.1.vst3/Contents/MacOS/Lumiere Test v0.1": {
+      "MagneticPrototype::": 0,
+      "TransformerAudioPrototype::": 0,
+      "TransformerAudioCircuit": 0
+    },
+    "Builds/Lumiere_artefacts/Debug/AU/Lumiere Test v0.1.component/Contents/MacOS/Lumiere Test v0.1": {
+      "MagneticPrototype::": 0,
+      "TransformerAudioPrototype::": 0,
+      "TransformerAudioCircuit": 0
+    },
+    "Builds/Lumiere_artefacts/Debug/Standalone/Lumiere Test v0.1.app/Contents/MacOS/Lumiere Test v0.1": {
+      "MagneticPrototype::": 0,
+      "TransformerAudioPrototype::": 0,
+      "TransformerAudioCircuit": 0
+    },
+    "Builds/Debug/Tests": {
+      "MagneticPrototype::": 65,
+      "TransformerAudioPrototype::": 17,
+      "TransformerAudioCircuit": 27
+    }
+  },
+  "source_sha256": {
+    "CMakeLists.txt": "22321a0be91f5fbfc9449b3b953552b25fb77e659dec8a859b3ec34e551c7ea9",
+    "source/experimental/TransformerAudioSettings.h": "0eff2b88d3a61fdcf54daae390030d55f44a44c4bd582123c4e4b45324da78a7",
+    "source/experimental/TransformerAudioCircuit.h": "a2e9173eca9c4a8562f22de37f706b907e46400c32c3fd5df519f9df6582cf40",
+    "source/experimental/TransformerAudioCircuit.cpp": "91d613cf237e8e815760ac41f75ee162b7c6b8abfb5b00222ebf451cef76b5c7",
+    "source/experimental/PlayPreisachCore.h": "34871e9f265cd1f6d6f4c91689081c771da91c7e3bc79fd572bd46ddf09f4ddd",
+    "source/experimental/PlayPreisachCore.cpp": "dfed984e076e42c84789dba32ce0de837cfd60bd790daa4468b1cda86d1fda5c",
+    "source/experimental/MagneticCoreSettings.h": "5a77616c70f9b7779c703a51063fe7c11180eaacd11930f6c5777c87de76fe6b",
+    "tests/TransformerAudioTests.cpp": "c9c2a8c70fc24ec9fc55f810354a1246d54b797fd263488aa8dd88a82cf09bdf",
+    "tests/TransformerAudioReportTests.cpp": "500a0178a43b5667529af397b61d325a07f9c595f5ee754d6b1342e3348fad34",
+    "tests/helpers/TransformerAudioPrototype.h": "093d87ee5e1cafbf15e5034c4fb43a5cdc665327fcec0c3184720e32d5b15de6",
+    "tests/helpers/TransformerAudioPrototype.cpp": "b99779d98188d73c87e1b0cb40c75ad6cd86044304ec951e2f2e2e571d2e2883",
+    "tests/helpers/MagneticValidation.h": "9124fd71ce10dec80d0180f1a98578daccec6bab07f0fbbda3fa21dfcee6992e",
+    "tests/helpers/MagneticValidation.cpp": "66c38859d71337ab04dbf041059fe6dc571a0386dd01c591eca51300b531173b",
+    "tools/render_transformer_audio_report.py": "80179981b7996e51fbf4c8d321729ee32cf114412d18f6da11c6afade37a4f08",
+    "tools/render_magnetic_validation_report.py": "d69e818e7c1050b0d25e2af2379d08b6cd2ca87bc7f94e04d97441fc0837e6ac",
+    "docs/TransformerAudioPrototype.md": "bd8a88d220b8a8a88ba1ee40fc900cf30b57720992be447aa0fe88bbaa0ca49d",
+    "docs/SPEC.md": "dec7c29a0b45af30a326428efefee5df114f52f729e80a91a2fc62e14a935781",
+    "docs/voicings/tanh-favorite-v1.json": "e307115293d44a6d4ef182e66082970ba8013939df3494012f277c553267aa10"
+  },
+  "artifacts_sha256": {
+    "README.md": "9fb2ec189bab9f373f129976e2a78f65dfb9b7280fa02852206fa55a7f0851e7",
+    "comparison.csv": "59f9b775bf129804438909873b89e59cd1bff0311b8bde218fe6bbf2aee3853e",
+    "convergence.csv": "03948c6804ede33b047c687fe00f4870aac3d3435dcf7f2e347883a8bfd9f44c",
+    "impulse.csv": "c0fbbdd60ac21ad29c281916294f265c3a79dd81cdce7ab4986fe748e243178b",
+    "impulse.pdf": "9e802f5d3916c28ee27935cca216d1979c3edc7c8d54e530a0cb3897cba0a338",
+    "impulse.png": "7827338a6c4e90a1b458209db2c09b72cccbff8b5817fc4fa2783c3e7bcb2137",
+    "impulse.svg": "142176e682cd6eca7b539074de337f1d90ae4b3c47c75c56988306d978019ca0",
+    "listening.csv": "cdf5a873c2359a6b84ee569834f782e2cc6abce8c559cc120ac6796b279c4d44",
+    "synthetic_bass_linear_matched.wav": "db60096a167a4e0f7752c5c29b12c215b2211243937ffb90e7506acf8805d8a0",
+    "synthetic_bass_linear_raw.wav": "4efdfd853f93c4b85f066d211148988e60609158222ef7074d37349234b0a8b2",
+    "synthetic_bass_magnetic16_matched.wav": "bba9019b5e0ab29d48aed2315352d79700897914d5f58e9843e6ddf6ab14d6d7",
+    "synthetic_bass_magnetic16_raw.wav": "8115952017db22925d0b3df414456cdc153fedda2eeb4e8689e44f447d5d2e0f",
+    "synthetic_bass_source.wav": "8d6915eca5ca95ef4714d73fea36a6f13763d984a7e22f9567047beb6cb78b52",
+    "synthetic_bass_tanh_favorite_matched.wav": "00a655360ebd1820810c76140195e04dde1cb706c2d38edc51eb3dba31daa561",
+    "synthetic_bass_tanh_favorite_raw.wav": "3c66b8a2e62d3a5efe03f54d25c4bd24266a0d6fa5acbe64be9f07c3d4a5a8e0",
+    "synthetic_low_high_linear_matched.wav": "66174269037adbbe85d9e3af09ec958184c1626a0059a581038d7210d4db36ce",
+    "synthetic_low_high_linear_raw.wav": "9d65c0c015d964d638d15804db1fe8a05b90a5bc578643f5671cc5f5f48804be",
+    "synthetic_low_high_magnetic16_matched.wav": "d8c2072e05f77ee22a39b2802f7f7cb6f16da0429ea75fee793a93e55aea3ff2",
+    "synthetic_low_high_magnetic16_raw.wav": "d5b1ef4285063c6f6f3df0921e5f2a23bfedc8250e7221f0ae7ad757debac3e2",
+    "synthetic_low_high_source.wav": "d6badead43fe20796f9268afdbc2da1a7709369e7cead6023aa83b771b7d311e",
+    "synthetic_low_high_tanh_favorite_matched.wav": "30337b5e7be30a0f26267fcd4c25402372c0dd0d852336a0e451ede25d7b6dcc",
+    "synthetic_low_high_tanh_favorite_raw.wav": "674431d49b410a3cf78f2730b6b55cbd42ccd06815c75a589fd8528b2066cbd1",
+    "synthetic_percussion_linear_matched.wav": "9a594e1fe91a720983aa63162a851f4f99021bbf8718385e4a17066e6bd2da34",
+    "synthetic_percussion_linear_raw.wav": "5a96f9bbcaedb5e73053a0f15414c08a9d59755f19c1f5bcbd80e0b03f24e3ac",
+    "synthetic_percussion_magnetic16_matched.wav": "5628df0694d72a49240f453a5cb32f45bb0b10c45e4ed1de02611105476abe81",
+    "synthetic_percussion_magnetic16_raw.wav": "575877ce7165512e66612cef798bf3abd69f6ebca692f1144128de5a271b1f9f",
+    "synthetic_percussion_source.wav": "f416f86fb72212d563e1838c2810776a7040e4cb41f1efefc581369cf1e1f94f",
+    "synthetic_percussion_tanh_favorite_matched.wav": "37298bb0f26fd8a9ada8a25634975c78870f621e6840ecd09bc113dd8d01696e",
+    "synthetic_percussion_tanh_favorite_raw.wav": "5211e402d017d40feee33ae9147019ca147d79e5694dd5c901c90fae345a1018",
+    "timing.csv": "03c3d9e74aa9d6a66b509419561979ce47d9fc034592eb788f22c5717bf5aea2",
+    "tones.csv": "12ce1222c6e03b387f417b04f7fd0b7dfe02e3332b06a6f137560b7584401fc4",
+    "tones.pdf": "0aa8c4843ade8424ffc722315a9f3e66638c3f5b2b0a5d036ef4aee6fe705639",
+    "tones.png": "4f614150c673c6520a0fd446dae1257965c698e8e3c8fd69bdc538047b972ac6",
+    "tones.svg": "731d73eb22f969506a894a25884d59c155586ba32fa94117ac46484b915d9a82",
+    "validation.pdf": "406cd63a8e4fdbc618ea53a40b65b0f5a4ca48aa828173aa9af802bc3b74aaa9",
+    "validation.png": "715f0440ca4df2199ee299aedcf800550d7c31dc8e26723ade6e84d4fd1a2680",
+    "validation.svg": "cd923ff257624de4bd4509e84282e92ad3c24906f6305ab23a19fe605201d0dc"
+  },
+  "logs_sha256": {
+    "/private/tmp/lumiere-audio-debug-build.log": "df5a63857555077df36fa16a3adea8b5da1bada8f3edb157d0fcdc8f0cee802e",
+    "/private/tmp/lumiere-audio-release-build.log": "21c46ddb31d9321e2d9f1647f7d29a06c5a46e7cd5497a21fb2969e39b542f95",
+    "/private/tmp/lumiere-audio-debug-tests.log": "039d7123a91bf1d441183d947342410882a9cd08d2ffd5b9722ab4e484a5bc52",
+    "/private/tmp/lumiere-audio-release-tests.log": "b1e6dc849c77158b842dd46812e02705d14a264aeecdc05201d225581ce662f1"
+  },
+  "limits": [
+    "Not a VTB1148 fit or identified physical material/geometry",
+    "Default-setting grid does not certify arbitrary audio or other tunings",
+    "FIR/calibration error limits tiny residual interpretation",
+    "RMS audition matching is not perceptual loudness matching",
+    "Canonical M saturates at its H guard while linear H contribution continues",
+    "Favorite comparison changes complete model, response and antialiasing",
+    "CPU unsuitable for live integration at present"
+  ],
+  "primary_references": [
+    "https://ocw.mit.edu/courses/res-6-001-electromagnetic-fields-and-energy-spring-2008/pages/chapter-9/",
+    "https://link.springer.com/article/10.1186/s13636-023-00277-8"
+  ]
+}

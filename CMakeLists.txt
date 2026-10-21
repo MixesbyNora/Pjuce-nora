@@ -145,7 +145,15 @@ set(SourceFiles
     source/PluginProcessor.cpp
     source/dsp/DbGainEnvelope.h
     source/dsp/TransformerSettings.h
-    source/dsp/TanhADAA.h
+    source/dsp/MagneticOversampling.h
+    source/experimental/MagneticCoreSettings.h
+    source/experimental/PlayPreisachCore.h
+    source/experimental/PlayPreisachCore.cpp
+    source/experimental/ConstitutiveLookup.h
+    source/experimental/ConstitutiveLookup.cpp
+    source/experimental/TransformerAudioSettings.h
+    source/experimental/TransformerAudioCircuit.h
+    source/experimental/TransformerAudioCircuit.cpp
     source/dsp/TransformerSaturation.h
     source/dsp/TransformerSaturation.cpp
     source/dsp/Biquad.h
@@ -220,11 +228,7 @@ endif()
 # Everything related to the tests target
 pamplejuce_add_tests()
 
-# Step-one magnetic experiment is offline-only: never link it into SharedCode/plugins.
-target_sources(Tests PRIVATE
-    source/experimental/MagneticCoreSettings.h
-    source/experimental/PlayPreisachCore.h
-    source/experimental/PlayPreisachCore.cpp)
+# The magnetic circuit is shared by plugin, Standalone and offline measurements.
 
 # A separate target for Benchmarks (keeps the Tests target fast)
 pamplejuce_add_benchmarks()

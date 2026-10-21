@@ -95,7 +95,7 @@ std::optional<Result> measure (const Request& request, const Cancel& cancel,
 
 juce::String toCsv (const Result& result)
 {
-    juce::String csv = "# Transformer snapshots A/B; tanh residual ADAA; match off; transformer In.\n"
+    juce::String csv = "# Transformer snapshots A/B; voltage-driven magnetic hysteresis; match off; transformer In.\n"
         "# 48000 Hz; discard 0.25 s; analyze 1 s; not Carnhill hardware measurements.\n";
     for (int voice = 0; voice < 2; ++voice)
     {

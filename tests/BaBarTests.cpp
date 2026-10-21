@@ -45,6 +45,17 @@ juce::AudioBuffer<float> signal (int channels, int samples, float amplitude = 0.
     return buffer;
 }
 
+juce::AudioBuffer<float> delayed (juce::AudioBuffer<float> input, int samples = 144)
+{
+    for (int channel = 0; channel < input.getNumChannels(); ++channel)
+    {
+        auto* data = input.getWritePointer (channel);
+        std::move_backward (data, data + input.getNumSamples() - samples, data + input.getNumSamples());
+        juce::FloatVectorOperations::clear (data, samples);
+    }
+    return input;
+}
+
 bool identical (const juce::AudioBuffer<float>& a, const juce::AudioBuffer<float>& b)
 {
     if (a.getNumSamples() != b.getNumSamples() || a.getNumChannels() != b.getNumChannels())
@@ -109,7 +120,7 @@ TEST_CASE ("BA parameter types ranges defaults skew text and host bypass are exp
     CHECK (monitor->getIndex() == 0);
 }
 
-TEST_CASE ("BA defaults preserve the old compressor output exactly", "[ba][defaults]")
+TEST_CASE ("BA defaults preserve compressor output exactly after reported latency", "[ba][defaults]")
 {
     for (int channels : { 1, 2 })
     {
@@ -126,7 +137,7 @@ TEST_CASE ("BA defaults preserve the old compressor output exactly", "[ba][defau
             auto actual = signal (channels, 4096);
             original.process (expected, channels);
             path.process (actual, channels, settings, {});
-            CHECK (identical (actual, expected));
+            CHECK (identical (actual, delayed (expected, path.getLatencySamples())));
         }
     }
 }
@@ -149,7 +160,7 @@ TEST_CASE ("BA input and output gains and linear mix follow the requested signal
     const auto wet = render (values);
     values.mixPercent = 0.0f;
     const auto dry = render (values);
-    CHECK (identical (dry, signal (2, 4096)));
+    CHECK (identical (dry, delayed (signal (2, 4096))));
     values.mixPercent = 50.0f;
     const auto half = render (values);
     for (int channel = 0; channel < 2; ++channel)
@@ -165,7 +176,7 @@ TEST_CASE ("BA bypass crossfades to exact dry while the compressor keeps running
     initiallyBypassed.outGainDb = -3.0f;
     initiallyBypassed.lfmHz = 150.0f;
     initiallyBypassed.mixPercent = 50.0f;
-    CHECK (identical (render (initiallyBypassed), signal (2, 4096)));
+    CHECK (identical (render (initiallyBypassed), delayed (signal (2, 4096))));
     PluginProcessor processor;
     set (processor, "threshold", -30.0f);
     processor.prepareToPlay (48000.0, 64);
@@ -266,7 +277,7 @@ TEST_CASE ("LFM attenuates low side content and preserves mid and high side cont
     }
     BaParameters::Values values;
     values.lfmHz = 150.0f;
-    CHECK (identical (render (values, 1), signal (1, 4096)));
+    CHECK (identical (render (values, 1), delayed (signal (1, 4096))));
 }
 
 TEST_CASE ("Monitor mid and side are post-bypass", "[ba][monitor]")
@@ -288,7 +299,7 @@ TEST_CASE ("Monitor mid and side are post-bypass", "[ba][monitor]")
     }
     BaParameters::Values values;
     values.monitor = 1;
-    CHECK (identical (render (values, 1), signal (1, 4096)));
+    CHECK (identical (render (values, 1), delayed (signal (1, 4096))));
     values.monitor = 2;
     const auto monoSide = render (values, 1);
     CHECK (monoSide.getMagnitude (0, monoSide.getNumSamples()) < 0.00001f);
@@ -348,7 +359,7 @@ TEST_CASE ("Processor Delta respects Mix and nulls against the untouched input",
         for (int i = 0; i < dry.getNumSamples(); ++i)
         {
             fullError = juce::jmax (fullError, std::abs (fullDelta.getSample (channel, i)
-                - (wet.getSample (channel, i) - dry.getSample (channel, i))));
+                - (wet.getSample (channel, i) - (i < 144 ? 0.0f : dry.getSample (channel, i - 144)))));
             halfError = juce::jmax (halfError, std::abs (halfDelta.getSample (channel, i)
                 - 0.5f * fullDelta.getSample (channel, i)));
         }
@@ -380,6 +391,7 @@ TEST_CASE ("Processor Delta retains monitor bypass and Mix crossfades", "[ba][mo
     };
     const auto wet = 0.125f * juce::Decibels::decibelsToGain (6.0f);
     const auto delta = wet - 0.125f;
+    process();
     set (processor, "monitor", 3.0f);
     const auto monitorRamp = process();
     CHECK (monitorRamp.getSample (0, 0) == Catch::Approx (wet - 0.125f / 480.0f).margin (0.000001f));
@@ -405,6 +417,8 @@ TEST_CASE ("Mix gain bypass monitor and LFM changes use finite bounded crossfade
     BaSignalPath path;
     BaParameters::Values values;
     path.prepare (48000.0, 64, neutral(), values);
+    auto prime = signal (2, 4096);
+    path.process (prime, 2, neutral(), values);
     values.outGainDb = 6.0f;
     auto audio = signal (2, 4096);
     path.process (audio, 2, neutral(), values);

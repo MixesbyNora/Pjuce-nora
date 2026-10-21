@@ -63,4 +63,5 @@ std::vector<std::complex<double>> spectrum (const std::vector<double>&);
 std::vector<double> audioBand (const std::vector<double>&, double sampleRate);
 double alignmentErrorDb (double fractionalDelay, double cyclesPerSample);
 Metrics measure (const Trace&, const Trace&, const Stimulus&);
+Trace alignTrace (const std::vector<double>& raw, int start, double latency, int length = windowSize);
 }

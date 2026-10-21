@@ -75,7 +75,7 @@ TransformerVoicingPanel::TransformerVoicingPanel (TransformerVoicingState& state
     };
     addAndMakeVisible (reference);
     addAndMakeVisible (match);
-    hint.setText ("Current model: tanh + residual ADAA\n\nUse Xfrm Amount above 0% and keep Xfrm Out unchecked.\n\nFor comparisons, let Match level settle for about a second. Disable it for exact reference and harmonic measurements.", juce::dontSendNotification);
+    hint.setText ("Current model: voltage-driven magnetic hysteresis\n\nUse Xfrm Amount above 0% and keep Xfrm Out unchecked.\n\nFor comparisons, let Match level settle for about a second. Disable it for exact reference and harmonic measurements.", juce::dontSendNotification);
     hint.setFont (juce::FontOptions (13.0f));
     hint.setJustificationType (juce::Justification::topLeft);
     addAndMakeVisible (hint);
@@ -101,7 +101,7 @@ void TransformerVoicingPanel::refresh()
     match.setToggleState (snapshot.levelMatch, juce::dontSendNotification);
     copySlot.setButtonText (snapshot.useB ? "B > A" : "A > B");
     status.setText (pasteError.isNotEmpty() ? pasteError
-        : juce::String ("Model v1 | ") + (snapshot.reference ? "Original" : snapshot.useB ? "Editing B" : "Editing A")
+        : juce::String ("Model v2 | ") + (snapshot.reference ? "Original" : snapshot.useB ? "Editing B" : "Editing A")
             + "\nSettings and both snapshots are saved with the project.", juce::dontSendNotification);
 }
 

@@ -1,118 +1,98 @@
 # Lumiere Specification
 
-## Offline magnetic artifact refinement
+## Product vision and implementation scope
 
-A separate Tests-only five-point quartic turning-point experiment targets the
-close 19/20 kHz pair and band-limited impulse state offset. It compares original
-16x point sampling, quadratic 8x/16x, and quartic 8x/16x/32x with independently
-converged references across the prior 108-stimulus grid, including calibration,
-tail checks, full-band diagnostics and Release CPU profiles. The extra two
-internal samples of lookahead are included in offline alignment only. No live
-DSP, model constants, parameters, voicing, UI, meters or latency change. See
-[MagneticArtifactRefinement.md](MagneticArtifactRefinement.md).
+The owner's longer-term direction is recorded in
+[Project Lumiere: product vision](ProjectLumiereVision.md), with the original
+notes preserved alongside it. It describes two planned products on a shared
+framework, independently selectable compression/coloration models, presentation
+choices and Box Tone response curves. The tube-product vision specifies three
+models plus Off in each of five independently combinable groups: tube saturation,
+vari-mu compression circuit, input transformer, output transformer and PSU.
+The proposed Easy/Expert workflow adds a Model selector with 3-6 curated
+component-combination presets in Easy mode and individual component selection
+in Expert mode. The analog GUI vision adds a front-faceplate/open-top view switch
+for component selection, with disabled components disappearing from the unit;
+the modern GUI uses component dropdowns. These visual choices share the same
+component configuration. Those intentions are separate from the
+implemented behavior below and do not activate deferred features or change the
+current milestone, plugin identity, parameters, DSP or editor.
 
-## Offline multitone and transient validation
+## Magnetic transformer (live and offline)
 
-The Tests-only validation compares the unchanged 8x turning-point experiment and
-original 16x core with analytic-input high-rate references. It checks multitone
-intermodulation/off-grid artifacts, transient residuals and peak error, retained
-magnetization and silent-tail drift across four sample rates and three field
-scales. It adds no live DSP, host controls, UI or latency. See
-[MagneticMultitoneTransientValidation.md](MagneticMultitoneTransientValidation.md).
+VST3, AU, Standalone and the measurement view share the voltage-driven
+play/Preisach transformer. The former memoryless tanh/residual-ADAA audio stage
+is removed; no model switch selects it. Historical measurements/recordings and
+the old JSON preference remain archived. The tanh function inside the magnetic
+constitutive law remains, as requested; its hot evaluation uses a double-precision
+local polynomial table checked against the scalar function.
 
-## Offline magnetic antialiasing follow-up
+Signal flow is IN -> compressor (including makeup) -> magnetic transformer ->
+OUT -> LFM -> Mix/bypass -> monitor. Detection, FB/FF, sidechain modes, release
+and gain-reduction metering remain upstream. Output level meters still measure
+the final monitored signal.
 
-The Tests-only Release comparison retains the original 16x point-sampled
-reference and evaluates interval integration and quadratic turning-point
-reconstruction. It records CPU, alias metrics, gain/phase, residuals and filter
-response without changing any live DSP, voicing, parameters, editor or latency.
-See [MagneticAntialiasingFollowup.md](MagneticAntialiasingFollowup.md).
+Host parameters retain their IDs, order, ranges and defaults:
 
-## Offline magnetic oversampling comparison
+- `xfrmOut`: bool, default false; true displays Out, false displays In.
+- `xfrmAmount`: 0-100%, step 0.1, default 0; drive maps linearly in dB from
+  -24 to +12 dB and smooths over 20 ms.
 
-The Tests-only harness compares 1x/2x/4x/8x/16x processing of the unchanged
-experimental core using double-precision linear-phase FIR interpolation and
-decimation. A 48-stimulus grid uses 32x/64x reference convergence checks and
-records aliases, aligned residuals, fundamental gain/phase, filter response,
-latency and local CPU cost. It adds no live DSP, host parameters, UI controls
-or plugin latency. See [MagneticOversamplingComparison.md](MagneticOversamplingComparison.md).
+The normalized circuit is `B=H+k*M`, `D*x=H+tau*dB/dt`, `y=x-H/D`.
+It retains magnetic history and a small-signal 5 Hz corner. It is a simplified,
+uncalibrated circuit, not an identified VTB1148 or other named transformer.
+Trial evaluations do not mutate history; a safeguarded implicit solve commits
+once. Its scaled residual target remains 1e-13. A carried branch-slope predictor
+reduces work; a 96-evaluation bounded fallback resolves the old cap failures.
+Core tunables remain in `source/experimental/TransformerAudioSettings.h` and
+`MagneticCoreSettings.h`, now shared with live targets.
 
-## Offline magnetic-core experiment (step 1)
+The private LF emphasis controls retain inverse double-precision shelves around
+the magnetic circuit. Defaults are +12 dB / 120 Hz / Q 0.5, with the reciprocal
+post shelf; shelf/drive defaults are in `TransformerSettings.h`. Core, emphasis,
+voicing and drive state are independent per channel. No cross-channel coloration
+or new stereo mode is added.
 
-An experimental generalized Preisach/play core is linked exclusively into Tests.
-It maps normalized H to bounded M using 16 continuous play states, with fixed
-storage/work and offline checks for remanence, return-point memory, stability,
-sample-rate consistency and spectral folding. All tuning is in
-`source/experimental/MagneticCoreSettings.h`. It is not connected to the live
-audio path, UI or host parameters. The saved tanh favorite remains unchanged.
-The prototype is uncalibrated and requires further antialiasing/circuit work
-before live use. See [MagneticCorePrototype.md](MagneticCorePrototype.md).
+Fixed internal FIR oversampling is sample-rate aware:
 
-## Transformer development voicing
+| Host rate | Factor | Host-reported latency |
+|---|---:|---:|
+| 44.1 kHz | 16x | 144 samples |
+| 48 kHz | 16x | 144 samples |
+| 96 kHz | 8x | 137 samples |
+| 192 kHz | 4x | 124 samples |
 
-The generic controls and meters remain in place, with a collapsible right-hand
-Transformer Voicing panel. Private controls adjust drive calibration (-12 to
-+12 dB), LF emphasis (0 to +24 dB), and shelf frequency (30 to 500 Hz). Their
-defaults preserve the original 0 dB calibration, +12 dB shelf and 120 Hz corner.
-Voicing uses a 20 ms crossfade between fixed-size filter/state banks.
+The FIR design targets -120 dB stopbands. Up/down filter lengths yield an exact
+integer group delay without an added fractional-delay allpass. Latency remains
+constant when Amount, Out, Mix, voicing or host bypass change. The untouched dry
+and bypass signals receive the same pure integer delay, so Mix and Delta remain
+aligned. The host is told the delay in prepareToPlay and a conservative two-second
+magnetic tail. Bypass/zero Amount preserve original samples after this delay;
+the magnetic solve is skipped and reset, while FIR histories stay warm for
+click-free re-engagement. Component switching crossfades over 10 ms.
 
-A/B slots, copy-to-other, fixed Original audition, reset, and versioned JSON
-copy/paste are available. Both slots and audition state are saved with the
-project separately from the unchanged 16 host parameters. Optional RMS level
-matching defaults off and acts only on the transformer output; it skips exact
-Out/zero-Amount bypass. Old project states restore the original voicing.
+## Transformer development voicing and measurements
 
-See [TransformerVoicing.md](TransformerVoicing.md) for the listening workflow,
-report command, published VTB1148 reference constraints and their limitations.
-The first panel tunes the existing tanh model. A Preisach core and further
-harmonic/memory controls remain deferred.
+The existing collapsible panel remains alongside generic JUCE controls and
+meters. A/B, copy, reset, reference/default, level-match audition and CSV/JSON
+measurement workflows remain. Drive calibration, LF emphasis and LF corner keep
+their numeric ranges. Voicing changes crossfade between fixed state banks over
+20 ms, with no allocation, locking or UI calls from rendering.
 
-### Transformer measurement view
+Exports use version 2 and model `transformer-magnetic-play-v2`. Version-1
+`transformer-tanh-residual-adaa-v1` JSON is accepted as a numeric-settings
+migration; no legacy audio engine is restored, and the new sound is not claimed
+to reproduce the old preference. Other host parameters are restored normally.
+Measurements run only on their worker thread, use the same magnetic DSP as live
+audio, turn matching off, and retain cancellation/progress and captured A/B state.
+The generic editor, gain-reduction and bottom-bar meters remain.
 
-The collapsible panel's Measurements tab compares captured A/B transformer
-voicings using internal offline tones on a low-priority worker. It shows
-fundamental gain versus input level, H2/H3/H5/H7 in dBc, RMS gain and a full
-CSV copy. The grid is fixed at 48 kHz with seven frequencies, four input levels
-and Amount 25/50/100%, discarding 250 ms startup and analyzing one second.
-Matching is off and the transformer is In for measurement. The rest of the
-plugin chain is excluded; live audio and parameter state are unchanged.
-Results are marked stale after edits; cancellation discards partial results.
-The display floor is -140 dBc, and harmonics at/above Nyquist are NA.
-No oversampling or magnetic model is added. The chosen tanh voicing is stored
-as `docs/voicings/tanh-favorite-v1.json`, without changing factory defaults.
-
-## Transformer saturation (basic)
-
-The wet path now runs IN -> compressor (including makeup) -> transformer ->
-OUT -> LFM -> Mix -> bypass -> monitor. The compressor detector and input meter
-remain upstream of the transformer; the output meter still measures the final
-monitored signal. L/R have independent filter and ADAA histories with identical
-settings. The generic editor retains all existing controls and meters.
-
-`xfrmOut` is a boolean, default false: **In** when false, **Out** when true.
-`xfrmAmount` is 0–100%, step 0.1%, default 0%. Amount controls drive, linearly
-in dB from -24 dB to +12 dB, with 20 ms smoothing. It is not a wet/dry mix.
-Zero amount and Out fade to exact unprocessed samples over 10 ms, then skip
-the entire stage. Filter and previous-sample state reset while skipped and
-re-engagement fades back in. Existing parameter IDs/order are retained.
-
-The model uses a +12 dB low shelf at 120 Hz, Q 0.5, a normalized symmetric
-`tanh(d*x)/d` curve, and the algebraic reciprocal shelf (-12 dB at the same
-frequency/Q). The inverse pair cancels to numerical precision with an identity
-nonlinearity. All shelf, drive, smoothing, and ADAA tunables live in
-`source/dsp/TransformerSettings.h`; coefficients and state use double precision.
-
-First-order ADAA uses `F(u) = log(cosh(u))`, evaluated stably as
-`abs(u) + log1p(exp(-2*abs(u))) - log(2)`, with `tanh` of the midpoint for tiny
-sample differences. As agreed, ADAA is applied to the nonlinear residual:
-`y = x + (ADAA(d*x, previousDriven) - midpoint(d*x, previousDriven)) / d`.
-The undelayed linear path preserves small-signal unity instead of the
-high-frequency loss from literal first-order ADAA's two-sample average.
-There is no allocation, locking, logging, or UI access in processing.
-
-Tube saturation, SAT MIX, AIR, HR (headroom), oversampling, and CH MODE remain
-deferred. This is a basic transformer-style curve, not a physical transformer
-model.
+Tube saturation, SAT MIX, AIR, HR, CH MODE and a user-selectable oversampling
+control remain deferred. See [MagneticTransformerLive.md](MagneticTransformerLive.md)
+for validation, CPU measurements, latency and reproduction. Prior offline-only
+milestones remain documented in [the audio prototype](TransformerAudioPrototype.md),
+[first CPU pass](TransformerAudioCpuOptimization.md), and
+[magnetic artifact refinement](MagneticArtifactRefinement.md).
 
 ## FB/FF
 
@@ -168,6 +148,12 @@ and up to three stages, with no allocation or locking during processing.
 The existing generic parameter controls and gain-reduction meter remain in use.
 Program-dependent release, the gain computer, and audio gain staging are unchanged.
 
+The future [USER sidechain EQ](ProjectLumiereVision.md#user-sidechain-eq) is
+documented in the product vision: an additional USER choice opens a bottom EQ
+graph with one HP band, one LP band and six peak/shelf bands. It retains all
+existing choices, including the fixed Custom preset. USER and its editor are
+not implemented; the current seven-choice parameter and DSP remain unchanged.
+
 ## BA bar
 
 The existing compressor, detector filter, and program-dependent release run inside
@@ -199,7 +185,7 @@ Monitor is applied last: LR passes the final signal; M sends its mid to both
 channels; S sends its side to both channels; D sends the final mixed signal
 minus the untouched dry input, after the bypass crossfade. Before bypass this
 equals `Mix * (wet - dry)`: silent at 0%, half the full Delta at 50%, and
-`wet - dry` at 100%. Wet includes IN gain, compression, transformer, OUT gain, and LFM;
+`wet - dry` at 100%. Dry is time-aligned by the reported transformer latency. Wet includes IN gain, compression, transformer, OUT gain, and LFM;
 dry is captured before IN gain. Delta is silent when fully bypassed or when
 the wet chain is neutral. Choices and bypass still crossfade over 10 ms.
 In mono, M is the mono signal and S is silence.
@@ -240,4 +226,4 @@ with ticks at -60, -48, -36, -24, -12, -6, 0, and +6. Bars are green below
 `StereoLevelMeter` accepts only two dB values and settable channel labels,
 defaulting to L/R, independently of any processor. `MeterBallistics` is a pure
 display-state class without JUCE UI dependencies. M/S labels and display are
-deferred until CH MODE is built; oversampling and HR remain deferred.
+deferred until CH MODE is built. HR and a user-selectable oversampling control remain deferred; the magnetic transformer uses the fixed internal rate-aware FIR path described above.

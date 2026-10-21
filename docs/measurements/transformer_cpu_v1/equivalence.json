@@ -1,0 +1,124 @@
+{
+  "cases": 108,
+  "passed": 108,
+  "converged": 108,
+  "solver_failures": 0,
+  "maximum_scaled_equation_residual": 9.999998336674936e-14,
+  "maximum_solver_iterations": 5,
+  "worst_band_residual_dbr": -104.107709707692,
+  "reference_factors": [
+    64
+  ],
+  "latency_base_samples": [
+    141.875
+  ],
+  "identical_csvs": 5,
+  "identical_wavs": 21,
+  "comparison_scope": "Full file bytes, including every float sample; timing CSV intentionally excluded",
+  "files": {
+    "comparison.csv": {
+      "baseline_sha256": "59f9b775bf129804438909873b89e59cd1bff0311b8bde218fe6bbf2aee3853e",
+      "fresh_sha256": "59f9b775bf129804438909873b89e59cd1bff0311b8bde218fe6bbf2aee3853e"
+    },
+    "convergence.csv": {
+      "baseline_sha256": "03948c6804ede33b047c687fe00f4870aac3d3435dcf7f2e347883a8bfd9f44c",
+      "fresh_sha256": "03948c6804ede33b047c687fe00f4870aac3d3435dcf7f2e347883a8bfd9f44c"
+    },
+    "impulse.csv": {
+      "baseline_sha256": "c0fbbdd60ac21ad29c281916294f265c3a79dd81cdce7ab4986fe748e243178b",
+      "fresh_sha256": "c0fbbdd60ac21ad29c281916294f265c3a79dd81cdce7ab4986fe748e243178b"
+    },
+    "tones.csv": {
+      "baseline_sha256": "12ce1222c6e03b387f417b04f7fd0b7dfe02e3332b06a6f137560b7584401fc4",
+      "fresh_sha256": "12ce1222c6e03b387f417b04f7fd0b7dfe02e3332b06a6f137560b7584401fc4"
+    },
+    "listening.csv": {
+      "baseline_sha256": "cdf5a873c2359a6b84ee569834f782e2cc6abce8c559cc120ac6796b279c4d44",
+      "fresh_sha256": "cdf5a873c2359a6b84ee569834f782e2cc6abce8c559cc120ac6796b279c4d44"
+    },
+    "synthetic_bass_linear_matched.wav": {
+      "baseline_sha256": "db60096a167a4e0f7752c5c29b12c215b2211243937ffb90e7506acf8805d8a0",
+      "fresh_sha256": "db60096a167a4e0f7752c5c29b12c215b2211243937ffb90e7506acf8805d8a0"
+    },
+    "synthetic_bass_linear_raw.wav": {
+      "baseline_sha256": "4efdfd853f93c4b85f066d211148988e60609158222ef7074d37349234b0a8b2",
+      "fresh_sha256": "4efdfd853f93c4b85f066d211148988e60609158222ef7074d37349234b0a8b2"
+    },
+    "synthetic_bass_magnetic16_matched.wav": {
+      "baseline_sha256": "bba9019b5e0ab29d48aed2315352d79700897914d5f58e9843e6ddf6ab14d6d7",
+      "fresh_sha256": "bba9019b5e0ab29d48aed2315352d79700897914d5f58e9843e6ddf6ab14d6d7"
+    },
+    "synthetic_bass_magnetic16_raw.wav": {
+      "baseline_sha256": "8115952017db22925d0b3df414456cdc153fedda2eeb4e8689e44f447d5d2e0f",
+      "fresh_sha256": "8115952017db22925d0b3df414456cdc153fedda2eeb4e8689e44f447d5d2e0f"
+    },
+    "synthetic_bass_source.wav": {
+      "baseline_sha256": "8d6915eca5ca95ef4714d73fea36a6f13763d984a7e22f9567047beb6cb78b52",
+      "fresh_sha256": "8d6915eca5ca95ef4714d73fea36a6f13763d984a7e22f9567047beb6cb78b52"
+    },
+    "synthetic_bass_tanh_favorite_matched.wav": {
+      "baseline_sha256": "00a655360ebd1820810c76140195e04dde1cb706c2d38edc51eb3dba31daa561",
+      "fresh_sha256": "00a655360ebd1820810c76140195e04dde1cb706c2d38edc51eb3dba31daa561"
+    },
+    "synthetic_bass_tanh_favorite_raw.wav": {
+      "baseline_sha256": "3c66b8a2e62d3a5efe03f54d25c4bd24266a0d6fa5acbe64be9f07c3d4a5a8e0",
+      "fresh_sha256": "3c66b8a2e62d3a5efe03f54d25c4bd24266a0d6fa5acbe64be9f07c3d4a5a8e0"
+    },
+    "synthetic_low_high_linear_matched.wav": {
+      "baseline_sha256": "66174269037adbbe85d9e3af09ec958184c1626a0059a581038d7210d4db36ce",
+      "fresh_sha256": "66174269037adbbe85d9e3af09ec958184c1626a0059a581038d7210d4db36ce"
+    },
+    "synthetic_low_high_linear_raw.wav": {
+      "baseline_sha256": "9d65c0c015d964d638d15804db1fe8a05b90a5bc578643f5671cc5f5f48804be",
+      "fresh_sha256": "9d65c0c015d964d638d15804db1fe8a05b90a5bc578643f5671cc5f5f48804be"
+    },
+    "synthetic_low_high_magnetic16_matched.wav": {
+      "baseline_sha256": "d8c2072e05f77ee22a39b2802f7f7cb6f16da0429ea75fee793a93e55aea3ff2",
+      "fresh_sha256": "d8c2072e05f77ee22a39b2802f7f7cb6f16da0429ea75fee793a93e55aea3ff2"
+    },
+    "synthetic_low_high_magnetic16_raw.wav": {
+      "baseline_sha256": "d5b1ef4285063c6f6f3df0921e5f2a23bfedc8250e7221f0ae7ad757debac3e2",
+      "fresh_sha256": "d5b1ef4285063c6f6f3df0921e5f2a23bfedc8250e7221f0ae7ad757debac3e2"
+    },
+    "synthetic_low_high_source.wav": {
+      "baseline_sha256": "d6badead43fe20796f9268afdbc2da1a7709369e7cead6023aa83b771b7d311e",
+      "fresh_sha256": "d6badead43fe20796f9268afdbc2da1a7709369e7cead6023aa83b771b7d311e"
+    },
+    "synthetic_low_high_tanh_favorite_matched.wav": {
+      "baseline_sha256": "30337b5e7be30a0f26267fcd4c25402372c0dd0d852336a0e451ede25d7b6dcc",
+      "fresh_sha256": "30337b5e7be30a0f26267fcd4c25402372c0dd0d852336a0e451ede25d7b6dcc"
+    },
+    "synthetic_low_high_tanh_favorite_raw.wav": {
+      "baseline_sha256": "674431d49b410a3cf78f2730b6b55cbd42ccd06815c75a589fd8528b2066cbd1",
+      "fresh_sha256": "674431d49b410a3cf78f2730b6b55cbd42ccd06815c75a589fd8528b2066cbd1"
+    },
+    "synthetic_percussion_linear_matched.wav": {
+      "baseline_sha256": "9a594e1fe91a720983aa63162a851f4f99021bbf8718385e4a17066e6bd2da34",
+      "fresh_sha256": "9a594e1fe91a720983aa63162a851f4f99021bbf8718385e4a17066e6bd2da34"
+    },
+    "synthetic_percussion_linear_raw.wav": {
+      "baseline_sha256": "5a96f9bbcaedb5e73053a0f15414c08a9d59755f19c1f5bcbd80e0b03f24e3ac",
+      "fresh_sha256": "5a96f9bbcaedb5e73053a0f15414c08a9d59755f19c1f5bcbd80e0b03f24e3ac"
+    },
+    "synthetic_percussion_magnetic16_matched.wav": {
+      "baseline_sha256": "5628df0694d72a49240f453a5cb32f45bb0b10c45e4ed1de02611105476abe81",
+      "fresh_sha256": "5628df0694d72a49240f453a5cb32f45bb0b10c45e4ed1de02611105476abe81"
+    },
+    "synthetic_percussion_magnetic16_raw.wav": {
+      "baseline_sha256": "575877ce7165512e66612cef798bf3abd69f6ebca692f1144128de5a271b1f9f",
+      "fresh_sha256": "575877ce7165512e66612cef798bf3abd69f6ebca692f1144128de5a271b1f9f"
+    },
+    "synthetic_percussion_source.wav": {
+      "baseline_sha256": "f416f86fb72212d563e1838c2810776a7040e4cb41f1efefc581369cf1e1f94f",
+      "fresh_sha256": "f416f86fb72212d563e1838c2810776a7040e4cb41f1efefc581369cf1e1f94f"
+    },
+    "synthetic_percussion_tanh_favorite_matched.wav": {
+      "baseline_sha256": "37298bb0f26fd8a9ada8a25634975c78870f621e6840ecd09bc113dd8d01696e",
+      "fresh_sha256": "37298bb0f26fd8a9ada8a25634975c78870f621e6840ecd09bc113dd8d01696e"
+    },
+    "synthetic_percussion_tanh_favorite_raw.wav": {
+      "baseline_sha256": "5211e402d017d40feee33ae9147019ca147d79e5694dd5c901c90fae345a1018",
+      "fresh_sha256": "5211e402d017d40feee33ae9147019ca147d79e5694dd5c901c90fae345a1018"
+    }
+  }
+}

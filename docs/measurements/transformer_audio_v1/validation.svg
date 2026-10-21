@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE svg
+  PUBLIC '-//W3C//DTD SVG 1.0//EN'
+  'http://www.w3.org/TR/2001/REC-SVG-20010904/DTD/svg10.dtd'>
+<svg width="1180" height="370" preserveAspectRatio="xMinYMin meet" viewBox="0 0 1180 370" xmlns="http://www.w3.org/2000/svg" version="1.0" fill-rule="evenodd" xmlns:xlink="http://www.w3.org/1999/xlink">
+	<title>...</title>
+	<desc>...</desc>
+	<clipPath id="clip">
+		<rect x="0" y="0" width="1180" height="370"/>
+	</clipPath>
+	<g id="group" transform="scale(1,-1) translate(0,-370)" style="clip-path: url(#clip)">
+		<g transform="">
+			<rect x="0" y="0" width="1180" height="370" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(100%,100%,100%); fill-rule: evenodd;"/>
+			<text x="28" y="336" style="font-family: Helvetica-Bold; font-size: 19px;fill: rgb(13%,20%,28%); stroke:none;" transform="translate(0,672) scale(1,-1)">Voltage-driven transformer: fresh audio validation</text>
+			<text x="28" y="312" style="font-family: Helvetica; font-size: 10px;fill: rgb(13%,20%,28%); stroke:none;" transform="translate(0,624) scale(1,-1)">108/108 pass; 108/108 converged DC-20 kHz references. Offline circuit only; live plugin unchanged.</text>
+			<rect x="100" y="175" width="8.299999999999997" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<text x="100" y="240" style="font-family: Helvetica; font-size: 8px;fill: rgb(13%,20%,28%); stroke:none;" transform="translate(0,480) scale(1,-1)">low_high</text>
+			<rect x="109" y="175" width="8.299999999999997" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="118" y="175" width="8.299999999999997" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="127" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="136" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="145" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="154" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="163" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="172" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="181" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="190" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="199" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="208" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<text x="208" y="240" style="font-family: Helvetica; font-size: 8px;fill: rgb(13%,20%,28%); stroke:none;" transform="translate(0,480) scale(1,-1)">close_high</text>
+			<rect x="217" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="226" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="235" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="244" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="253" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="262" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="271" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="280" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="289" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="298" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="307" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="316" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<text x="316" y="240" style="font-family: Helvetica; font-size: 8px;fill: rgb(13%,20%,28%); stroke:none;" transform="translate(0,480) scale(1,-1)">six_tone</text>
+			<rect x="325" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="334" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="343" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="352" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="361" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="370" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="379" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="388" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="397" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="406" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="415" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="424" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<text x="424" y="240" style="font-family: Helvetica; font-size: 8px;fill: rgb(13%,20%,28%); stroke:none;" transform="translate(0,480) scale(1,-1)">impulse</text>
+			<rect x="433" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="442" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="451" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="460" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="469" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="478" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="487" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="496" y="175" width="8.300000000000011" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="505" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="514" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="523" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="532" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<text x="532" y="240" style="font-family: Helvetica; font-size: 8px;fill: rgb(13%,20%,28%); stroke:none;" transform="translate(0,480) scale(1,-1)">low_burst</text>
+			<rect x="541" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="550" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="559" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="568" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="577" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="586" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="595" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="604" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="613" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="622" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="631" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="640" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<text x="640" y="240" style="font-family: Helvetica; font-size: 8px;fill: rgb(13%,20%,28%); stroke:none;" transform="translate(0,480) scale(1,-1)">high_burst</text>
+			<rect x="649" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="658" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="667" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="676" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="685" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="694" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="703" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="712" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="721" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="730" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="739" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="748" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<text x="748" y="240" style="font-family: Helvetica; font-size: 8px;fill: rgb(13%,20%,28%); stroke:none;" transform="translate(0,480) scale(1,-1)">gaussian_pul</text>
+			<rect x="757" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="766" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="775" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="784" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="793" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="802" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="811" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="820" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="829" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="838" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="847" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="856" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<text x="856" y="240" style="font-family: Helvetica; font-size: 8px;fill: rgb(13%,20%,28%); stroke:none;" transform="translate(0,480) scale(1,-1)">bipolar_puls</text>
+			<rect x="865" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="874" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="883" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="892" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="901" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="910" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="919" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="928" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="937" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="946" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="955" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="964" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<text x="964" y="240" style="font-family: Helvetica; font-size: 8px;fill: rgb(13%,20%,28%); stroke:none;" transform="translate(0,480) scale(1,-1)">fast_attack_</text>
+			<rect x="973" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="982" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="991" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="1000" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="1009" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="1018" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="1027" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="1036" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="1045" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="1054" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<rect x="1063" y="175" width="8.299999999999955" height="45" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(14%,54%,46%); fill-rule: evenodd;"/>
+			<text x="100" y="140" style="font-family: Helvetica; font-size: 10px;fill: rgb(13%,20%,28%); stroke:none;" transform="translate(0,280) scale(1,-1)">Each signal: 44.1/48/96/192 kHz, input peaks 0.05/1/4. Green pass; orange miss; gray reference unresolved.</text>
+			<text x="28" y="35" style="font-family: Helvetica; font-size: 10px;fill: rgb(13%,20%,28%); stroke:none;" transform="translate(0,70) scale(1,-1)">Input voltage now drives a solved magnetic circuit. These results do not inherit the prior prescribed-field quartic scores.</text>
+		</g>
+	</g>
+</svg>

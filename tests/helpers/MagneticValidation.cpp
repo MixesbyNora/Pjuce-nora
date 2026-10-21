@@ -57,14 +57,14 @@ std::array<double, alignmentRadius * 2 + 1> alignmentKernel (double fraction)
         value /= total;
     return result;
 }
-Trace align (const std::vector<double>& raw, int start, double latency)
+Trace align (const std::vector<double>& raw, int start, double latency, int length = windowSize)
 {
     const auto integer = static_cast<int> (std::floor (latency));
     const auto kernel = alignmentKernel (latency - integer);
     Trace result;
     result.latencySamples = latency;
-    result.samples.resize (windowSize);
-    for (int n = 0; n < windowSize; ++n)
+    result.samples.resize (static_cast<std::size_t> (length));
+    for (int n = 0; n < length; ++n)
     {
         auto value = 0.0;
         for (int k = -alignmentRadius; k <= alignmentRadius; ++k)
@@ -151,6 +151,10 @@ double bandDifference (const Trace& a, const Trace& b, double rate)
 }
 }
 
+Trace alignTrace (const std::vector<double>& raw, int start, double latency, int length)
+{
+    return align (raw, start, latency, length);
+}
 const char* name (Signal signal) noexcept
 {
     switch (signal)

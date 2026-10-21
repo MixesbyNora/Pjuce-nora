@@ -83,8 +83,10 @@ juce::String TransformerVoicingState::toJson() const
 bool TransformerVoicingState::restoreJson (const juce::String& json)
 {
     const auto root = juce::JSON::parse (json);
-    if (! root.isObject() || static_cast<int> (root["version"]) != TransformerVoicing::version
-        || root["model"].toString() != TransformerVoicing::model)
+    if (! root.isObject()) return false;
+    const auto current = static_cast<int> (root["version"]) == TransformerVoicing::version && root["model"].toString() == TransformerVoicing::model;
+    const auto legacy = static_cast<int> (root["version"]) == 1 && root["model"].toString() == TransformerVoicing::legacyModel;
+    if (! current && ! legacy)
         return false;
     const auto readValues = [] (const juce::var& object, TransformerVoicing::Values& values)
     {

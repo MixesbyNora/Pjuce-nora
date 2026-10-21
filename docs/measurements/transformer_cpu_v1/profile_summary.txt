@@ -1,0 +1,11 @@
+Original v1 standalone circuit, macOS sample, 3 seconds, 1 ms sampling interval.
+2300 main-thread samples; -O3, LTO; stimulus generation included, FIR excluded.
+
+        tanh  (in libsystem_m.dylib)        1365
+        main  (in lumiere-cpu-profile)        664
+        DYLD-STUB$$tanh  (in lumiere-cpu-profile)        260
+
+
+1365 tanh + 260 tanh stub = 1625/2300 (70.65%) sampled stacks.
+Inlining prevents attribution among individual solver stages.
+The standalone driver is tools/profile_transformer_audio.cpp.

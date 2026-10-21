@@ -21,7 +21,7 @@ private:
     juce::TextButton a { "A" }, b { "B" }, copySlot { "B > A" }, reset { "Reset selected" };
     juce::TextButton copy { "Copy settings" }, paste { "Paste settings" };
     juce::TextButton voicingTab { "Voicing" }, measurementTab { "Measurements" };
-    juce::ToggleButton reference { "Original transformer" }, match { "Match level (audition)" };
+    juce::ToggleButton reference { "Default magnetic voicing" }, match { "Match level (audition)" };
     juce::Label title, hint, status;
     juce::String pasteError;
 };

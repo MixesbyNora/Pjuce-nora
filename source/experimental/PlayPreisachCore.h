@@ -30,6 +30,9 @@ public:
     static constexpr std::size_t maximumTanhCalls = Settings::operatorCount + 1;
 
 private:
+    // The coupled solver commits its already-evaluated accepted trial using the
+    // same summation as processField. No trial may mutate this history.
+    friend class TransformerAudioCircuit;
     Parameters parameters;
     std::array<double, Settings::operatorCount> radii {}, weights {}, states {};
     double magnetization = 0.0;

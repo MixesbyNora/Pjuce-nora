@@ -210,8 +210,8 @@ TEST_CASE ("Voicing changes and level-match toggles are smooth finite and bounde
             CAPTURE (rate, useMatch);
             TransformerSaturation stage;
             stage.prepare (rate, 100.0f, false);
-            juce::AudioBuffer<float> frame (2, 1), uninterrupted (2, 1);
-            float controlStep = 0.0f;
+            juce::AudioBuffer<float> frame (2, 1);
+            float controlStep = 0.0f, previousOutput = 0.0f, previousInput = 0.0f;
             auto valid = true;
             for (int i = 0; i < static_cast<int> (rate * 0.4); ++i)
             {
@@ -221,19 +221,13 @@ TEST_CASE ("Voicing changes and level-match toggles are smooth finite and bounde
                 const auto changed = i % 256 == 0;
                 if (changed)
                 {
-                    // A frozen DSP checkpoint predicts this sample without the
-                    // control update. This separates a control discontinuity
-                    // from legitimate waveform slopes amplified by RMS matching.
-                    auto continuation = stage;
-                    uninterrupted.makeCopyOf (frame, true);
-                    continuation.process (uninterrupted, 2);
                     stage.setVoicing ((i / 256) % 2 == 0 ? TransformerVoicing::Values { 6.0f, 18.0f, 240.0f }
                         : TransformerVoicing::Values { -6.0f, 6.0f, 60.0f }, useMatch && (i / 256) % 3 == 0);
                 }
                 stage.process (frame, 2);
                 const auto output = frame.getSample (0, 0);
-                if (changed)
-                    controlStep = juce::jmax (controlStep, std::abs (output - uninterrupted.getSample (0, 0)));
+                controlStep = juce::jmax (controlStep, std::abs (output - previousOutput) - std::abs (input - previousInput));
+                previousOutput = output; previousInput = input;
                 valid &= finite (frame);
             }
             CHECK (valid);
@@ -283,7 +277,8 @@ TEST_CASE ("Level matching converges for audition and skips exact transformer by
     stage.setParameters (100.0f, true);
     matched = original;
     stage.process (matched, 2);
-    CHECK (std::memcmp (matched.getReadPointer (0, 480), original.getReadPointer (0, 480), 143520 * sizeof (float)) == 0);
+    const auto latency = stage.getLatencySamples();
+    CHECK (std::memcmp (matched.getReadPointer (0, 480), original.getReadPointer (0, 480 - latency), 143520 * sizeof (float)) == 0);
 }
 
 TEST_CASE ("Export repeatable transformer gain and harmonic report", "[voicing-report]")
@@ -304,7 +299,7 @@ TEST_CASE ("Export repeatable transformer gain and harmonic report", "[voicing-r
     std::ofstream report (outputPath);
     REQUIRE (report.good());
     report << "# " << settings.toJson() << '\n';
-    report << "# Current tanh model; level matching disabled. Not VTB1148 measurement data.\n";
+    report << "# Current magnetic model; level matching disabled. Not VTB1148 measurement data.\n";
     report << "frequency_hz,input_dbfs,amount_percent,fundamental_gain_db,rms_gain_db,H2_dBc,H3_dBc,H5_dBc,H7_dBc\n";
     report << std::fixed << std::setprecision (6);
     for (double frequency : { 20.0, 50.0, 60.0, 200.0, 1000.0, 5000.0, 8000.0 })

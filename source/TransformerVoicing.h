@@ -11,8 +11,9 @@ namespace TransformerVoicing
 static_assert ((TransformerSettings::calibrationMaximumDb - TransformerSettings::calibrationMinimumDb) * 10.0f <= 255.0f);
 static_assert ((TransformerSettings::emphasisMaximumDb - TransformerSettings::emphasisMinimumDb) * 10.0f <= 255.0f);
 static_assert (TransformerSettings::cornerMaximumHz - TransformerSettings::cornerMinimumHz <= 511.0f);
-inline constexpr int version = 1;
-inline constexpr const char* model = "transformer-tanh-residual-adaa-v1";
+inline constexpr int version = 2;
+inline constexpr const char* model = "transformer-magnetic-play-v2";
+inline constexpr const char* legacyModel = "transformer-tanh-residual-adaa-v1";
 struct Values
 {
     float driveCalibrationDb = 0.0f;

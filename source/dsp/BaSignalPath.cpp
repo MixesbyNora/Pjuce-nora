@@ -8,6 +8,7 @@ void BaSignalPath::prepare (double sampleRate, int maximumBlockSize,
     compressor.prepare (sampleRate, compressorValues);
     transformer.prepare (sampleRate, values.transformerAmountPercent, values.transformerOut,
         values.transformerVoicing, values.voicingLevelMatch);
+    dryDelay.prepare (transformer.getLatencySamples());
     lfm.prepare (sampleRate, values.lfmHz);
     inputGain.reset (sampleRate, BaParameters::gainRampSeconds);
     outputGain.reset (sampleRate, BaParameters::gainRampSeconds);
@@ -81,8 +82,9 @@ float BaSignalPath::process (juce::AudioBuffer<float>& buffer, int channels,
             auto right = channels > 1 ? pointers[1][sample] * gain : left;
             if (channels > 1)
                 lfm.process (left, right);
-            const auto dryLeft = dry.getSample (0, sample);
-            const auto dryRight = channels > 1 ? dry.getSample (1, sample) : dryLeft;
+            const auto dryValues = dryDelay.process (dry.getSample (0, sample), channels > 1 ? dry.getSample (1, sample) : dry.getSample (0, sample));
+            const auto dryLeft = dryValues[0];
+            const auto dryRight = dryValues[1];
             const auto wetAmount = mix.getNextValue();
             const auto bypassAmount = bypass.getNextValue();
             left = crossfade (crossfade (dryLeft, left, wetAmount), dryLeft, bypassAmount);

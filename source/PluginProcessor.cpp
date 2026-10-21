@@ -168,7 +168,7 @@ bool PluginProcessor::isMidiEffect() const
 
 double PluginProcessor::getTailLengthSeconds() const
 {
-    return 0.0;
+    return TransformerSettings::tailSeconds;
 }
 
 int PluginProcessor::getNumPrograms()
@@ -203,6 +203,7 @@ void PluginProcessor::changeProgramName (int index, const juce::String& newName)
 void PluginProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     signalPath.prepare (sampleRate, samplesPerBlock, readParameters(), readBaParameters());
+    setLatencySamples (signalPath.getLatencySamples());
     currentGainReductionDb.store (0.0f, std::memory_order_relaxed);
     levelPeaks.reset();
 }

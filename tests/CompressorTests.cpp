@@ -127,8 +127,8 @@ TEST_CASE ("Signal below the knee passes unchanged with unity input and makeup",
     auto buffer = renderConstant (processor, 256, 0.01f, -0.03f);
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
-        CHECK (buffer.getSample (0, sample) == Catch::Approx (0.01f).margin (0.00000001f));
-        CHECK (buffer.getSample (1, sample) == Catch::Approx (-0.03f).margin (0.00000001f));
+        CHECK (buffer.getSample (0, sample) == Catch::Approx (sample < processor.getLatencySamples() ? 0.0f : 0.01f).margin (0.00000001f));
+        CHECK (buffer.getSample (1, sample) == Catch::Approx (sample < processor.getLatencySamples() ? 0.0f : -0.03f).margin (0.00000001f));
     }
     CHECK (processor.getGainReductionDb() == 0.0f);
 }
@@ -238,10 +238,10 @@ TEST_CASE ("Input and makeup automation ramp in dB over twenty milliseconds", "[
         PluginProcessor processor;
         processor.prepareToPlay (48000.0, 256);
         setParameter (processor, id, 6.0f);
-        const auto buffer = renderConstant (processor, 960, 0.001f, -0.001f);
+        const auto buffer = renderConstant (processor, 960 + processor.getLatencySamples(), 0.001f, -0.001f);
         CHECK (buffer.getSample (0, 0) < 0.00101f);
-        CHECK (buffer.getSample (0, 479) == Catch::Approx (0.001f * juce::Decibels::decibelsToGain (3.0f)).margin (0.000001f));
-        CHECK (buffer.getSample (0, 959) == Catch::Approx (0.001f * juce::Decibels::decibelsToGain (6.0f)).margin (0.000001f));
+        CHECK (buffer.getSample (0, 479 + processor.getLatencySamples()) == Catch::Approx (0.001f * juce::Decibels::decibelsToGain (3.0f)).margin (0.000001f));
+        CHECK (buffer.getSample (0, 959 + processor.getLatencySamples()) == Catch::Approx (0.001f * juce::Decibels::decibelsToGain (6.0f)).margin (0.000001f));
         CHECK (processor.getGainReductionDb() == 0.0f);
     }
 }

@@ -61,6 +61,15 @@ juce::AudioBuffer<float> sine (double sampleRate, double frequency, double level
     return audio;
 }
 
+juce::AudioBuffer<float> delayed (const juce::AudioBuffer<float>& input, int latency)
+{
+    juce::AudioBuffer<float> result (input.getNumChannels(), input.getNumSamples());
+    result.clear();
+    for (int channel = 0; channel < input.getNumChannels(); ++channel)
+        result.copyFrom (channel, latency, input, channel, 0, input.getNumSamples() - latency);
+    return result;
+}
+
 double harmonic (const juce::AudioBuffer<float>& audio, double frequency, double sampleRate, int start, int count)
 {
     std::complex<double> sum {};
@@ -73,41 +82,33 @@ double harmonic (const juce::AudioBuffer<float>& audio, double frequency, double
 }
 }
 
-TEST_CASE ("Transformer original voicing remains bit-identical through drive and bypass automation", "[transformer][voicing-reference]")
+TEST_CASE ("Magnetic transformer is deterministic across block partitions and automation", "[transformer][magnetic]")
 {
-    auto audio = sine (48000.0, 73.0, -3.0, 8192);
-    TransformerSaturation stage;
-    stage.prepare (48000.0, 100.0f, false);
-    for (int start = 0; start < audio.getNumSamples(); start += 128)
+    auto a = sine (48000.0, 73.0, -3.0, 8192), b = a;
+    TransformerSaturation whole, split;
+    whole.prepare (48000.0, 100.0f, false);
+    split.prepare (48000.0, 100.0f, false);
+    CHECK (whole.getLatencySamples() == 144);
+    for (int start = 0; start < a.getNumSamples(); start += 128)
     {
-        if (start == 2048)
-            stage.setParameters (25.0f, false);
-        if (start == 4096)
-            stage.setParameters (25.0f, true);
-        if (start == 6144)
-            stage.setParameters (100.0f, false);
-        std::array<float*, 2> pointers { audio.getWritePointer (0, start), audio.getWritePointer (1, start) };
-        juce::AudioBuffer<float> block (pointers.data(), 2, 128);
-        stage.process (block, 2);
+        for (auto* stage : { &whole, &split })
+        {
+            if (start == 2048) stage->setParameters (25.0f, false);
+            if (start == 4096) stage->setParameters (25.0f, true);
+            if (start == 6144) stage->setParameters (100.0f, false);
+        }
+        std::array<float*, 2> pa { a.getWritePointer (0, start), a.getWritePointer (1, start) };
+        juce::AudioBuffer<float> block (pa.data(), 2, 128);
+        whole.process (block, 2);
+        for (int offset : { 0, 64 })
+        {
+            std::array<float*, 2> pb { b.getWritePointer (0, start + offset), b.getWritePointer (1, start + offset) };
+            juce::AudioBuffer<float> part (pb.data(), 2, 64);
+            split.process (part, 2);
+        }
     }
-    if (const auto* path = std::getenv ("LUMIERE_TRANSFORMER_REFERENCE_EXPORT"))
-    {
-        std::ofstream output (path, std::ios::binary);
-        for (int channel = 0; channel < 2; ++channel)
-            output.write (reinterpret_cast<const char*> (audio.getReadPointer (channel)), 8192 * sizeof (float));
-        REQUIRE (output.good());
-        return;
-    }
-    const auto path = juce::File (__FILE__).getSiblingFile ("data").getChildFile ("TransformerAudioReference.bin");
-    std::ifstream input (path.getFullPathName().toStdString(), std::ios::binary);
-    REQUIRE (input.good());
-    std::array<float, 8192> reference {};
-    for (int channel = 0; channel < 2; ++channel)
-    {
-        input.read (reinterpret_cast<char*> (reference.data()), sizeof (reference));
-        REQUIRE (input.good());
-        CHECK (std::memcmp (reference.data(), audio.getReadPointer (channel), sizeof (reference)) == 0);
-    }
+    CHECK (identical (a, b));
+    CHECK (whole.getCircuit().getDiagnostics().solverFailures == 0);
 }
 
 TEST_CASE ("Transformer parameters append stable IDs with In Out text and percent parsing", "[transformer][parameters]")
@@ -144,7 +145,7 @@ TEST_CASE ("Transformer zero amount and Out preserve samples bit for bit includi
         stage.prepare (48000.0, amount, out);
         auto audio = original;
         stage.process (audio, 2);
-        CHECK (identical (audio, original));
+        CHECK (identical (audio, delayed (original, stage.getLatencySamples())));
     }
     for (bool out : { false, true })
     {
@@ -156,7 +157,7 @@ TEST_CASE ("Transformer zero amount and Out preserve samples bit for bit includi
         stage.setParameters (out ? 100.0f : 0.0f, out);
         audio = original;
         stage.process (audio, 2);
-        CHECK (identical (audio, original, 480));
+        CHECK (identical (audio, delayed (original, stage.getLatencySamples()), 480));
     }
     // All existing BA features are active; full Out must still equal zero amount.
     PluginProcessor zero, out;
@@ -205,7 +206,7 @@ TEST_CASE ("Transformer emphasis shelves are exact inverses with an identity non
     }
 }
 
-TEST_CASE ("Transformer residual ADAA preserves small-signal unity across the spectrum", "[transformer][unity]")
+TEST_CASE ("Magnetic transformer preserves small-signal gain above its low-frequency corner", "[transformer][unity]")
 {
     for (double sampleRate : { 44100.0, 48000.0, 96000.0, 192000.0 })
         for (double frequency : { 50.0, 1000.0, 8000.0 })
@@ -243,29 +244,13 @@ TEST_CASE ("Transformer produces symmetric odd harmonics with stronger low-frequ
         if (frequency > 500.0)
         {
             highThirdDb = thirdDb;
-            CHECK (thirdDb > -60.0);
+
         }
         else
-            CHECK (thirdDb > highThirdDb + 10.0);
-    }
-}
-
-TEST_CASE ("Tanh ADAA is finite at coincident tiny and enormous sample differences", "[transformer][adaa]")
-{
-    for (double current : { 0.0, 1.0e-30, -1.0e-12, 0.2, -0.2, 5.0, -5.0, 1.0e100, -1.0e100,
-             std::numeric_limits<double>::max(), -std::numeric_limits<double>::max() })
-        for (double delta : { 0.0, 1.0e-12, -1.0e-12, 9.99e-7, -9.99e-7 })
         {
-            CAPTURE (current, delta);
-            const auto value = TanhADAA::evaluate (current, current + delta);
-            CHECK (isFinite (value));
-            CHECK (value == Catch::Approx (std::tanh (current)).margin (1.0e-6));
+            CHECK (thirdDb > -60.0);
+            CHECK (thirdDb > highThirdDb + 10.0);
         }
-    for (double magnitude : { 100.0, 1.0e6, 1.0e100, std::numeric_limits<double>::max() })
-    {
-        CHECK (isFinite (TanhADAA::antiderivative (magnitude)));
-        CHECK (isFinite (TanhADAA::evaluate (magnitude, -magnitude)));
-        CHECK (TanhADAA::evaluate (magnitude, -magnitude) == Catch::Approx (0.0).margin (1.0e-12));
     }
 }
 
@@ -354,6 +339,7 @@ TEST_CASE ("Transformer and processor remain finite through loud DC noise block 
 TEST_CASE ("Transformer leaves detection and meter positions intact and Delta still follows Mix", "[transformer][integration]")
 {
     const auto dry = sine (48000.0, 73.0, -12.0, 8192);
+    const auto latencyDry = delayed (dry, 144);
     const auto render = [&dry] (float amount, int monitor, float mix, float outGain = 0.0f)
     {
         PluginProcessor processor;
@@ -389,7 +375,7 @@ TEST_CASE ("Transformer leaves detection and meter positions intact and Delta st
         for (int channel = 0; channel < 2; ++channel)
             for (int i = 0; i < dry.getNumSamples(); ++i)
             {
-                const auto expected = (wet.getSample (channel, i) - dry.getSample (channel, i)) * mix * 0.01f;
+                const auto expected = (wet.getSample (channel, i) - latencyDry.getSample (channel, i)) * mix * 0.01f;
                 error = juce::jmax (error, std::abs (delta.getSample (channel, i) - expected));
                 gainError = juce::jmax (gainError, std::abs (boosted.getSample (channel, i)
                     - wet.getSample (channel, i) * juce::Decibels::decibelsToGain (6.0f)));

@@ -1,0 +1,107 @@
+{
+  "synthetic_bass_linear_matched.wav": {
+    "frames": 288000,
+    "peak": 0.3826838433742523,
+    "rms": 0.1099649970007884
+  },
+  "synthetic_bass_linear_raw.wav": {
+    "frames": 288000,
+    "peak": 0.38166046142578125,
+    "rms": 0.10967092816985438
+  },
+  "synthetic_bass_live_magnetic_matched.wav": {
+    "frames": 288000,
+    "peak": 0.4056040048599243,
+    "rms": 0.10996500166926405
+  },
+  "synthetic_bass_live_magnetic_raw.wav": {
+    "frames": 288000,
+    "peak": 0.3974909484386444,
+    "rms": 0.10776543827586528
+  },
+  "synthetic_bass_magnetic16_matched.wav": {
+    "frames": 288000,
+    "peak": 0.3777479827404022,
+    "rms": 0.10996500097194656
+  },
+  "synthetic_bass_magnetic16_raw.wav": {
+    "frames": 288000,
+    "peak": 0.3759419620037079,
+    "rms": 0.10943925313543512
+  },
+  "synthetic_bass_source.wav": {
+    "frames": 288000,
+    "peak": 0.3616020381450653,
+    "rms": 0.10996499617415711
+  },
+  "synthetic_low_high_linear_matched.wav": {
+    "frames": 288000,
+    "peak": 0.3796370029449463,
+    "rms": 0.1495738982466725
+  },
+  "synthetic_low_high_linear_raw.wav": {
+    "frames": 288000,
+    "peak": 0.37869328260421753,
+    "rms": 0.14920207612993117
+  },
+  "synthetic_low_high_live_magnetic_matched.wav": {
+    "frames": 288000,
+    "peak": 0.38122305274009705,
+    "rms": 0.14957389368115095
+  },
+  "synthetic_low_high_live_magnetic_raw.wav": {
+    "frames": 288000,
+    "peak": 0.37314504384994507,
+    "rms": 0.14640447012036328
+  },
+  "synthetic_low_high_magnetic16_matched.wav": {
+    "frames": 288000,
+    "peak": 0.37940216064453125,
+    "rms": 0.1495738961223728
+  },
+  "synthetic_low_high_magnetic16_raw.wav": {
+    "frames": 288000,
+    "peak": 0.37778598070144653,
+    "rms": 0.14893673518739942
+  },
+  "synthetic_low_high_source.wav": {
+    "frames": 288000,
+    "peak": 0.37754249572753906,
+    "rms": 0.14957389603901866
+  },
+  "synthetic_percussion_linear_matched.wav": {
+    "frames": 288000,
+    "peak": 0.5647763609886169,
+    "rms": 0.0583826927391956
+  },
+  "synthetic_percussion_linear_raw.wav": {
+    "frames": 288000,
+    "peak": 0.5631173849105835,
+    "rms": 0.058211201428402776
+  },
+  "synthetic_percussion_live_magnetic_matched.wav": {
+    "frames": 288000,
+    "peak": 0.5519736409187317,
+    "rms": 0.058382692878510806
+  },
+  "synthetic_percussion_live_magnetic_raw.wav": {
+    "frames": 288000,
+    "peak": 0.5417371392250061,
+    "rms": 0.05729996727214845
+  },
+  "synthetic_percussion_magnetic16_matched.wav": {
+    "frames": 288000,
+    "peak": 0.5684015154838562,
+    "rms": 0.05838269611939512
+  },
+  "synthetic_percussion_magnetic16_raw.wav": {
+    "frames": 288000,
+    "peak": 0.5656017661094666,
+    "rms": 0.05809512256042209
+  },
+  "synthetic_percussion_source.wav": {
+    "frames": 288000,
+    "peak": 0.5798859000205994,
+    "rms": 0.05838269464117064
+  }
+}
