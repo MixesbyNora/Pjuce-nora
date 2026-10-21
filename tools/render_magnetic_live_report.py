@@ -1,6 +1,7 @@
-"""Render captured magnetic v2 validation, CPU and listening results locally."""
+"""Render current shelf-free magnetic validation, CPU and listening results locally."""
 import csv
 import math
+import json
 import sys
 from pathlib import Path
 
@@ -14,6 +15,9 @@ def rows(path):
 
 
 def main(root):
+    manifest = root / 'manifest.json'
+    if manifest.exists() and json.loads(manifest.read_text()).get('model') != 'lumiere-voicing-workbench-v3':
+        raise ValueError('Historical model data: keep its archived report instead of relabeling it as shelf-free.')
     validation = rows(root / 'live_validation.csv')
     cpu = rows(root / 'plugin_cpu.csv')
     listening = rows(root / 'listening.csv')
@@ -24,7 +28,7 @@ def main(root):
             if key != 'signal' and value:
                 assert math.isfinite(float(value)), (key, value)
     rates = (44100, 48000, 96000, 192000)
-    drawing = canvas(1200, 480, 'Shared magnetic transformer: Release CPU',
+    drawing = canvas(1200, 480, 'Shelf-free magnetic transformer: Release CPU',
                      'Complete PluginProcessor: compressor, magnetic stage, BA routing and meters; Amount 100%, default voicing, 256-frame blocks.')
     series = [[(float(r['rate_hz']) / 1000, float(r['realtime_percent'])) for r in cpu if int(r['channels']) == ch] for ch in (1, 2)]
     add_chart(drawing, series, 70, 140, 460, 220, 'Complete plugin: percentage of one core budget', (40, 200), (0, 100))
@@ -46,7 +50,7 @@ def main(root):
 
     names = list(dict.fromkeys(r['signal'] for r in validation))
     drawing = canvas(1200, 430, 'Shipped magnetic stage: independent high-rate validation',
-                     'Default LF shelves and Amount 100%; scalar constitutive references, analytic voltage input, independent FIR decimation.')
+                     'No emphasis shelves; Amount 100%; scalar constitutive references, analytic voltage input, independent FIR decimation.')
     for col, (rate, peak) in enumerate((r, p) for r in rates for p in (0.05, 1, 4)):
         drawing.add(String(225 + col * 77, 332, f'{rate/1000:g}k / {peak:g}', fontSize=8, fillColor=INK))
         for row, name in enumerate(names):
@@ -56,12 +60,12 @@ def main(root):
             drawing.add(String(x + 8, y + 2, f'{float(record["band_residual_dbr"]):.1f}', fontSize=9, fillColor=INK))
     for row, name in enumerate(names):
         drawing.add(String(28, 302 - row * 26, name, fontSize=10, fillColor=INK))
-    drawing.add(String(28, 40, 'Cell: DC-20 kHz residual dBr. All 108 pass, including applicable off-grid and tail checks. No hardware-fit claim.', fontSize=10, fillColor=INK))
+    drawing.add(String(28, 40, 'Cell: DC-20 kHz residual dBr. All grid cases pass, including applicable off-grid and tail checks. No hardware-fit claim.', fontSize=10, fillColor=INK))
     save(drawing, root, 'validation')
 
-    notes = ['# Shared magnetic transformer v2', '',
-             'The old tanh/residual-ADAA audio stage is removed from VST3, AU, Standalone and active offline measurements. The internal magnetic constitutive tanh remains; its hot evaluation uses a preparation-built polynomial table. Legacy voicing JSON migrates numeric controls, without restoring the old audio engine.', '',
-             '**108/108 shipped-stage screens pass, with zero solver failures.** These use default LF emphasis and Amount 100% (+12 dB drive), and compare actual float stage output with analytically driven, scalar-constitutive high-rate references.', '',
+    notes = ['# Shelf-free magnetic transformer / workbench v3', '',
+             'The old tanh/residual-ADAA audio stage and the LF emphasis shelf pair are removed from live and active offline processing. Shelf removal intentionally changes enabled transformer sound. The internal magnetic constitutive tanh remains; its hot evaluation uses a preparation-built polynomial table. Legacy voicing JSON migrates drive/selection/flags and ignores obsolete shelves with a visible notice. The current workbench is descriptor-driven.', '',
+             '**The full shipped-stage grid passes, with zero solver failures.** It uses the shelf-free chain and Amount 100% (+12 dB drive), and compare actual float stage output with analytically driven, scalar-constitutive high-rate references.', '',
              '![Validation](validation.png)', '',
              f'Worst DC-20 kHz residual: **{max(float(r["band_residual_dbr"]) for r in validation):.2f} dBr**. Worst reference convergence residual: **{max(float(r["reference_residual_dbr"]) for r in validation):.2f} dBr**. Maximum shipped-stage solver iterations: **{max(int(r["maximum_iterations"]) for r in validation)}**. The scaled target remains 1e-13.', '',
              '## Complete-plugin Release CPU', '', '![CPU and latency](cpu.png)', '',
@@ -70,7 +74,7 @@ def main(root):
         notes.append(f'| {row["rate_hz"]} | {row["channels"]} | {row["factor"]}x | {row["latency"]} | {float(row["realtime_percent"]):.1f} |')
     notes += ['', 'Seven 16,384-frame runs, median, after prepare; block size 256; low-tone input at 60/73 Hz. Includes stimulus generation, full processor, compressor, magnetic stage, BA routing and meter publication. Preparation and file output are excluded. Profiling runs do not overlap builds or tests. This is a local signal-specific measurement, not a worst-case guarantee. Release is the listening build; Debug retains debugging overhead.', '',
               '## Listening', '',
-              'Three synthetic stereo fixtures, six seconds, 48 kHz float32: bass phrase, percussion and low/high tones. Each has source, raw and linked whole-file RMS-matched linear-core, magnetic-core and shared live-magnetic renders. The raw core uses drive 0 dB without LF shelves; the live stage uses Amount 100% (+12 dB drive) and default 12 dB / 120 Hz shelves. These settings differ deliberately; this is not an isolated hysteresis A/B. FIR delay is removed, magnetic phase remains, and no limiting or DC subtraction is applied. RMS matching is an audition aid, not perceptual loudness matching.', '',
+              'Three synthetic stereo fixtures, six seconds, 48 kHz float32: bass phrase, percussion and low/high tones. Each has source, raw and linked whole-file RMS-matched linear-core, magnetic-core and shared live-magnetic renders. The raw core uses drive 0 dB; the live stage uses Amount 100% (+12 dB drive). Neither uses LF emphasis shelves. These settings differ deliberately; this is not an isolated hysteresis A/B. FIR delay is removed, magnetic phase remains, and no limiting or DC subtraction is applied. RMS matching is an audition aid, not perceptual loudness matching.', '',
               '| Synthetic fixture | Source | Linear core matched | Magnetic core matched | Live magnetic matched |', '|---|---|---|---|---|']
     for name in ('synthetic_bass', 'synthetic_percussion', 'synthetic_low_high'):
         files = [f'{name}_source.wav'] + [f'{name}_{model}_matched.wav' for model in ('linear', 'magnetic16', 'live_magnetic')]
@@ -78,8 +82,8 @@ def main(root):
     notes += ['', 'The archived tanh recordings/preference remain historical evidence only. No current renderer executes that audio model.', '',
               '## Limits and data', '',
               'This is a normalized, uncalibrated voltage-driven magnetic circuit, not a VTB1148 fit. The simplified model omits winding capacitance, leakage and eddy-current dynamics. The tested grid covers nine waveforms, four rates and input peak bounds 0.05/1/4; it does not certify arbitrary inputs or every voicing. Core voltage safety limits and the saturated-field extension remain explicit numerical definitions.', '',
-              'The 108 previous extreme-parameter trajectories now converge at the unchanged 1e-13 target, with a carried-slope predictor and bounded 96-evaluation fallback. The degree-five constitutive lookup is tested at two million points against the scalar function; maximum observed value error is at most 2e-15. Model equations are unchanged by that numerical acceleration.', '',
-              'The separate extended probe passes all 432 trajectories with zero failures and a maximum of 61 evaluations, including combined drive/calibration extremes and instantaneous reversals. [Probe results](solver_extremes.csv). Debug and Release each pass 129 functional tests / 282,010 assertions. VST3, AU, Standalone and Tests build cleanly in both configurations; Benchmarks was not built.', '',
+              'The previous extreme-parameter trajectories converge at the unchanged 1e-13 target, with a carried-slope predictor and bounded 96-evaluation fallback. The degree-five constitutive lookup is checked against the scalar function; maximum observed value error is at most 2e-15. Model equations are unchanged by that numerical acceleration.', '',
+              'The separate extended probe covers combined drive/calibration extremes and instantaneous reversals. [Probe results](solver_extremes.csv). Build/test outcomes are recorded in machine-readable provenance; Benchmarks is excluded.', '',
               '[Implementation and reproduction](../../MagneticTransformerLive.md). [Shipped-stage grid](live_validation.csv), [plugin CPU](plugin_cpu.csv), [raw-core supplementary comparisons](comparison.csv), [raw-core convergence](convergence.csv), [tone measurements](tones.csv), [listening gains](listening.csv), [provenance](manifest.json).', '']
     (root / 'README.md').write_text('\n'.join(notes))
 

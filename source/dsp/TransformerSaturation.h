@@ -1,7 +1,7 @@
 #pragma once
 
-#include "Biquad.h"
 #include "MagneticOversampling.h"
+#include "TransformerSettings.h"
 #include "../TransformerVoicing.h"
 #include "../experimental/TransformerAudioCircuit.h"
 
@@ -18,24 +18,20 @@ public:
     int getOversamplingFactor() const noexcept { return factor; }
     const MagneticPrototype::TransformerAudioCircuit& getCircuit (int channel = 0) const noexcept
     { return banks[currentBank].state[static_cast<std::size_t> (channel)].core; }
-    const DoubleBiquad::Coefficients& getPreEmphasisCoefficients() const noexcept { return banks[currentBank].pre; }
-    const DoubleBiquad::Coefficients& getDeEmphasisCoefficients() const noexcept { return banks[currentBank].post; }
 
 private:
     struct Channel
     {
-        DoubleBiquad::State pre, post;
         MagneticPrototype::TransformerAudioCircuit core;
     };
     struct Bank
     {
-        DoubleBiquad::Coefficients pre, post;
         std::array<Channel, 2> state;
         double driveScale = 1.0;
-        std::uint32_t voicing = 0;
+        TransformerVoicing::Word voicing = 0;
     };
     static double driveGainFor (float amountPercent) noexcept;
-    void configureBank (Bank&, std::uint32_t) noexcept;
+    void configureBank (Bank&, TransformerVoicing::Word) noexcept;
     static double processBank (Bank&, int channel, double original, double drive) noexcept;
     void resetCoreHistory() noexcept;
     void resetHistory() noexcept;
@@ -45,7 +41,7 @@ private:
     juce::AudioBuffer<float> delayedDry;
     MagneticAudio::StereoDelay dryDelay;
     std::size_t currentBank = 0;
-    std::uint32_t requestedVoicing = 0;
+    TransformerVoicing::Word requestedVoicing = 0;
     double rate = 48000.0, internalRate = 768000.0;
     int latency = 0, factor = 16;
     juce::SmoothedValue<double, juce::ValueSmoothingTypes::Multiplicative> driveGain;

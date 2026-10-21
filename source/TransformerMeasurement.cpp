@@ -1,4 +1,5 @@
 #include "TransformerMeasurement.h"
+#include "TransformerVoicingState.h"
 #include "dsp/TransformerSaturation.h"
 #include <complex>
 
@@ -96,12 +97,12 @@ std::optional<Result> measure (const Request& request, const Cancel& cancel,
 juce::String toCsv (const Result& result)
 {
     juce::String csv = "# Transformer snapshots A/B; voltage-driven magnetic hysteresis; match off; transformer In.\n"
-        "# 48000 Hz; discard 0.25 s; analyze 1 s; not Carnhill hardware measurements.\n";
+        "# 48000 Hz; discard 0.25 s; analyze 1 s; no emphasis shelves; not hardware measurements.\n";
+    csv += "# Workbench schema: " + juce::String (TransformerVoicing::model) + "\n";
     for (int voice = 0; voice < 2; ++voice)
     {
         const auto values = voice == 0 ? result.request.a : result.request.b;
-        csv += juce::String (voice == 0 ? "# A" : "# B") + ": driveCalibrationDb=" + juce::String (values.driveCalibrationDb, 1)
-            + ", emphasisDb=" + juce::String (values.emphasisDb, 1) + ", cornerHz=" + juce::String (values.cornerHz, 0) + "\n";
+        csv += juce::String (voice == 0 ? "# A: " : "# B: ") + TransformerVoicingState::describe (values) + "\n";
     }
     csv += "# " + result.request.contextJson.replaceCharacters ("\r\n", "  ") + "\n";
     csv += "voicing,sample_rate_hz,frequency_hz,input_dbfs,amount_percent,fundamental_gain_db,rms_gain_db,H2_dBc,H3_dBc,H5_dBc,H7_dBc\n";

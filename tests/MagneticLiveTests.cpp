@@ -71,12 +71,6 @@ TransformerAudioPrototype::Render stageReference (double rate, const Stimulus& s
     MagneticPrototype::TransformerAudioCircuit::Parameters parameters;
     parameters.driveDb = 12.0;
     core.prepare (highRate, parameters, false, true); // Scalar constitutive reference.
-    const auto raw = juce::dsp::IIR::ArrayCoefficients<double>::makeLowShelf (highRate,
-        TransformerSettings::shelfFrequencyHz, TransformerSettings::shelfQ,
-        juce::Decibels::decibelsToGain (TransformerSettings::shelfGainDb));
-    const DoubleBiquad::Coefficients pre { raw[0] / raw[3], raw[1] / raw[3], raw[2] / raw[3], raw[4] / raw[3], raw[5] / raw[3] };
-    const DoubleBiquad::Coefficients post { 1.0 / pre.b0, pre.a1 / pre.b0, pre.a2 / pre.b0, pre.b1 / pre.b0, pre.b2 / pre.b0 };
-    DoubleBiquad::State preState, postState;
     const auto warm = static_cast<int> (std::ceil (rate / 256)) * 256;
     const auto count = ((warm + windowSize + 512 + 255) / 256) * 256;
     std::vector<double> output (static_cast<std::size_t> (count));
@@ -88,9 +82,7 @@ TransformerAudioPrototype::Render stageReference (double rate, const Stimulus& s
         for (std::size_t n = 0; n < high.getNumSamples(); ++n)
         {
             const auto input = stimulus.at (start - warm + static_cast<double> (n) / factor);
-            const auto emphasized = DoubleBiquad::processSample (input, pre, preState);
-            const auto voltage = core.processSample (emphasized);
-            high.setSample (0, static_cast<int> (n), DoubleBiquad::processSample (voltage, post, postState));
+            high.setSample (0, static_cast<int> (n), core.processSample (input));
         }
         filters.processSamplesDown (base);
         for (int n = 0; n < 256; ++n) output[static_cast<std::size_t> (start + n)] = block.getSample (0, n);

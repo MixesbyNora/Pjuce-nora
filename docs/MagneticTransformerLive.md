@@ -1,154 +1,253 @@
 # Shared magnetic transformer
 
-Lumiere now uses the voltage-driven play/Preisach magnetic transformer in VST3,
-AU, Standalone and the offline measurement view. The old memoryless tanh and
-residual-ADAA audio stage is removed. The internal constitutive tanh remains,
-as requested; it is evaluated with a prepared double-precision polynomial table.
-The generic JUCE controls, collapsible A/B and measurement panel, meters,
-compressor, sidechain choices, program-dependent release and FB/FF remain.
+The live plugin, Standalone and active offline measurements share the voltage-driven
+play/Preisach magnetic circuit. The private LF pre-emphasis/inverse post-emphasis
+shelf pair is now **removed entirely**. The oversampled path is input -> magnetic
+circuit -> output. This intentionally changes enabled transformer sound, including
+recalled projects. Amount zero and Xfrm Out retain exact delayed bypass; no host
+parameter ID, order, range, step or default changes.
 
-## Numerical work
+The old memoryless tanh/residual-ADAA audio engine remains removed. The internal
+magnetic constitutive tanh remains, evaluated by the same prepared double-precision
+polynomial table. This is a normalized, uncalibrated circuit, not a VTB1148 fit.
+No statement about hardware accuracy or subjective improvement is implied.
 
-The circuit equations remain `B=H+k*M`, `D*x=H+tau*dB/dt`, `y=x-H/D`.
-The constitutive table holds local degree-five Taylor polynomials over 8,192
-segments of normalized field magnitude. A two-million-point test checks value
-error against scalar tanh to 2e-15 and monotonicity within rounding precision.
-The table is built once during construction; every circuit holds its pointer.
-No table initialization, allocation or guard lock is encountered while rendering.
+## Circuit and realtime behavior
 
-The implicit solve starts with a prediction using the previous accepted branch
-slope. It retains the monotone bracket, positive derivative and safeguarded
-Newton/bisection fallback. The scaled equation-residual target remains 1e-13.
-The cap is now 96 evaluations, so bisection has enough steps after rejected
-Newton steps. Only the accepted trial commits history. The 108 extreme-setting
-trajectories that exposed the old 48-evaluation cap now require zero failures;
-output is compared numerically with the frozen v1 and the actual committed-state
-equation is checked separately. They are no longer required to reproduce old
-failure counts or old floating-point roundoff bit-for-bit.
+The equations remain `B=H+k*M`, `D*x=H+tau*dB/dt`, `y=x-H/D`. The carried accepted
+branch-slope predictor, monotone bracket and safeguarded Newton/bisection fallback
+are unchanged. The scaled root tolerance stays 1e-13 and the bounded evaluation
+cap stays 96. Only accepted trials commit magnetic history. The constitutive lookup
+retains its local degree-five polynomials and double-precision error checks.
+The frozen `tests/helpers/TransformerAudioReference*` files are untouched.
 
-The numerical table and predictor accelerate the same constitutive law and
-circuit, not a new saturation curve. The model is still normalized and
-uncalibrated. It is not a VTB1148 hardware fit; leakage inductance, capacitance,
-eddy currents and physical material/geometry calibration remain future work.
-Input voltage safety limits and the extension retaining linear H beyond the
-canonical M guard remain explicit numerical choices.
+Placement remains after compressor/makeup and before OUT gain. Detector, SC modes,
+FB/FF, program-dependent release, gain reduction, BA features and meters are
+unchanged. Each channel has independent magnetic state. Amount still maps -24 to
++12 dB drive with 20 ms smoothing; private calibration offsets that drive mapping.
+There are no shelf coefficients, shelf state or per-sample biquad calls inside
+`TransformerSaturation` now. Sidechain filters and LFM are separate and unchanged.
 
-## Live path, rate and latency
+Two prepared fixed banks retain the 20 ms voicing crossfade. Rapid edits coalesce
+until the current transition finishes. Out/Amount activity uses its existing 10 ms
+fade. The optional linked RMS audition matching remains after the transformer;
+it never affects the detector and is bypassed for exact zero/Out behavior.
+Rendering uses fixed/prepared storage, with no allocations, locks, logging or UI.
 
-The stage sits after compression/makeup and before OUT gain. Each channel has
-independent magnetic and emphasis state, with identical controls. Detector and
-compression processing remain upstream. The original host parameter IDs,
-positions, types, ranges, steps and defaults remain unchanged (16 parameters).
-Amount maps -24 to +12 dB of drive and smooths over 20 ms. The private LF shelf
-pair retains its controls and double precision; the magnetic model receives the
-emphasized voltage and its output passes through the inverse shelf.
+## Rate, latency and bypass
 
-Internal oversampling uses 16x at 44.1/48 kHz, 8x at 96 kHz and 4x at 192 kHz,
-keeping the internal rate at 705.6-768 kHz. This is fixed internal implementation,
-with no new host oversampling parameter. The shipped stage earns fresh quality
-checks at these rates; this policy is not inferred from the old prescribed-H
-experiments. FIR settings are in `source/dsp/MagneticOversampling.h`.
+The shelves were zero-latency IIRs; removing them leaves the FIR design and all
+integer delays unchanged. Existing direct-stage and real-processor latency/bypass
+checks cover mono/stereo and control changes.
 
-Slightly longer down filters give integer group delays without a fractional
-allpass: up/down orders are 198/198, 98/102, 98/110 and 98/126. Stopband target
-is -120 dB. The host receives 144/144/137/124 samples of latency at the four
-rates, plus a conservative two-second tail. The untouched input used by Mix,
-Delta and global bypass receives the same exact integer delay. This preserves
-`Delta = mixed - dry` and silent Delta at Mix 0%, neutral settings and bypass.
-Latency never changes when controls are automated; it changes only with sample
-rate preparation.
+| Host rate | Internal factor | Reported latency |
+|---|---:|---:|
+| 44.1 kHz | 16x | 144 samples |
+| 48 kHz | 16x | 144 samples |
+| 96 kHz | 8x | 137 samples |
+| 192 kHz | 4x | 124 samples |
 
-Amount 0 or Xfrm Out skips and resets the magnetic solve, and outputs exact
-original samples shifted by that delay. The FIR history stays warm using
-identity processing to avoid a cold-filter step when re-engaging. Magnetic
-history resets at the precise inactive sample, independent of host blocks.
-Out/Amount transitions crossfade over 10 ms. Voicing changes retain the fixed
-bank crossfade over 20 ms. Audition level matching operates after the magnetic
-stage and never modifies the detector. All render storage is fixed or prepared;
-there is no rendering allocation, locking, logging or UI work.
+The host still receives a conservative two-second tail. Amount zero or Xfrm Out
+skips/resets the magnetic solve and outputs original samples shifted by the exact
+integer delay. FIR histories stay warm for re-engagement. Dry Mix, Delta and global
+bypass retain that same delay; `Delta = mixed - aligned dry` remains unchanged.
+No oversampling parameter, new latency or stereo mode is introduced.
 
-## Saved settings and offline workflow
+## Permanent voicing workbench
 
-Voicing export now identifies version 2, `transformer-magnetic-play-v2`.
-Old version-1 tanh JSON migrates its numeric A/B calibration, LF emphasis,
-corner, selection and audition flags. It does not select a legacy audio engine
-or promise the same tone. Existing APVTS host automation/state retains its
-identity and restores normally. The old favorite JSON, historical reports,
-recordings and binary fixture remain archived for provenance.
+Transformer Voicing remains a collapsible, model-agnostic tuning panel alongside
+the generic editor and meters. A descriptor table defines each private ID, label,
+unit, range, step, default and skew. Only drive calibration is active, first in the
+table. UI sliders, A/B values, quantization, JSON and measurement metadata use it.
+Packing widths are computed from descriptors; both snapshots and flags currently
+fit in one lock-free atomic. A compile-time limit prevents silent overflow if
+future controls outgrow it. Audio reads one word without retry loops.
 
-The existing measurement worker runs this same shared magnetic DSP, captures
-A/B snapshots, supports cancellation/progress, and exports the new model name.
-Its .25-second warmup and one-second Fourier window are retained. Measurements
-and synthetic listening renders do not call UI code from the audio callback.
-The first listening preset is the current magnetic default, rather than a
-renamed execution of the old preferred tanh model.
+Version 3 exports identify `lumiere-voicing-workbench-v3`. Version 1 and 2 JSON and
+project state retain drive calibration, slot selection and audition flags, while
+ignoring old `emphasisDb` and `cornerHz`. Panel status explains this migration;
+it is not an error, and obsolete fields never re-enable shelves. The notice is
+preserved on save/export. Unknown future schemas are rejected without replacing
+current private settings; projects with no private child still load defaults.
+The archived tanh favorite remains unchanged, without a promise to reproduce its
+old sound. See [TransformerVoicing.md](TransformerVoicing.md) for the workflow.
 
-## Validation and CPU
+## Before/after measurements
 
-The shipped float stage, including default 12 dB / 120 Hz LF shelves and Amount
-100%, passes all 108 waveform/rate/level cases. References evaluate analytic
-voltage at 32x/64x and extend through 512x if needed, use scalar constitutive
-values, independent emphasis states and independent FIR decimation. Reference
-DC-20 kHz convergence must be at most -100 dBr and max error at most 1e-4;
-applicable silent-tail differences must also reach -100 dBr. Candidate screens
-retain -80 dBr band/off-grid/applicable tail thresholds and 0.1 dB peak-error
-limits. FIR delay is removed explicitly; magnetic phase and real decay remain.
-Full-band and absolute tail drift are exported as diagnostics.
+Baseline renders were captured from the existing Release build **before any code
+change**: the shipped A/B tone grid, full independent validation grid, clamp counts
+and isolated complete-plugin CPU workload. [Before data](measurements/magnetic_shelf_removal/before/tones.csv)
+and [after data](measurements/magnetic_shelf_removal/after/tones.csv) are retained,
+not used as bit-matching targets. A is default calibration; B migrates the archived
+favorite's drive calibration. Before B also had its old shelf voicing; afterward
+neither slot has shelves. Measurement CSV settings now use descriptors generically.
 
-Worst shipped-stage band residual is -103.73 dBr; worst selected reference
-convergence is -105.19 dBr. Worst applicable off-grid power is -139.21 dBr and
-worst tail mean difference -159.55 dBr. Maximum shipped-stage iterations is four,
-with zero failures. These are default-voicing finite-grid results, not guarantees
-for arbitrary material or every private tuning.
+The numerical validation reference was updated by removing its independent
+emphasis states, so it models the same input -> core -> output chain. It still
+uses analytic high-rate voltage, scalar constitutive evaluation and independent
+FIR decimation, extending reference rate as required for convergence. Candidate
+band/off-grid/applicable tail screens stay -80 dBr, peak error 0.1 dB; reference
+convergence remains -100 dBr with maximum band error 1e-4. Alignment removes FIR
+delay only, retaining real magnetic phase and decay. No thresholds were loosened.
 
-[Captured validation, CPU and listening results](measurements/magnetic_live_v2/README.md).
-All 129 functional tests pass in Debug and Release (282,010 assertions in each).
-The standalone extended probe covers 432 trajectories across legal host rates,
-corner/memory/width extremes and combined drive/calibration from -36 to +24 dB,
-including harder instantaneous drive reversals. It records zero failures; the
-maximum is 61 iterations, below the new 96 cap. Its worst root diagnostic is
-9.999981e-14; reassembling the committed equation in a different floating-point
-order gives at most 1.046779e-13. The target is unchanged.
+### Clamp and probe measurements
 
-The measured full stereo processor uses 26.2% of one core at 48 kHz, 24.8% at
-96 kHz and 25.6% at 192 kHz on the stated low-tone workload. Both Debug and
-Release plugin targets and Tests build without warnings or errors.
+48 kHz, Amount 100%, default calibration, +24 dB IN; a 60 Hz bass tone plus a
+-60 dBFS 2 kHz probe. Counts are post-warmup deltas per channel; percentages use
+385,024 internal samples. Probe gain is relative to the probe after IN. The
+probe response is isolated using opposite probe polarities, rather than counting
+bass distortion as probe output. L/R bass phases differ by 90 degrees.
 
-Complete-plugin profiling includes the compressor, transformer, BA routing,
-meters and stimulus generation. Its local medians are not deadline guarantees.
-Use Release for music; Debug retains debugging overhead.
+| Bass peak before IN | Before limitedInputs L / R | After L / R | Before probe gain L | After probe gain L |
+|---:|---:|---:|---:|---:|
+| -12 dBFS | 0 / 0 | 0 / 0 | -0.000384 dB | -0.000379 dB |
+| -6 dBFS | 203230 / 204254 | 0 / 0 | -6.543842 dB | -0.000384 dB |
+| 0 dBFS | 299895 / 300804 | 0 / 0 | -13.177309 dB | -0.000394 dB |
+
+For full-scale bass, the measured core-input peak drops from about 47.39 to 15.86,
+below the unchanged ±16 guard. Before, roughly 78% of samples were limited; after,
+none are limited in this grid. The -6 dBFS bass case similarly drops from roughly
+53% to none. Both channels report zero invalid inputs before and after. This does
+not guarantee no limiting on intersample overshoots, higher-than-normalized input,
+compressor makeup or other material. The guard itself is unchanged and tested.
+The quiet HF carrier still largely survives: shelf removal does not change the
+core's `x-H/D` structure into a full-band series saturator.
+
+### Complete-plugin Release CPU measurements
+
+Same default host parameters, Amount 100%, default calibration, 0.7-peak stereo
+60/73 Hz tones, 256-frame blocks. Median of seven 16,384-frame runs. Includes
+stimulus generation, compression, transformer, BA routing and meter publication;
+excludes preparation and file output. Each timing run is isolated from builds and
+tests. The changed magnetic operating point is part of this comparison, so the
+CPU delta is not solely the cost of deleting two biquads.
+
+| Host rate | Before one-core budget | After | Delta |
+|---:|---:|---:|---:|
+| 48 kHz | 25.69% | 33.50% | +7.81 percentage points |
+| 96 kHz | 23.82% | 32.21% | +8.38 percentage points |
+| 192 kHz | 24.94% | 33.49% | +8.55 percentage points |
+
+### Tone-grid measurements
+
+Representative default-slot A results at -24 dBFS, Amount 100%, 48 kHz. These
+quantify an intentional sound change, not pass/fail targets. Harmonic values are
+Fourier measurements relative to the fundamental, not listening judgments.
+
+| Tone | Fundamental gain before / after | H3 before / after |
+|---:|---:|---:|
+| 20 Hz | -1.903 / -0.702 dB | -23.93 / -22.14 dBc |
+| 60 Hz | -0.101 / -0.048 dB | -25.28 / -52.32 dBc |
+| 200 Hz | -0.012 / -0.012 dB | -67.08 / -70.77 dBc |
+| 1000 Hz | -0.001 / -0.001 dB | -87.81 / -88.08 dBc |
+
+[Full tone changes](measurements/magnetic_shelf_removal/tone_changes.csv),
+[before clamp diagnostics](measurements/magnetic_shelf_removal/before/diagnosis.csv)
+and [after diagnostics](measurements/magnetic_shelf_removal/after/diagnosis.csv).
+
+### Numerical outcomes
+
+The complete independent shipped-stage grid passes before and after with unchanged
+convergence, band, peak, off-grid and tail limits. The worst residuals are:
+
+| Metric | Before | After |
+|---|---:|---:|
+| Band residual | -103.73 dBr | -103.73 dBr |
+| Reference convergence | -105.19 dBr | -105.19 dBr |
+| Applicable off-grid power | -139.21 dBr | -138.89 dBr |
+| Applicable tail error | -159.55 dBr | -157.01 dBr |
+
+The solver probe stays finite with zero failures before and after; its maximum
+is 61 evaluations and its worst scaled root residual is 9.999981e-14. Its outputs
+are identical because the core and solver did not change. Reassembling the
+committed equation in another floating-point order remains within the probe's
+existing roundoff bound. The live grid reaches at most four evaluations, with
+zero solver failures. All four host latencies and exact delayed bypass checks pass.
+Debug and Release test suites pass; requested plugin and Tests builds are warning-
+and error-free. Benchmarks was not built. Detailed machine-readable outcomes and
+provenance accompany the retained captures.
+
+All tone, clamp and quality results are synthetic numerical measurements. CPU
+values are local medians for the stated workload, not worst-case deadline budgets.
+Whether removing the shelf feels more natural, less parallel, or otherwise better
+is an **untested listening hypothesis**. The remaining `x-H/D` structure can still
+preserve a quiet HF carrier; removing a shelf does not add a series commit stage.
+Winding capacitance, leakage, eddy-current dynamics and hardware calibration remain
+outside this simplified model.
+
+## Behavior and test changes
+
+- Enabled transformer processing loses the LF excitation boost and inverse output
+  shelf. The circuit equations and safety guards do not change. The before/after
+  tone grid quantifies the resulting response and harmonic changes.
+- The obsolete identity/shelf-inverse test is deleted because those filters no
+  longer exist. Small-signal, odd-harmonic, low-frequency, automation, queued bank
+  edits, DC-transition and finite-output assertions retain their existing limits.
+- The independent shipped-stage reference no longer has emphasis filters. Its
+  quality and convergence limits remain unchanged. The frozen v1 reference is
+  not rewritten to match the new live sound.
+- The clamp diagnostic replays direct input, rather than shelving it. Its default
+  +24 dB IN endpoint now expects no limiting and high probe survival for the tested
+  normalized bass. Independent over-limit/invalid-input guard tests remain.
+- Tests of private values use the descriptor array rather than the deleted fixed
+  triple. Incomplete-current-data tests remove drive calibration, not a deleted
+  shelf key. Archived favorite tests now verify drive/flags migration and the
+  visible ignored-shelves notice, rather than obsolete shelf recall.
+- New checks cover descriptor defaults/quantization/ranges/nonfinite values,
+  dynamic slider construction, both legacy schemas in project state, future
+  rejection, sticky migration status and coherent publication of both slots/flags.
+  The original torn-read test remains. Measurement tests compare the current
+  descriptor capture and metadata. Its numeric Fourier tolerances are unchanged.
+- Missing project-private state still resets to defaults. An unrecognized future
+  private child preserves existing private settings while host state restores.
+  Copy/paste, measurement cancellation/progress, stale capture detection, meter
+  independence and bit-exact delayed bypass remain tested.
 
 ## Reproduce
 
+Use the repository's Xcode workflow; never build Benchmarks:
+
+Only Release AU/VST3 builds deploy into the user's plugin folders. Debug builds
+remain in the build directory and cannot overwrite the installed Release copies.
+Deployment stages and verifies each bundle, preserving the previous installation
+under `Builds/plugin-backups`. Reload the DAW plugin after deployment; an existing
+instance continues running its previously loaded binary. Use the Release Standalone
+bundle when auditioning outside the DAW.
+
 ```bash
 cmake -B Builds -G Xcode
+cmake --build Builds --config Release --target Lumiere_VST3 Lumiere_AU Lumiere_Standalone Tests
+LUMIERE_MEASUREMENT_REPORT=/private/tmp/lumiere-after/tones.csv \
+LUMIERE_MAGNETIC_LIVE_REPORT_DIR=/private/tmp/lumiere-after \
+LUMIERE_TRANSFORMER_DIAGNOSIS_DIR=/private/tmp/lumiere-after \
+ctest --test-dir Builds -C Release --verbose --output-on-failure -E '^Benchmarks'
 cmake --build Builds --config Debug --target Lumiere_VST3 Lumiere_AU Lumiere_Standalone Tests
 ctest --test-dir Builds -C Debug --verbose --output-on-failure -E '^Benchmarks'
-cmake --build Builds --config Release --target Lumiere_VST3 Lumiere_AU Lumiere_Standalone Tests
-ctest --test-dir Builds -C Release --verbose --output-on-failure -E '^Benchmarks'
-LUMIERE_MAGNETIC_LIVE_REPORT_DIR=/private/tmp/lumiere-magnetic \
-./Builds/Release/Tests '[magnetic-live]' --reporter compact
-LUMIERE_TRANSFORMER_AUDIO_REPORT_DIR=/private/tmp/lumiere-magnetic \
-LUMIERE_TRANSFORMER_AUDIO_SKIP_TIMING=1 \
-./Builds/Release/Tests '[transformer-audio-report]' --reporter compact
-LUMIERE_MAGNETIC_CPU_REPORT_DIR=/private/tmp/lumiere-magnetic \
-./Builds/Release/Tests '[magnetic-live-cpu]' --reporter compact
-python3 tools/render_magnetic_live_report.py /private/tmp/lumiere-magnetic
 ```
 
-The CTest exclusion removes only the generated unbuilt-Benchmarks placeholder;
-Benchmarks is not built. Do not overlap CPU export with builds or other tests.
-The listening/raw-core export can skip its legacy timing section when run during
-accuracy checks. It supplies supplementary core comparisons at drive 0 dB and
-live-stage renders at +12 dB drive/default shelves; those settings differ and do
-not isolate hysteresis alone. All sources are synthetic, not hardware recordings.
+Create the output directory first. Run CPU export separately, with no overlapping
+builds or tests:
 
-The extended solver probe is reproducible independently of JUCE/UI:
+```bash
+LUMIERE_MAGNETIC_CPU_REPORT_DIR=/private/tmp/lumiere-after \
+Builds/Release/Tests '[magnetic-live-cpu]' --reporter compact
+```
+
+The standalone solver probe uses the unchanged circuit and its full combined
+calibration/drive range, including instant drive reversals:
 
 ```bash
 clang++ -std=c++23 -O3 -flto -Wall -Wextra -Wconversion -Isource \
   tools/check_magnetic_solver.cpp source/experimental/TransformerAudioCircuit.cpp \
   source/experimental/ConstitutiveLookup.cpp source/experimental/PlayPreisachCore.cpp \
   -o /private/tmp/lumiere-check-magnetic-solver
-/private/tmp/lumiere-check-magnetic-solver /private/tmp/lumiere-magnetic/solver_extremes.csv
+/private/tmp/lumiere-check-magnetic-solver /private/tmp/lumiere-after/solver_extremes.csv
 ```
+
+Structured results/provenance are in the [measurement manifest](measurements/magnetic_shelf_removal/manifest.json).
+Historical shelf-equipped live results remain archived in
+[magnetic_live_v2](measurements/magnetic_live_v2/README.md), and the earlier clamp
+findings are preserved in [TransformerCommitDiagnosis.md](TransformerCommitDiagnosis.md).
+Magnetization weight, memory and magnetic-corner controls require a preparation
+and crossfade-policy decision before implementation. The series commit stage
+remains deferred.

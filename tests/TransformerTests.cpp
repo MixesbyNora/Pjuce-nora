@@ -184,28 +184,6 @@ TEST_CASE ("Transformer zero amount and Out preserve samples bit for bit includi
     CHECK (identical (a, b));
 }
 
-TEST_CASE ("Transformer emphasis shelves are exact inverses with an identity nonlinearity", "[transformer][filters]")
-{
-    for (double sampleRate : { 44100.0, 48000.0, 96000.0, 192000.0 })
-    {
-        CAPTURE (sampleRate);
-        TransformerSaturation stage;
-        stage.prepare (sampleRate, 100.0f, false);
-        std::array<DoubleBiquad::State, 2> pre {}, post {};
-        juce::Random random (0x25102026);
-        auto maximumError = 0.0;
-        for (int i = 0; i < 32768; ++i)
-            for (std::size_t channel = 0; channel < pre.size(); ++channel)
-            {
-                const auto input = random.nextDouble() * 2.0 - 1.0;
-                const auto emphasized = DoubleBiquad::processSample (input, stage.getPreEmphasisCoefficients(), pre[channel]);
-                const auto output = DoubleBiquad::processSample (emphasized, stage.getDeEmphasisCoefficients(), post[channel]);
-                maximumError = juce::jmax (maximumError, std::abs (output - input));
-            }
-        CHECK (juce::Decibels::gainToDecibels (maximumError, -300.0) < -100.0);
-    }
-}
-
 TEST_CASE ("Magnetic transformer preserves small-signal gain above its low-frequency corner", "[transformer][unity]")
 {
     for (double sampleRate : { 44100.0, 48000.0, 96000.0, 192000.0 })

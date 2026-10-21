@@ -47,11 +47,11 @@ reduces work; a 96-evaluation bounded fallback resolves the old cap failures.
 Core tunables remain in `source/experimental/TransformerAudioSettings.h` and
 `MagneticCoreSettings.h`, now shared with live targets.
 
-The private LF emphasis controls retain inverse double-precision shelves around
-the magnetic circuit. Defaults are +12 dB / 120 Hz / Q 0.5, with the reciprocal
-post shelf; shelf/drive defaults are in `TransformerSettings.h`. Core, emphasis,
-voicing and drive state are independent per channel. No cross-channel coloration
-or new stereo mode is added.
+The private LF pre-emphasis/inverse post-emphasis shelf pair has been removed.
+The oversampled path is now input -> magnetic circuit -> output, with independent
+per-channel magnetic history. This intentionally changes the sound of enabled
+transformer processing, including recalled projects; the host Amount default and
+all host parameter identities remain unchanged. No new stereo mode is added.
 
 Fixed internal FIR oversampling is sample-rate aware:
 
@@ -71,28 +71,47 @@ magnetic tail. Bypass/zero Amount preserve original samples after this delay;
 the magnetic solve is skipped and reset, while FIR histories stay warm for
 click-free re-engagement. Component switching crossfades over 10 ms.
 
-## Transformer development voicing and measurements
+## Transformer voicing workbench and measurements
 
-The existing collapsible panel remains alongside generic JUCE controls and
-meters. A/B, copy, reset, reference/default, level-match audition and CSV/JSON
-measurement workflows remain. Drive calibration, LF emphasis and LF corner keep
-their numeric ranges. Voicing changes crossfade between fixed state banks over
-20 ms, with no allocation, locking or UI calls from rendering.
+The collapsible Transformer Voicing panel is a permanent, model-agnostic tuning
+workbench alongside the generic editor and meters. A/B, copy, paste, reset,
+default audition, level matching, measurement capture and JSON/CSV exchange remain.
+The owner tunes by ear and exports settings for code revisions. Future compression
+and tube controls can use this framework; none are added in this phase.
 
-Exports use version 2 and model `transformer-magnetic-play-v2`. Version-1
-`transformer-tanh-residual-adaa-v1` JSON is accepted as a numeric-settings
-migration; no legacy audio engine is restored, and the new sound is not claimed
-to reproduce the old preference. Other host parameters are restored normally.
-Measurements run only on their worker thread, use the same magnetic DSP as live
-audio, turn matching off, and retain cancellation/progress and captured A/B state.
-The generic editor, gain-reduction and bottom-bar meters remain.
+A descriptor table in `source/TransformerVoicing.h` defines IDs, labels, units,
+ranges, steps, defaults and skew. Only drive calibration is currently described:
+-12 to +12 dB, step 0.1 dB, default 0. It remains private state. UI construction,
+quantization, JSON, A/B slots and measurement metadata share this table. Packing
+widths derive from its quantized ranges; both slots and flags still fit in one
+lock-free atomic, with a compile-time capacity check. Audio reads once without
+retrying. Voicing edits retain the existing fixed-bank 20 ms crossfade.
 
-Tube saturation, SAT MIX, AIR, HR, CH MODE and a user-selectable oversampling
-control remain deferred. See [MagneticTransformerLive.md](MagneticTransformerLive.md)
-for validation, CPU measurements, latency and reproduction. Prior offline-only
-milestones remain documented in [the audio prototype](TransformerAudioPrototype.md),
-[first CPU pass](TransformerAudioCpuOptimization.md), and
-[magnetic artifact refinement](MagneticArtifactRefinement.md).
+Version 3 exports identify `lumiere-voicing-workbench-v3`. Version 1 and 2 JSON
+and project state migrate drive calibration, selection and audition flags. Removed
+`emphasisDb` and `cornerHz` fields are ignored, even if malformed, with a visible
+status notice. They never re-enable shelves. The notice survives save/restore.
+Unknown future versions/models or incomplete current descriptor values are
+rejected without replacing current private settings. Projects without private
+state load defaults. The archived tanh favorite remains an immutable historical
+record, not a promise to reproduce its former sound.
+
+Measurements capture both slots on a worker, use the same current transformer
+DSP as live audio, turn matching off, and retain progress, cancellation and stale
+capture detection. Metadata and captured-control labels derive from descriptors;
+removed shelf fields do not appear in new measurement settings.
+
+Magnetization weight k, memory and the magnetic circuit corner are proposed future
+descriptors, not implemented controls. They need approval and a decision about
+preparing/warming different circuit states before fixed-bank crossfading. A
+series commit stage is also deferred. No hardware-accuracy claim is made.
+
+See [MagneticTransformerLive.md](MagneticTransformerLive.md) for before/after
+measurements, numerical validation, CPU, latency and reproduction, and
+[TransformerVoicing.md](TransformerVoicing.md) for the listening workflow.
+Prior offline-only milestones remain historical in
+[the audio prototype](TransformerAudioPrototype.md), [first CPU pass](TransformerAudioCpuOptimization.md)
+and [magnetic artifact refinement](MagneticArtifactRefinement.md).
 
 ## FB/FF
 

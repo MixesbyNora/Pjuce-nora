@@ -7,32 +7,19 @@ double TransformerSaturation::driveGainFor (float amountPercent) noexcept
             * static_cast<double> (amountPercent) / 100.0;
     return juce::Decibels::decibelsToGain (db);
 }
-void TransformerSaturation::configureBank (Bank& bank, std::uint32_t word) noexcept
+void TransformerSaturation::configureBank (Bank& bank, TransformerVoicing::Word word) noexcept
 {
     const auto voice = TransformerVoicing::decode (word);
-    const auto raw = juce::dsp::IIR::ArrayCoefficients<double>::makeLowShelf (internalRate,
-        static_cast<double> (voice.cornerHz), TransformerSettings::shelfQ,
-        juce::Decibels::decibelsToGain (static_cast<double> (voice.emphasisDb)));
-    bank.pre = { raw[0] / raw[3], raw[1] / raw[3], raw[2] / raw[3], raw[4] / raw[3], raw[5] / raw[3] };
-    const auto inverseB0 = 1.0 / bank.pre.b0;
-    bank.post = { inverseB0, bank.pre.a1 * inverseB0, bank.pre.a2 * inverseB0,
-        bank.pre.b1 * inverseB0, bank.pre.b2 * inverseB0 };
-    bank.driveScale = juce::Decibels::decibelsToGain (static_cast<double> (voice.driveCalibrationDb));
+    bank.driveScale = juce::Decibels::decibelsToGain (static_cast<double> (voice[TransformerVoicing::driveCalibration]));
     bank.voicing = word;
     for (auto& state : bank.state)
-    {
-        state.pre = {}; state.post = {};
         state.core.reset();
-    }
 }
 void TransformerSaturation::resetCoreHistory() noexcept
 {
     for (auto& bank : banks)
         for (auto& state : bank.state)
-        {
-            state.pre = {}; state.post = {};
             state.core.reset();
-        }
 }
 void TransformerSaturation::resetHistory() noexcept
 {
@@ -86,8 +73,7 @@ double TransformerSaturation::processBank (Bank& bank, int channel, double origi
 {
     auto& state = bank.state[static_cast<std::size_t> (channel)];
     state.core.setDriveGain (drive * bank.driveScale);
-    const auto emphasized = DoubleBiquad::processSample (original, bank.pre, state.pre);
-    return DoubleBiquad::processSample (state.core.processSample (emphasized), bank.post, state.post);
+    return state.core.processSample (original);
 }
 void TransformerSaturation::process (juce::AudioBuffer<float>& buffer, int channels) noexcept
 {

@@ -78,8 +78,9 @@ juce_add_plugin("${PROJECT_NAME}"
     BUNDLE_ID "${BUNDLE_ID}"
     IS_SYNTH FALSE
 
-    # On MacOS, plugin is copied to /Users/yourname/Library/Audio/Plug-Ins/
-    COPY_PLUGIN_AFTER_BUILD TRUE
+    # JUCE's unconditional copy step lets Debug overwrite the DAW's Release copy.
+    # Deployment is gated to Release below.
+    COPY_PLUGIN_AFTER_BUILD FALSE
 
     # A four-character plugin id
     # First character MUST be uppercase for AU formats
@@ -95,6 +96,25 @@ juce_add_plugin("${PROJECT_NAME}"
     # This can be different from PROJECT_NAME and can have spaces!
     # You might want to use v${MAJOR_VERSION} here once you go to v2...
     PRODUCT_NAME "${PRODUCT_NAME}")
+
+# Keep development builds out of the live plugin folders. Stage and verify
+# Release bundles before replacing installed copies, retaining recoverable backups.
+if(APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    foreach(plugin_target IN ITEMS ${PROJECT_NAME}_VST3 ${PROJECT_NAME}_AU)
+        if(TARGET ${plugin_target})
+            get_target_property(plugin_source ${plugin_target} JUCE_PLUGIN_ARTEFACT_FILE)
+            get_target_property(plugin_destination ${plugin_target} JUCE_PLUGIN_COPY_DIR)
+            add_custom_command(TARGET ${plugin_target} POST_BUILD
+                COMMAND "${CMAKE_COMMAND}"
+                    "-Dconfig=$<CONFIG>"
+                    "-Dsrc=$<GENEX_EVAL:${plugin_source}>"
+                    "-Ddest=$<GENEX_EVAL:${plugin_destination}>"
+                    "-Dbackup_root=${CMAKE_BINARY_DIR}/plugin-backups"
+                    -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CopyReleasePlugin.cmake"
+                VERBATIM)
+        endif()
+    endforeach()
+endif()
 
 # Keep Xcode's AUv3 framework metadata consistent and copy signed bundles intact.
 if(CMAKE_GENERATOR STREQUAL "Xcode" AND TARGET ${PROJECT_NAME}_AUv3_Framework)

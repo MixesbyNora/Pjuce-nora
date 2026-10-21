@@ -1,131 +1,104 @@
 # Transformer voicing workflow
 
-This development panel tunes the existing symmetric tanh/residual-ADAA stage.
-The unchanged original sound is the reference. A Preisach magnetic core, tube
-stage, additional harmonic-shape controls and oversampling are later work.
+The collapsible panel is a permanent tuning workbench. Its controls, A/B slots,
+JSON import/export and measurement metadata use one descriptor table. It is not
+tied to a particular saturation model. Compression and tube controls may use it
+later; they are not introduced here.
 
-## First listening session
+The current live/offline transformer is the voltage-driven magnetic circuit,
+without the former LF emphasis shelf pair. **This intentionally changes sound**,
+including saved projects with the transformer enabled. No legacy shelf or tanh
+engine is selectable. Amount zero and Xfrm Out remain exact delayed bypass.
 
-1. Open **Transformer Voicing** at the right of the generic editor. The panel
-   can be hidden without changing the sound. The editor remains non-resizable.
-2. Set **Xfrm Amount** above 0% and leave **Xfrm Out** unchecked. Keep compressor
-   gain reduction at zero for the initial transformer comparison. The BA Bypass
-   switch bypasses the full wet path, so leave it off while evaluating saturation.
-3. A and B begin at the original values. Edit B first, then switch between A/B.
-   **B > A / A > B** copies the selected voicing to the other slot.
-4. **Original transformer** temporarily auditions the fixed original voicing,
-   preserving both editable slots. **Reset selected** restores the selected slot
-   to the original and turns level matching off.
-5. Optionally enable **Match level (audition)** and allow about one second to
-   settle on a repeating passage. It matches the transformer output RMS to its
-   input, linked across channels. This changes audition gain, so turn it off for
-   exact-reference or harmonic measurements. Bypass and zero amount remain exact.
-6. Use the same bass, drums, vocal and full-mix excerpts at the same input level.
-   Change one property at a time. **Copy settings** copies versioned JSON with
-   both slots, their selection, audition flags, all current plugin parameter
-   values and sample rate. Include that JSON and the source passage/feedback.
-7. **Paste settings** restores the private voicing slots and audition flags. It
-   does not change the other plugin parameters included as feedback context.
+## Listening and feedback
 
-| Voicing control | Range | Original | Effect |
+1. Open **Transformer Voicing** beside the generic editor. Hiding the panel changes
+   no settings. Enable the stage being tuned; drive calibration currently needs
+   Xfrm Amount above zero and Xfrm Out unchecked.
+2. Change one control at a time. A/B switches stored slots; **B > A / A > B** copies
+   the selected slot. **Default voicing** temporarily auditions descriptor defaults,
+   preserving both editable slots. **Reset selected** resets that slot and turns
+   matching off. Default now means the current shelf-free engine.
+3. Optionally use **Match level (audition)** on a repeating passage and allow it to
+   settle. It matches linked output RMS to input using a 250 ms average, 100 ms gain
+   smoothing and at most +/-12 dB compensation. This is not perceptual loudness
+   matching; disable it for numerical measurements.
+4. **Copy settings** exports both slots, selection, audition flags and descriptor
+   values, plus the processor parameter/sample-rate context. Send this JSON with
+   the source passage, input level and listening notes to guide later code tuning.
+5. **Paste settings** recalls private settings without changing host parameters.
+   Project state saves the same schema alongside APVTS.
+
+| Current private descriptor | Range | Default | Meaning |
 |---|---|---|---|
-| Drive calibration | -12 to +12 dB, 0.1 dB steps | 0 dB | Offset to the existing Amount/drive mapping |
-| LF emphasis | 0 to +24 dB, 0.1 dB steps | +12 dB | Low-shelf excitation ahead of the nonlinearity |
-| Shelf frequency | 30 to 500 Hz, 1 Hz steps | 120 Hz | Corner of both inverse shelves; Q stays 0.5 |
+| `driveCalibrationDb` / Drive calibration | -12 to +12 dB, step 0.1 dB | 0 dB | Offset to Amount's internal drive mapping |
 
-These controls are private development state, not new host automation parameters.
-Projects save both slots, selection and flags in a versioned child alongside APVTS
-state. Older projects load the original voicing with matching off. Future builds
-can hide the panel while retaining those values. The JSON identifies the model;
-incompatible models/versions and incomplete data are rejected without replacing
-the current settings. Numeric inputs are bounded to the supported ranges.
+Only this descriptor is active. Units, range, step, default and skew all come from
+`source/TransformerVoicing.h`; new sliders are built from that table. Private
+settings are not host automation parameters. DSP ramp, bypass and audition timing
+constants remain in `source/dsp/TransformerSettings.h`.
 
-## Processing and comparisons
+## State, migration and realtime behavior
 
-Changing voicing crossfades two fixed-size complete transformer filter/state banks
-over 20 ms. The previous bank keeps running through the transition; fast edits
-are coalesced to the latest requested voicing for the next transition. Amount's
-20 ms smoothing and Out's 10 ms fade retain their original behavior.
+Exports identify version 3 and `lumiere-voicing-workbench-v3`. Version 1 tanh and
+version 2 magnetic files are accepted. Drive calibration, A/B selection, reference
+and level-match flags migrate. Removed `emphasisDb` and `cornerHz` values are
+ignored rather than validated or applied. Panel status clearly says that legacy
+LF emphasis and shelf frequency were ignored because the shelves were removed.
+That notice is included when migrated settings are saved/exported.
 
-The inverse de-emphasis is recomputed algebraically from the new pre-emphasis.
-All coefficient creation uses fixed arrays, never reference-counted IIR allocation.
-Private state reaches the audio thread in one lock-free packed atomic snapshot;
-processing never accesses UI, JSON, files, locks or dynamic storage.
+Unknown future schemas/models and incomplete current values are rejected without
+replacing private settings. Projects with no workbench data reset to defaults;
+projects with legacy data migrate without error. A future private child is ignored
+while preserving current private settings; host parameter state still restores.
+The archived [tanh favorite](voicings/tanh-favorite-v1.json) is unchanged: its B
+calibration migrates, but its shelf values and former tone do not.
 
-Optional level matching uses a 250 ms power average, 100 ms gain smoothing and
-at most +/-12 dB compensation. It is off by default. It operates only on the
-transformer output before OUT gain, LFM, Mix, bypass and monitor, with no effect
-on detector input or compressor gain reduction. It is an audition aid, not a
-replacement for the final desired gain staging. All tunable bounds and times are
-in `source/dsp/TransformerSettings.h`.
+Descriptor quantization determines the packing widths. Both slots and flags fit
+in a single lock-free atomic word; a compile-time guard prevents overflow if a
+later schema grows. Audio reads are bounded, with no seqlock spin. Fixed magnetic
+banks crossfade over 20 ms, coalescing rapid edits to the latest requested values.
+Amount smoothing, Out fade and dry/Mix/Delta latency alignment are unchanged.
+There are no rendering allocations, locks, logging, files, JSON or UI operations.
 
-## Repeatable measurement report
+## Measurements
 
-### In-plugin measurement view
+Open **Measurements** and press **Measure A/B**. The worker captures stored slots
+and runs separate current transformer instances. Internal tones never enter the
+DAW path. Cancel keeps the last completed report; closing the editor cancels and
+joins the worker. Live audio, meters, settings and processor state are independent.
 
-Open **Measurements** in the collapsible Transformer Voicing panel, then press
-**Measure A/B**. A low-priority background worker captures both stored slots and
-measures a separate transformer instance. Its internal tones never enter the DAW
-signal path. The audio callback, meters, host parameters and saved voicing remain
-unchanged. Closing the editor cancels and joins the worker; **Cancel** stops a
-capture without publishing a partial report.
+The 48 kHz grid uses 20/50/60/200/1000/5000/8000 Hz, -60/-24/-12/-6 dBFS and
+Amount 25/50/100%, with 250 ms warmup and one-second Fourier analysis. Matching is
+off and the transformer is In. Compressor, BA gains, LFM, Mix and monitor are
+excluded. The current stage supplies its own fixed internal oversampling.
 
-Measurements use the same grid and transformer implementation as the offline
-report below: 48 kHz, 250 ms startup, one-second analysis, seven frequencies,
-four input levels and Amount 25/50/100%. This fixed sample rate is independent
-of the DAW sample rate. Both slots are measured with the transformer In and
-audition matching off, regardless of the live Out, Amount, Original or matching
-controls. Compressor, sidechain, BA gains, LFM, Mix and monitor are excluded.
+Tone, Level and Amount selectors browse captured results. Gain and RMS are dB;
+H2/H3/H5/H7 are relative to the fundamental (dBc). The display floor is -140 dBc;
+harmonics at/above Nyquist are NA. Captured-control labels and CSV settings come
+from descriptors, with no shelf fields. Edits mark old captures stale. Copy CSV
+retains the full grid and exported context when closing the editor.
 
-The **Tone**, **Level** and **Amount** selectors browse the completed capture;
-they do not change live parameters. Blue is A and amber is B. The upper plot
-shows fundamental gain versus input level at the selected frequency/Amount.
-The lower plot and numeric table show H2/H3/H5/H7 at the selected input level,
-plus fundamental and RMS gain. Harmonics are relative to the fundamental (dBc).
-The display floor is -140 dBc; lower readings appear as `< -140`. Frequencies
-at or above Nyquist are `NA`, including H3 at an 8 kHz fundamental. Aliasing
-can still affect in-band readings; this view adds no oversampling.
-
-Voicing changes during a capture do not change that capture. The status marks
-completed results stale when either slot differs from its captured settings.
-**Copy CSV** copies all 168 A/B points, exact measured voicings and the versioned
-plugin-context snapshot. Live plugin parameters in that context are reference
-information; only the two transformer voicings drive the measurements. Cancel
-keeps any earlier completed report available. Results are temporary editor state;
-copy the CSV to retain them when closing the editor.
-
-### Saved favorite
-
-[tanh-favorite-v1.json](voicings/tanh-favorite-v1.json) preserves the listening
-favorite supplied on 2026-10-20: B has -6.1 dB drive calibration, +6.1 dB LF
-emphasis, and a 103 Hz corner; A is the original. The supplied host-parameter
-context is retained in the file. Paste its JSON with **Paste settings** to recall
-the voicings; other host parameters are not imported. Factory defaults remain
-unchanged. [The favorite A/B report](measurements/transformer_tanh_v1_favorite_ab.csv)
-compares those settings using the new measurement engine.
-
-### Command-line report
-
-Build the requested plugin targets and Tests with the usual Xcode workflow.
-The report is an offline Catch2 utility, not an audio callback or Benchmarks job:
+For a selected-voicing command-line report (use Release for offline speed):
 
 ```bash
-LUMIERE_VOICING_REPORT=/private/tmp/transformer.csv ./Builds/Debug/Tests '[voicing-report]' --reporter compact
+LUMIERE_VOICING_REPORT=/private/tmp/transformer.csv Builds/Release/Tests '[voicing-report]' --reporter compact
 ```
 
-To measure a copied voicing, save its JSON to a file and additionally set
-`LUMIERE_VOICING_SETTINGS` to that file's absolute path. The exporter measures
-the selected voicing (or Original), always with audition matching disabled.
+Set `LUMIERE_VOICING_SETTINGS` to an exported JSON file to select its current or
+migrated voicing. Historical tanh reports remain historical; new measurements use
+only the current shelf-free magnetic DSP. See [the live report](MagneticTransformerLive.md)
+for retained before/after tone grids, CPU, clamp counts and numerical checks.
 
-The checked-in `measurements/transformer_tanh_v1_baseline.csv` records the original
-voicing at 48 kHz: 20/50/60/200/1000/5000/8000 Hz; -60/-24/-12/-6 dBFS; Amount
-25/50/100%. It reports fundamental gain, RMS gain, and H2/H3/H5/H7 relative to
-the fundamental. Each measurement discards 250 ms startup and analyzes one
-second. Harmonics at/above Nyquist are `NA`, not measured as aliased harmonics.
-The first two comment lines identify the model/settings and data provenance.
+## Proposed controls, awaiting approval
 
-This file measures Lumiere's original software model; it is not Carnhill hardware
-data or evidence that the current model matches a VTB1148.
+The next possible descriptors are magnetization weight k, memory and **magnetic
+circuit** corner Hz (not the deleted shelf frequency). Their current fixed values
+are k=4, memory=0.35 and 5 Hz. Do not add them merely by
+extending the UI table: their setters must prepare a differently configured
+inactive circuit. A decision is needed on whether/how to warm that bank with
+recent input/history before its 20 ms crossfade. No such controls, new preparation
+policy or series commit stage are implemented in this phase.
 
 ## Published VTB1148 starting references
 
@@ -149,6 +122,3 @@ not VTB1148. No VTB1148 Preisach distribution is claimed from these data.
 The observations above are reference constraints, not digitized raw datasets.
 Do not directly equate the thesis's analog dBu levels to the report's dBFS
 levels; a defined electrical calibration is still needed for hardware fitting.
-
-Next iteration: select and retain listening excerpts, voice within this panel,
-then introduce magnetic-memory behavior behind the same comparison interface.

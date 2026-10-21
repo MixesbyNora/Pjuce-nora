@@ -16,33 +16,28 @@ TransformerVoicingPanel::TransformerVoicingPanel (TransformerVoicingState& state
     voicingTab.onClick = [this] { showMeasurements (false); };
     measurementTab.onClick = [this] { showMeasurements (true); };
     voicingTab.setToggleState (true, juce::dontSendNotification);
-    const std::array names { "Drive calibration", "LF emphasis", "Shelf frequency" };
-    const std::array ids { "voicingDrive", "voicingEmphasis", "voicingFrequency" };
     for (std::size_t i = 0; i < sliders.size(); ++i)
     {
-        labels[i].setText (names[i], juce::dontSendNotification);
+        const auto& descriptor = TransformerVoicing::descriptors[i];
+        labels[i].setText (descriptor.label, juce::dontSendNotification);
         addAndMakeVisible (labels[i]);
         auto& slider = sliders[i];
-        slider.setComponentID (ids[i]);
+        slider.setComponentID ("voicing_" + juce::String (descriptor.id));
         slider.setSliderStyle (juce::Slider::LinearHorizontal);
         slider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 84, 24);
-        slider.setTextValueSuffix (i == 2 ? " Hz" : " dB");
+        slider.setTextValueSuffix (" " + juce::String (descriptor.unit));
+        slider.setRange (descriptor.minimum, descriptor.maximum, descriptor.step);
+        slider.setSkewFactor (descriptor.skew);
         slider.onValueChange = [this]
         {
             pasteError.clear();
-            state.setCurrent ({ static_cast<float> (sliders[0].getValue()),
-                static_cast<float> (sliders[1].getValue()), static_cast<float> (sliders[2].getValue()) });
+            TransformerVoicing::Values values;
+            for (std::size_t index = 0; index < sliders.size(); ++index)
+                values[index] = static_cast<float> (sliders[index].getValue());
+            state.setCurrent (values);
         };
         addAndMakeVisible (slider);
     }
-    using namespace TransformerSettings;
-    sliders[0].setRange (calibrationMinimumDb, calibrationMaximumDb, 0.1);
-    sliders[1].setRange (emphasisMinimumDb, emphasisMaximumDb, 0.1);
-    sliders[2].setRange (cornerMinimumHz, cornerMaximumHz, 1.0);
-    sliders[2].setSkewFactorFromMidPoint (shelfFrequencyHz);
-    sliders[0].setTooltip ("Offsets the existing Amount-to-drive mapping. Zero retains the original drive calibration.");
-    sliders[1].setTooltip ("Low-frequency excitation before saturation. De-emphasis remains its exact inverse.");
-    sliders[2].setTooltip ("Corner frequency of the inverse shelf pair.");
     for (auto* button : { &a, &b, &copySlot, &reset, &copy, &paste })
         addAndMakeVisible (*button);
     a.setComponentID ("voicingA");
@@ -75,10 +70,11 @@ TransformerVoicingPanel::TransformerVoicingPanel (TransformerVoicingState& state
     };
     addAndMakeVisible (reference);
     addAndMakeVisible (match);
-    hint.setText ("Current model: voltage-driven magnetic hysteresis\n\nUse Xfrm Amount above 0% and keep Xfrm Out unchecked.\n\nFor comparisons, let Match level settle for about a second. Disable it for exact reference and harmonic measurements.", juce::dontSendNotification);
+    hint.setText ("Private tuning workbench\n\nAdjust one control at a time, compare A/B, then copy settings with your listening notes.\n\nLet Match level settle before comparing. Disable it for reference and harmonic measurements.", juce::dontSendNotification);
     hint.setFont (juce::FontOptions (13.0f));
     hint.setJustificationType (juce::Justification::topLeft);
     addAndMakeVisible (hint);
+    status.setComponentID ("voicingStatus");
     status.setFont (juce::FontOptions (13.0f));
     status.setJustificationType (juce::Justification::topLeft);
     addAndMakeVisible (status);
@@ -90,9 +86,8 @@ void TransformerVoicingPanel::refresh()
     measurements.refresh();
     const auto snapshot = state.read();
     const auto values = snapshot.reference ? TransformerVoicing::Values {} : snapshot.useB ? snapshot.b : snapshot.a;
-    sliders[0].setValue (values.driveCalibrationDb, juce::dontSendNotification);
-    sliders[1].setValue (values.emphasisDb, juce::dontSendNotification);
-    sliders[2].setValue (values.cornerHz, juce::dontSendNotification);
+    for (std::size_t i = 0; i < sliders.size(); ++i)
+        sliders[i].setValue (values[i], juce::dontSendNotification);
     for (auto& slider : sliders)
         slider.setEnabled (! snapshot.reference);
     a.setToggleState (! snapshot.useB && ! snapshot.reference, juce::dontSendNotification);
@@ -101,8 +96,9 @@ void TransformerVoicingPanel::refresh()
     match.setToggleState (snapshot.levelMatch, juce::dontSendNotification);
     copySlot.setButtonText (snapshot.useB ? "B > A" : "A > B");
     status.setText (pasteError.isNotEmpty() ? pasteError
-        : juce::String ("Model v2 | ") + (snapshot.reference ? "Original" : snapshot.useB ? "Editing B" : "Editing A")
-            + "\nSettings and both snapshots are saved with the project.", juce::dontSendNotification);
+        : juce::String ("Workbench v3 | ") + (snapshot.reference ? "Default" : snapshot.useB ? "Editing B" : "Editing A")
+            + "\nSettings and both snapshots are saved with the project."
+            + (snapshot.legacyShelvesIgnored ? "\nLegacy LF emphasis and shelf frequency ignored: shelves removed." : ""), juce::dontSendNotification);
 }
 
 void TransformerVoicingPanel::showMeasurements (bool show)

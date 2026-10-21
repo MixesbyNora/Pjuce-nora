@@ -12,6 +12,8 @@ The template provides the build system, CI/CD, and project structure. The plugin
 
 Use Xcode with the existing `Builds` directory. Builds default to Debug for development; use Release when making music if Debug causes high CPU use or audio dropouts.
 
+Debug builds stay in `Builds/Lumiere_artefacts/Debug` and never replace installed plugins. Only Release AU/VST3 builds deploy to the user plugin folders. Deployment verifies a staged bundle and moves the previous copy into `Builds/plugin-backups`. Reload the plugin in the DAW after installing Release; an already-loaded instance keeps its old binary.
+
 ```bash
 # Configure (run once, or after CMakeLists.txt changes)
 cmake -B Builds -G Xcode

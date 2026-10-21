@@ -306,8 +306,10 @@ void PluginProcessor::setStateInformation (const void* data, int sizeInBytes)
         {
             auto state = juce::ValueTree::fromXml (*xml);
             const auto voicing = state.getChildWithName ("TRANSFORMER_VOICING");
-            if (! transformerVoicing.restoreJson (voicing.getProperty ("json").toString()))
+            if (! voicing.isValid())
                 transformerVoicing.resetAll();
+            else
+                transformerVoicing.restoreJson (voicing.getProperty ("json").toString());
             state.removeChild (voicing, nullptr);
             gainLink->beginStateRestore();
             parameters.replaceState (state);

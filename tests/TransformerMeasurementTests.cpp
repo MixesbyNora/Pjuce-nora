@@ -50,7 +50,7 @@ TEST_CASE ("Offline transformer measurements retain unity and mark out-of-band h
     const auto nyquist = TransformerMeasurement::measurePoint ({}, 8000.0, -6.0f, 100.0f);
     REQUIRE (nyquist);
     CHECK ((nyquist->available == std::array<bool, 4> { true, false, false, false }));
-    for (const auto voice : { TransformerVoicing::Values { -12.0f, 0.0f, 30.0f }, TransformerVoicing::Values { 12.0f, 24.0f, 500.0f } })
+    for (const auto voice : { TransformerVoicing::Values { { -12.0f } }, TransformerVoicing::Values { { 12.0f } } })
         for (double frequency : { 20.0, 8000.0 })
         {
             const auto extreme = TransformerMeasurement::measurePoint (voice, frequency, -6.0f, 100.0f);
@@ -66,7 +66,7 @@ TEST_CASE ("Streaming measurement matches an independent full-buffer Fourier ana
 {
     constexpr double frequency = 1000.0;
     constexpr float level = -12.0f;
-    const TransformerVoicing::Values voice { -6.1f, 6.1f, 103.0f };
+    const TransformerVoicing::Values voice { { -6.1f } };
     const auto measured = TransformerMeasurement::measurePoint (voice, frequency, level, 100.0f);
     REQUIRE (measured);
     juce::AudioBuffer<float> audio (1, 60000);
@@ -169,10 +169,9 @@ TEST_CASE ("Measurement view captures favorite A B without altering processor au
     view->refresh();
     const auto* result = view->getResult();
     REQUIRE (result);
-    CHECK (result->request.a.driveCalibrationDb == 0.0f);
-    CHECK (result->request.b.driveCalibrationDb == Catch::Approx (-6.1f));
-    CHECK (result->request.b.emphasisDb == Catch::Approx (6.1f));
-    CHECK (result->request.b.cornerHz == 103.0f);
+    CHECK (result->request.a[TransformerVoicing::driveCalibration] == 0.0f);
+    CHECK (result->request.b[TransformerVoicing::driveCalibration] == Catch::Approx (-6.1f));
+    CHECK (processor.getTransformerVoicing().read().legacyShelvesIgnored);
     const auto& point = result->at (4, 3, 2);
     CHECK (point.frequencyHz == 1000.0);
     CHECK (point.inputDbfs == Catch::Approx (-6.0f));
@@ -187,7 +186,7 @@ TEST_CASE ("Measurement view captures favorite A B without altering processor au
                 REQUIRE (isFiniteMeasurement (value));
         }
     const auto csv = TransformerMeasurement::toCsv (*result);
-    CHECK (csv.contains ("B: driveCalibrationDb=-6.1, emphasisDb=6.1, cornerHz=103"));
+    CHECK (csv.contains ("B: driveCalibrationDb=-6.1"));
     CHECK (csv.contains ("B,48000,8000.000000,-6.000000,100.000000,"));
     CHECK (csv.contains (",NA,NA,NA"));
     if (const auto* output = std::getenv ("LUMIERE_MEASUREMENT_REPORT"))
@@ -199,7 +198,7 @@ TEST_CASE ("Measurement view captures favorite A B without altering processor au
         REQUIRE (stream.openedOk());
         REQUIRE (juce::PNGImageFormat().writeImageToStream (image, stream));
     }
-    processor.getTransformerVoicing().setCurrent ({ 3.0f, 10.0f, 120.0f });
+    processor.getTransformerVoicing().setCurrent ({ { 3.0f } });
     view->refresh();
     auto stale = false;
     for (auto* child : view->getChildren())
@@ -214,7 +213,7 @@ TEST_CASE ("Measurement view captures favorite A B without altering processor au
     CHECK_FALSE (view->isMeasuring());
     view->refresh();
     REQUIRE (view->getResult());
-    CHECK (view->getResult()->request.b.cornerHz == 103.0f);
+    CHECK (view->getResult()->request.b[TransformerVoicing::driveCalibration] == Catch::Approx (-6.1f));
     run->onClick(); // Closing the editor cancels/joins the in-flight worker.
     editor.reset();
 }

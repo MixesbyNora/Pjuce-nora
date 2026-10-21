@@ -13,6 +13,7 @@ public:
         bool useB = true;
         bool reference = false;
         bool levelMatch = false;
+        bool legacyShelvesIgnored = false;
     };
     struct AudioValues
     {
@@ -31,6 +32,7 @@ public:
     void resetAll() noexcept;
     juce::String toJson() const;
     bool restoreJson (const juce::String& json);
+    static juce::String describe (TransformerVoicing::Values values, bool ids = true);
 
 private:
     static std::uint64_t encode (Snapshot snapshot) noexcept;

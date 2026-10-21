@@ -2,19 +2,22 @@
 
 std::uint64_t TransformerVoicingState::encode (Snapshot snapshot) noexcept
 {
-    return static_cast<std::uint64_t> (TransformerVoicing::encode (snapshot.a))
-        | (static_cast<std::uint64_t> (TransformerVoicing::encode (snapshot.b)) << 25)
-        | (static_cast<std::uint64_t> (snapshot.useB) << 50)
-        | (static_cast<std::uint64_t> (snapshot.reference) << 51)
-        | (static_cast<std::uint64_t> (snapshot.levelMatch) << 52);
+    constexpr auto offset = 2 * TransformerVoicing::valueBits;
+    return TransformerVoicing::encode (snapshot.a)
+        | (TransformerVoicing::encode (snapshot.b) << TransformerVoicing::valueBits)
+        | (static_cast<std::uint64_t> (snapshot.useB) << offset)
+        | (static_cast<std::uint64_t> (snapshot.reference) << (offset + 1))
+        | (static_cast<std::uint64_t> (snapshot.levelMatch) << (offset + 2))
+        | (static_cast<std::uint64_t> (snapshot.legacyShelvesIgnored) << (offset + 3));
 }
 
 TransformerVoicingState::Snapshot TransformerVoicingState::decode (std::uint64_t word) noexcept
 {
-    constexpr auto mask = (1ULL << 25) - 1;
-    return { TransformerVoicing::decode (static_cast<std::uint32_t> (word & mask)),
-        TransformerVoicing::decode (static_cast<std::uint32_t> ((word >> 25) & mask)),
-        ((word >> 50) & 1) != 0, ((word >> 51) & 1) != 0, ((word >> 52) & 1) != 0 };
+    constexpr auto offset = 2 * TransformerVoicing::valueBits;
+    return { TransformerVoicing::decode (word & TransformerVoicing::valueMask),
+        TransformerVoicing::decode ((word >> TransformerVoicing::valueBits) & TransformerVoicing::valueMask),
+        ((word >> offset) & 1) != 0, ((word >> (offset + 1)) & 1) != 0,
+        ((word >> (offset + 2)) & 1) != 0, ((word >> (offset + 3)) & 1) != 0 };
 }
 
 TransformerVoicingState::Snapshot TransformerVoicingState::read() const noexcept
@@ -64,9 +67,8 @@ juce::String TransformerVoicingState::toJson() const
     const auto valuesToVar = [] (TransformerVoicing::Values values)
     {
         auto object = std::make_unique<juce::DynamicObject>();
-        object->setProperty ("driveCalibrationDb", values.driveCalibrationDb);
-        object->setProperty ("emphasisDb", values.emphasisDb);
-        object->setProperty ("cornerHz", values.cornerHz);
+        for (std::size_t i = 0; i < TransformerVoicing::descriptors.size(); ++i)
+            object->setProperty (TransformerVoicing::descriptors[i].id, values[i]);
         return juce::var (object.release());
     };
     auto root = std::make_unique<juce::DynamicObject>();
@@ -77,6 +79,7 @@ juce::String TransformerVoicingState::toJson() const
     root->setProperty ("selected", snapshot.useB ? "B" : "A");
     root->setProperty ("reference", snapshot.reference);
     root->setProperty ("levelMatch", snapshot.levelMatch);
+    root->setProperty ("legacyShelvesIgnored", snapshot.legacyShelvesIgnored);
     return juce::JSON::toString (juce::var (root.release()), true);
 }
 
@@ -85,23 +88,24 @@ bool TransformerVoicingState::restoreJson (const juce::String& json)
     const auto root = juce::JSON::parse (json);
     if (! root.isObject()) return false;
     const auto current = static_cast<int> (root["version"]) == TransformerVoicing::version && root["model"].toString() == TransformerVoicing::model;
-    const auto legacy = static_cast<int> (root["version"]) == 1 && root["model"].toString() == TransformerVoicing::legacyModel;
+    const auto legacy = (static_cast<int> (root["version"]) == 1 && root["model"].toString() == TransformerVoicing::legacyModel)
+        || (static_cast<int> (root["version"]) == 2 && root["model"].toString() == TransformerVoicing::legacyMagneticModel);
     if (! current && ! legacy)
+        return false;
+    if (current && ! root["legacyShelvesIgnored"].isVoid() && ! root["legacyShelvesIgnored"].isBool())
         return false;
     const auto readValues = [] (const juce::var& object, TransformerVoicing::Values& values)
     {
         if (! object.isObject())
             return false;
-        const std::array<const char*, 3> keys { "driveCalibrationDb", "emphasisDb", "cornerHz" };
-        std::array<float, 3> numbers {};
-        for (std::size_t i = 0; i < keys.size(); ++i)
+        for (std::size_t i = 0; i < TransformerVoicing::descriptors.size(); ++i)
         {
-            const auto value = object[keys[i]];
+            const auto value = object[TransformerVoicing::descriptors[i].id];
             if (! value.isDouble() && ! value.isInt() && ! value.isInt64())
                 return false;
-            numbers[i] = static_cast<float> (value);
+            values[i] = static_cast<float> (value);
         }
-        values = TransformerVoicing::sanitized ({ numbers[0], numbers[1], numbers[2] });
+        values = TransformerVoicing::sanitized (values);
         return true;
     };
     Snapshot snapshot;
@@ -112,6 +116,23 @@ bool TransformerVoicingState::restoreJson (const juce::String& json)
     snapshot.useB = root["selected"].toString() == "B";
     snapshot.reference = static_cast<bool> (root["reference"]);
     snapshot.levelMatch = static_cast<bool> (root["levelMatch"]);
+    snapshot.legacyShelvesIgnored = legacy || static_cast<bool> (root["legacyShelvesIgnored"]);
     state.store (encode (snapshot), std::memory_order_relaxed);
     return true;
+}
+
+juce::String TransformerVoicingState::describe (TransformerVoicing::Values values, bool ids)
+{
+    juce::String text;
+    for (std::size_t i = 0; i < TransformerVoicing::descriptors.size(); ++i)
+    {
+        const auto& d = TransformerVoicing::descriptors[i];
+        if (i != 0) text += ", ";
+        auto decimals = 0;
+        auto step = d.step;
+        while (decimals < 6 && std::abs (step - std::round (step)) > 1.0e-8) { ++decimals; step *= 10.0; }
+        text += juce::String (ids ? d.id : d.label) + (ids ? "=" : " ") + juce::String (values[i], decimals);
+        if (! ids) text += " " + juce::String (d.unit);
+    }
+    return text;
 }
