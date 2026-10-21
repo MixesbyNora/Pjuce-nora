@@ -48,7 +48,7 @@ juce::AudioBuffer<float> tone (double rate, double frequency, float levelDb, int
 TEST_CASE ("Private voicing snapshots export recall reset and reject incompatible data", "[voicing][state]")
 {
     TransformerVoicingState state;
-    const TransformerVoicing::Values altered { { 6.5f } };
+    const TransformerVoicing::Values altered { 6.5f };
     CHECK (TransformerVoicing::equal (state.readAudio().voicing, {}));
     CHECK_FALSE (state.readAudio().levelMatch);
     state.setCurrent (altered);
@@ -83,7 +83,7 @@ TEST_CASE ("Private voicing snapshots export recall reset and reject incompatibl
 TEST_CASE ("Packed voicing publication never exposes a torn snapshot", "[voicing][threading]")
 {
     TransformerVoicingState state;
-    const TransformerVoicing::Values a { { -12.0f } }, b { { 12.0f } };
+    const TransformerVoicing::Values a { -12.0f, 16.0f, 1.0f, 30.0f }, b { 12.0f, 0.0f, 0.0f, 0.5f };
     std::atomic<bool> done { false };
     std::thread writer ([&]
     {
@@ -105,7 +105,7 @@ TEST_CASE ("Plugin state retains private voicing without adding or reordering ho
 {
     PluginProcessor processor;
     set (processor, "xfrmAmount", 75.0f);
-    processor.getTransformerVoicing().setCurrent ({ { 6.5f } });
+    processor.getTransformerVoicing().setCurrent ({ 6.5f });
     processor.getTransformerVoicing().setLevelMatch (true);
     const auto feedback = juce::JSON::parse (processor.exportTransformerVoicing());
     CHECK (static_cast<float> (feedback["processorParameters"]["xfrmAmount"]) == Catch::Approx (75.0f));
@@ -151,6 +151,20 @@ TEST_CASE ("Voicing panel controls real processor state and collapses without di
     REQUIRE (selectA != nullptr);
     selectA->onClick();
     CHECK (slider->getValue() == Catch::Approx (0.0).margin (1.0e-10));
+    for (std::size_t i = 1; i < TransformerVoicing::descriptors.size(); ++i)
+    {
+        const auto& descriptor = TransformerVoicing::descriptors[i];
+        auto* control = dynamic_cast<juce::Slider*> (panel->findChildWithID ("voicing_" + juce::String (descriptor.id)));
+        REQUIRE (control);
+        control->setValue (descriptor.maximum, juce::sendNotificationSync);
+        CHECK (processor.getTransformerVoicing().readAudio().voicing[i] == Catch::Approx (descriptor.maximum));
+    }
+    for (auto* child : panel->getChildren())
+        if (child->isVisible())
+        {
+            CHECK (child->getHeight() > 0);
+            CHECK (panel->getLocalBounds().contains (child->getBounds()));
+        }
     auto* selectB = dynamic_cast<juce::Button*> (panel->findChildWithID ("voicingB"));
     REQUIRE (selectB != nullptr);
     selectB->onClick();
@@ -181,7 +195,7 @@ TEST_CASE ("Voicing changes reach the transformer while detection meters and byp
         set (*processor, "threshold", -30.0f);
         set (*processor, "makeup", 12.0f);
     }
-    voiced.getTransformerVoicing().setCurrent ({ { 6.0f } });
+    voiced.getTransformerVoicing().setCurrent ({ 6.0f });
     for (auto* processor : { &reference, &voiced })
         processor->prepareToPlay (48000.0, 256);
     const auto dry = tone (48000.0, 73.0, -6.0f, 8192);
@@ -223,8 +237,8 @@ TEST_CASE ("Voicing changes and level-match toggles are smooth finite and bounde
                 const auto changed = i % 256 == 0;
                 if (changed)
                 {
-                    stage.setVoicing ((i / 256) % 2 == 0 ? TransformerVoicing::Values { { 6.0f } }
-                        : TransformerVoicing::Values { { -6.0f } }, useMatch && (i / 256) % 3 == 0);
+                    stage.setVoicing ((i / 256) % 2 == 0 ? TransformerVoicing::Values { 6.0f }
+                        : TransformerVoicing::Values { -6.0f }, useMatch && (i / 256) % 3 == 0);
                 }
                 stage.process (frame, 2);
                 const auto output = frame.getSample (0, 0);
@@ -248,8 +262,8 @@ TEST_CASE ("Voicing changes and level-match toggles are smooth finite and bounde
             for (int i = 0; i < static_cast<int> (rate * 0.4); ++i)
             {
                 if (i % 256 == 0)
-                    dc.setVoicing ((i / 256) % 2 == 0 ? TransformerVoicing::Values { { 6.0f } }
-                        : TransformerVoicing::Values { { -6.0f } }, useMatch && (i / 256) % 3 == 0);
+                    dc.setVoicing ((i / 256) % 2 == 0 ? TransformerVoicing::Values { 6.0f }
+                        : TransformerVoicing::Values { -6.0f }, useMatch && (i / 256) % 3 == 0);
                 frame.setSample (0, 0, 0.95f);
                 frame.setSample (1, 0, 0.95f);
                 dc.process (frame, 2);
@@ -260,7 +274,7 @@ TEST_CASE ("Voicing changes and level-match toggles are smooth finite and bounde
             for (int size : { 1, 64, 4096 })
             {
                 auto loud = tone (rate, 50.0, 24.0f, size);
-                stage.setVoicing ({ { 12.0f } }, true);
+                stage.setVoicing ({ 12.0f }, true);
                 stage.process (loud, 2);
                 CHECK (finite (loud));
             }
@@ -328,7 +342,7 @@ TEST_CASE ("Workbench descriptors define quantization defaults ranges and serial
 {
     TransformerVoicingState state;
     const auto exported = juce::JSON::parse (state.toJson());
-    CHECK (static_cast<int> (exported["version"]) == 3);
+    CHECK (static_cast<int> (exported["version"]) == TransformerVoicing::version);
     CHECK (exported["model"].toString() == TransformerVoicing::model);
     REQUIRE (exported["A"].getDynamicObject());
     CHECK (exported["A"].getDynamicObject()->getProperties().size() == static_cast<int> (TransformerVoicing::descriptors.size()));
@@ -433,8 +447,11 @@ TEST_CASE ("Workbench publication keeps both slots and flags in one coherent sna
     for (auto* value : { &first, &second })
     {
         const auto useFirst = value == &first;
-        (*value)["A"].getDynamicObject()->setProperty ("driveCalibrationDb", useFirst ? -12.0 : 12.0);
-        (*value)["B"].getDynamicObject()->setProperty ("driveCalibrationDb", useFirst ? 12.0 : -12.0);
+        for (const auto& d : TransformerVoicing::descriptors)
+        {
+            (*value)["A"].getDynamicObject()->setProperty (d.id, useFirst ? d.minimum : d.maximum);
+            (*value)["B"].getDynamicObject()->setProperty (d.id, useFirst ? d.maximum : d.minimum);
+        }
         value->getDynamicObject()->setProperty ("selected", useFirst ? "A" : "B");
         value->getDynamicObject()->setProperty ("reference", useFirst);
         value->getDynamicObject()->setProperty ("levelMatch", ! useFirst);
@@ -442,6 +459,9 @@ TEST_CASE ("Workbench publication keeps both slots and flags in one coherent sna
     }
     const auto a = juce::JSON::toString (first), b = juce::JSON::toString (second);
     REQUIRE (state.restoreJson (a));
+    const auto firstSnapshot = state.read();
+    REQUIRE (state.restoreJson (b));
+    const auto secondSnapshot = state.read();
     std::atomic<bool> done { false }, importsValid { true };
     std::thread writer ([&]
     {
@@ -453,9 +473,9 @@ TEST_CASE ("Workbench publication keeps both slots and flags in one coherent sna
     do
     {
         const auto snapshot = state.read();
-        const auto isFirst = sameFloat (snapshot.a[0], -12.0f) && sameFloat (snapshot.b[0], 12.0f) && ! snapshot.useB
+        const auto isFirst = TransformerVoicing::equal (snapshot.a, firstSnapshot.a) && TransformerVoicing::equal (snapshot.b, firstSnapshot.b) && ! snapshot.useB
             && snapshot.reference && ! snapshot.levelMatch && snapshot.legacyShelvesIgnored;
-        const auto isSecond = sameFloat (snapshot.a[0], 12.0f) && sameFloat (snapshot.b[0], -12.0f) && snapshot.useB
+        const auto isSecond = TransformerVoicing::equal (snapshot.a, secondSnapshot.a) && TransformerVoicing::equal (snapshot.b, secondSnapshot.b) && snapshot.useB
             && ! snapshot.reference && snapshot.levelMatch && ! snapshot.legacyShelvesIgnored;
         valid &= isFirst || isSecond;
     } while (! done.load());

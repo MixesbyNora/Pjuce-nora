@@ -12,7 +12,7 @@ The template provides the build system, CI/CD, and project structure. The plugin
 
 Use Xcode with the existing `Builds` directory. Builds default to Debug for development; use Release when making music if Debug causes high CPU use or audio dropouts.
 
-Debug builds stay in `Builds/Lumiere_artefacts/Debug` and never replace installed plugins. Only Release AU/VST3 builds deploy to the user plugin folders. Deployment verifies a staged bundle and moves the previous copy into `Builds/plugin-backups`. Reload the plugin in the DAW after installing Release; an already-loaded instance keeps its old binary.
+Debug builds stay in `Builds/Lumiere_artefacts/Debug` and never replace installed plugins. The three-format Release build deploys AU/VST3 to the user plugin folders. With Xcode, AU deployment runs in Standalone's post-build phase after its AU dependency finishes native signing; building AU alone leaves it in the build directory. Deployment verifies a staged bundle and moves the previous copy into `Builds/plugin-backups`. Reload the plugin in the DAW after installing Release; an already-loaded instance keeps its old binary.
 
 ```bash
 # Configure (run once, or after CMakeLists.txt changes)
@@ -28,7 +28,7 @@ cmake --build Builds --config Debug --target Lumiere_VST3 Lumiere_AU Lumiere_Sta
 cmake --build Builds --config Release --target Lumiere_VST3 Lumiere_AU Lumiere_Standalone
 ```
 
-To run tests explicitly, build `Tests` first, then run `ctest --test-dir Builds -C Debug --verbose --output-on-failure`. Do not build Benchmarks unless asked.
+To run tests explicitly, build `Tests` first, then run `ctest --test-dir Builds -C Debug --verbose --output-on-failure -E '^Benchmarks'`. Do not build Benchmarks unless asked.
 
 On macOS for universal binaries, add `-DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"` when configuring.
 

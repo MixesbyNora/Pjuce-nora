@@ -50,7 +50,7 @@ TEST_CASE ("Offline transformer measurements retain unity and mark out-of-band h
     const auto nyquist = TransformerMeasurement::measurePoint ({}, 8000.0, -6.0f, 100.0f);
     REQUIRE (nyquist);
     CHECK ((nyquist->available == std::array<bool, 4> { true, false, false, false }));
-    for (const auto voice : { TransformerVoicing::Values { { -12.0f } }, TransformerVoicing::Values { { 12.0f } } })
+    for (const auto voice : { TransformerVoicing::Values { -12.0f }, TransformerVoicing::Values { 12.0f } })
         for (double frequency : { 20.0, 8000.0 })
         {
             const auto extreme = TransformerMeasurement::measurePoint (voice, frequency, -6.0f, 100.0f);
@@ -62,11 +62,35 @@ TEST_CASE ("Offline transformer measurements retain unity and mark out-of-band h
         }
 }
 
+TEST_CASE ("Magnetic descriptors reach offline measurements and captured CSV metadata", "[measurement][magnetic-voicing]")
+{
+    const TransformerVoicing::Values alternate { 0.0f, 16.0f, 1.0f, 30.0f };
+    // At this level/drive no play radius is crossed with memory=1. The new
+    // corner therefore has an independently calculable linear response.
+    const auto baseline = TransformerMeasurement::measurePoint ({}, 20.0, -60.0f, 25.0f);
+    const auto changed = TransformerMeasurement::measurePoint (alternate, 20.0, -60.0f, 25.0f);
+    REQUIRE (baseline);
+    REQUIRE (changed);
+    CHECK (isFiniteMeasurement (changed->fundamentalGainDb));
+    CHECK (std::abs (changed->fundamentalGainDb - baseline->fundamentalGainDb) > 0.1);
+    const auto expectedDb = 20.0 * std::log10 (20.0 / std::sqrt (20.0 * 20.0 + 30.0 * 30.0));
+    CHECK (changed->fundamentalGainDb == Catch::Approx (expectedDb).margin (0.02));
+    TransformerMeasurement::Result captured;
+    captured.request.a = {};
+    captured.request.b = alternate;
+    captured.request.contextJson = "{}";
+    const auto csv = TransformerMeasurement::toCsv (captured);
+    for (const auto& d : TransformerVoicing::descriptors) CHECK (csv.contains (d.id));
+    CHECK (csv.contains (TransformerVoicing::model));
+    CHECK_FALSE (csv.contains ("emphasisDb="));
+    CHECK_FALSE (csv.contains ("cornerHz="));
+}
+
 TEST_CASE ("Streaming measurement matches an independent full-buffer Fourier analysis", "[measurement]")
 {
     constexpr double frequency = 1000.0;
     constexpr float level = -12.0f;
-    const TransformerVoicing::Values voice { { -6.1f } };
+    const TransformerVoicing::Values voice { -6.1f };
     const auto measured = TransformerMeasurement::measurePoint (voice, frequency, level, 100.0f);
     REQUIRE (measured);
     juce::AudioBuffer<float> audio (1, 60000);
@@ -198,7 +222,7 @@ TEST_CASE ("Measurement view captures favorite A B without altering processor au
         REQUIRE (stream.openedOk());
         REQUIRE (juce::PNGImageFormat().writeImageToStream (image, stream));
     }
-    processor.getTransformerVoicing().setCurrent ({ { 3.0f } });
+    processor.getTransformerVoicing().setCurrent ({ 3.0f });
     view->refresh();
     auto stale = false;
     for (auto* child : view->getChildren())

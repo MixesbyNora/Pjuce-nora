@@ -80,31 +80,40 @@ The owner tunes by ear and exports settings for code revisions. Future compressi
 and tube controls can use this framework; none are added in this phase.
 
 A descriptor table in `source/TransformerVoicing.h` defines IDs, labels, units,
-ranges, steps, defaults and skew. Only drive calibration is currently described:
--12 to +12 dB, step 0.1 dB, default 0. It remains private state. UI construction,
-quantization, JSON, A/B slots and measurement metadata share this table. Packing
-widths derive from its quantized ranges; both slots and flags still fit in one
-lock-free atomic, with a compile-time capacity check. Audio reads once without
-retrying. Voicing edits retain the existing fixed-bank 20 ms crossfade.
+ranges, steps, defaults and skew. The private controls are drive calibration
+(-12 to +12 dB, step 0.1, default 0), magnetization weight k (0 to 16, step 0.1,
+default 4), memory (0 to 1, step 0.01, default 0.35), and magnetic corner (0.5 to
+30 Hz, step 0.5, default 5). The corner belongs to the magnetic circuit, not the
+removed shelf. UI, quantization, JSON, A/B and measurement metadata share this
+table. Both slots and flags occupy one lock-free 64-bit atomic; audio reads once
+without retrying. Host automation parameters and default audio are unchanged.
 
-Version 3 exports identify `lumiere-voicing-workbench-v3`. Version 1 and 2 JSON
-and project state migrate drive calibration, selection and audition flags. Removed
-`emphasisDb` and `cornerHz` fields are ignored, even if malformed, with a visible
-status notice. They never re-enable shelves. The notice survives save/restore.
-Unknown future versions/models or incomplete current descriptor values are
-rejected without replacing current private settings. Projects without private
-state load defaults. The archived tanh favorite remains an immutable historical
-record, not a promise to reproduce its former sound.
+An inactive bank receives bounded coefficient updates and a state reset, then
+runs muted for 20 ms at the internal oversampled rate before its 20 ms crossfade.
+The shared FIR and latency are unchanged. A 100 ms rest coalesces rapid requests;
+only warm-up/fade run both cores. Prepared lookup/radii/weights are reused, with
+no allocation or full preparation in processing. This finite warm-up does not
+reconstruct prior magnetic history. Startup/bypass re-engagement use the selected
+configuration directly with the existing activity fade.
+
+Version 4 exports identify `lumiere-voicing-workbench-v4`. Version 1, 2 and 3 JSON
+and project state migrate drive calibration, selection and audition flags, with
+defaults for the new magnetic controls. Removed `emphasisDb` and legacy `cornerHz`
+fields never re-enable shelves. Versions 1/2 show the persistent shelf-removal
+notice; version 3 preserves its existing notice. Unknown future versions/models
+or incomplete current values are rejected without replacing private settings.
+Projects without private state load defaults. The archived tanh favorite stays
+an immutable historical record, not a promise to reproduce its former sound.
 
 Measurements capture both slots on a worker, use the same current transformer
 DSP as live audio, turn matching off, and retain progress, cancellation and stale
 capture detection. Metadata and captured-control labels derive from descriptors;
 removed shelf fields do not appear in new measurement settings.
 
-Magnetization weight k, memory and the magnetic circuit corner are proposed future
-descriptors, not implemented controls. They need approval and a decision about
-preparing/warming different circuit states before fixed-bank crossfading. A
-series commit stage is also deferred. No hardware-accuracy claim is made.
+The optional series commit stage remains deferred. Exposing the existing magnetic
+levers does not change the x-H/D structure or establish a full-band series
+saturation model. Listening hypotheses remain unverified; no hardware-accuracy
+claim is made.
 
 See [MagneticTransformerLive.md](MagneticTransformerLive.md) for before/after
 measurements, numerical validation, CPU, latency and reproduction, and

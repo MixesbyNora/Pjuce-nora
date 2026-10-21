@@ -19,10 +19,10 @@ void set (PluginProcessor& processor, const char* id, float value)
         }
     FAIL ("Missing APVTS parameter " << id);
 }
-TransformerAudioPrototype::Render liveRender (double rate, const Stimulus& stimulus)
+TransformerAudioPrototype::Render liveRender (double rate, const Stimulus& stimulus, TransformerVoicing::Values voice = {})
 {
     TransformerSaturation stage;
-    stage.prepare (rate, 100.0f, false);
+    stage.prepare (rate, 100.0f, false, voice);
     const auto warm = static_cast<int> (std::ceil (rate / 256)) * 256;
     const auto count = ((warm + windowSize + stage.getLatencySamples() + 255) / 256) * 256;
     std::vector<double> raw (static_cast<std::size_t> (count));
@@ -39,7 +39,7 @@ TransformerAudioPrototype::Render liveRender (double rate, const Stimulus& stimu
     trace.samples.assign (first, first + windowSize);
     return { std::move (trace), stage.getCircuit().getDiagnostics() };
 }
-TransformerAudioPrototype::Render stageReference (double rate, const Stimulus& stimulus, int factor)
+TransformerAudioPrototype::Render stageReference (double rate, const Stimulus& stimulus, int factor, TransformerVoicing::Values voice = {})
 {
     juce::dsp::Oversampling<double> filters (1);
     filters.clearOversamplingStages();
@@ -69,8 +69,14 @@ TransformerAudioPrototype::Render stageReference (double rate, const Stimulus& s
     const auto highRate = rate * factor;
     MagneticPrototype::TransformerAudioCircuit core;
     MagneticPrototype::TransformerAudioCircuit::Parameters parameters;
-    parameters.driveDb = 12.0;
+    parameters.driveDb = 12.0 + TransformerVoicing::dspValue (voice, TransformerVoicing::driveCalibration);
+    parameters.magnetizationWeight = TransformerVoicing::dspValue (voice, TransformerVoicing::magnetizationWeight);
+    parameters.core.memory = TransformerVoicing::dspValue (voice, TransformerVoicing::memory);
+    parameters.cornerHz = TransformerVoicing::dspValue (voice, TransformerVoicing::magneticCorner);
+    // prepare() bounds nominal drive to +12; calibration may exceed it. The
+    // live bank uses setDriveGain(), so reproduce that mapping independently.
     core.prepare (highRate, parameters, false, true); // Scalar constitutive reference.
+    core.setDriveGain (std::pow (10.0, parameters.driveDb / 20.0));
     const auto warm = static_cast<int> (std::ceil (rate / 256)) * 256;
     const auto count = ((warm + windowSize + 512 + 255) / 256) * 256;
     std::vector<double> output (static_cast<std::size_t> (count));
@@ -217,6 +223,62 @@ TEST_CASE ("Shipped magnetic stage agrees with independently driven converged au
                 }
             }
     }
+}
+
+TEST_CASE ("Magnetic workbench extremes retain converged shipped-stage quality", "[magnetic-voicing][validation]")
+{
+    const auto* directory = std::getenv ("LUMIERE_MAGNETIC_VOICING_REPORT_DIR");
+    std::ofstream report;
+    if (directory != nullptr)
+    {
+        const juce::File root (juce::String::fromUTF8 (directory));
+        REQUIRE (root.createDirectory().wasOk());
+        report.open (root.getChildFile ("voicing_validation.csv").getFullPathName().toStdString());
+        report << std::setprecision (17) << "voice,signal,rate_hz,peak,reference_factor,reference_residual_dbr,band_residual_dbr,off_grid_dbr,tail_error_dbr,solver_failures,solver_residual,maximum_iterations,pass\n";
+    }
+    const std::array<TransformerVoicing::Values, 4> voices {
+        TransformerVoicing::Values { 12.0f, 16.0f, 1.0f, 30.0f }, { -12.0f, 16.0f, 0.0f, 0.5f },
+        { 0.0f, 0.0f, 0.0f, 30.0f }, { 6.0f, 8.0f, 0.75f, 15.0f }
+    };
+    for (std::size_t voice = 0; voice < voices.size(); ++voice)
+        for (double rate : { 44100.0, 48000.0, 96000.0, 192000.0 })
+            for (const auto signal : { Signal::lowHigh, Signal::closeHigh, Signal::gaussian })
+            {
+                if (directory == nullptr && (rate > 48000.0 || signal != Signal::closeHigh)) continue;
+                const Stimulus stimulus (signal, rate, 4.0);
+                auto lower = stageReference (rate, stimulus, 32, voices[voice]);
+                auto reference = stageReference (rate, stimulus, 64, voices[voice]);
+                auto convergence = measure (lower.trace, reference.trace, stimulus);
+                int referenceFactor = 64;
+                for (int factor : { 128, 256, 512 })
+                {
+                    if (convergence.bandResidualDb <= -100.0 && convergence.bandMaximumError <= 1.0e-4
+                        && (! stimulus.silentTail() || convergence.tailErrorDb <= -100.0)) break;
+                    lower = std::move (reference);
+                    reference = stageReference (rate, stimulus, factor, voices[voice]);
+                    referenceFactor = factor;
+                    convergence = measure (lower.trace, reference.trace, stimulus);
+                }
+                const auto live = liveRender (rate, stimulus, voices[voice]);
+                const auto metrics = measure (live.trace, reference.trace, stimulus);
+                const auto pass = convergence.bandResidualDb <= -100.0 && convergence.bandMaximumError <= 1.0e-4
+                    && reference.diagnostics.solverFailures == 0
+                    && metrics.bandResidualDb <= -80.0 && std::abs (metrics.bandPeakErrorDb) <= 0.1
+                    && (! stimulus.periodic() || metrics.offGridDb <= -80.0)
+                    && (! stimulus.silentTail() || (convergence.tailErrorDb <= -100.0 && metrics.tailErrorDb <= -80.0))
+                    && live.diagnostics.solverFailures == 0;
+                CAPTURE (voice, rate, name (signal), convergence.bandResidualDb, metrics.bandResidualDb, metrics.offGridDb, metrics.tailErrorDb);
+                CHECK (pass);
+                if (report.is_open())
+                {
+                    report << voice << ',' << name (signal) << ',' << rate << ",4," << referenceFactor << ',' << convergence.bandResidualDb << ',' << metrics.bandResidualDb << ',';
+                    if (stimulus.periodic()) report << metrics.offGridDb;
+                    report << ',';
+                    if (stimulus.silentTail()) report << metrics.tailErrorDb;
+                    report << ',' << live.diagnostics.solverFailures << ',' << live.diagnostics.maximumEquationResidual << ',' << live.diagnostics.maximumIterations << ',' << pass << '\n';
+                    report.flush();
+                }
+            }
 }
 
 TEST_CASE ("Export full magnetic plugin Release CPU at each rate", "[magnetic-live-cpu]")

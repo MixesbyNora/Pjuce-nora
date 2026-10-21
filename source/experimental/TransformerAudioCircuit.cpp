@@ -15,6 +15,7 @@ double bounded (double x, double lo, double hi, double fallback) noexcept { retu
 void TransformerAudioCircuit::prepare (double rate, Parameters values, bool linearReference, bool exactConstitutive) noexcept
 {
     rate = bounded (rate, AudioSettings::minimumRate, AudioSettings::maximumRate, 48000.0);
+    preparedRate = rate;
     parameters.cornerHz = bounded (values.cornerHz, AudioSettings::minimumCornerHz, AudioSettings::maximumCornerHz, AudioSettings::cornerHz);
     parameters.driveDb = bounded (values.driveDb, AudioSettings::minimumDriveDb, AudioSettings::maximumDriveDb, AudioSettings::driveDb);
     parameters.magnetizationWeight = bounded (values.magnetizationWeight, 0.0, AudioSettings::maximumMagnetizationWeight, AudioSettings::magnetizationWeight);
@@ -26,6 +27,17 @@ void TransformerAudioCircuit::prepare (double rate, Parameters values, bool line
     drive = AudioSettings::fieldScale * std::pow (10.0, parameters.driveDb / 20.0);
     linear = linearReference;
     exact = exactConstitutive;
+    reset();
+}
+void TransformerAudioCircuit::configureMagnetics (double weight, double memory, double cornerHz) noexcept
+{
+    parameters.magnetizationWeight = bounded (weight, 0.0, AudioSettings::maximumMagnetizationWeight, AudioSettings::magnetizationWeight);
+    parameters.core.memory = bounded (memory, Settings::minimumMemory, Settings::maximumMemory, Settings::defaultMemory);
+    parameters.cornerHz = bounded (cornerHz, AudioSettings::minimumCornerHz, AudioSettings::maximumCornerHz, AudioSettings::cornerHz);
+    core.parameters.memory = parameters.core.memory;
+    linearSlope = 1.0 + parameters.magnetizationWeight * (1.0 - parameters.core.memory) / Settings::saturationField;
+    tau = 1.0 / (2.0 * std::numbers::pi * parameters.cornerHz * linearSlope);
+    q = 1.0 / (2.0 * preparedRate * tau);
     reset();
 }
 void TransformerAudioCircuit::reset() noexcept

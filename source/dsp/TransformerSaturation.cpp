@@ -13,7 +13,9 @@ void TransformerSaturation::configureBank (Bank& bank, TransformerVoicing::Word 
     bank.driveScale = juce::Decibels::decibelsToGain (static_cast<double> (voice[TransformerVoicing::driveCalibration]));
     bank.voicing = word;
     for (auto& state : bank.state)
-        state.core.reset();
+        state.core.configureMagnetics (TransformerVoicing::dspValue (voice, TransformerVoicing::magnetizationWeight),
+            TransformerVoicing::dspValue (voice, TransformerVoicing::memory),
+            TransformerVoicing::dspValue (voice, TransformerVoicing::magneticCorner));
 }
 void TransformerSaturation::resetCoreHistory() noexcept
 {
@@ -48,6 +50,9 @@ void TransformerSaturation::prepare (double sampleRate, float amountPercent, boo
     configureBank (banks[1], requestedVoicing);
     resetHistory();
     fading = wasProcessing = false;
+    warmRemaining = restRemaining = 0;
+    warmSamples = juce::roundToInt (internalRate * TransformerSettings::voicingWarmSeconds);
+    restSamples = juce::roundToInt (internalRate * TransformerSettings::voicingRestSeconds);
     matchRequested = levelMatch;
     powerCoefficient = std::exp (-1.0 / (rate * TransformerSettings::matchWindowSeconds));
     gainCoefficient = std::exp (-1.0 / (rate * TransformerSettings::matchGainSeconds));
@@ -100,6 +105,7 @@ void TransformerSaturation::process (juce::AudioBuffer<float>& buffer, int chann
             driveGain.skip (count * factor);
             if (wasProcessing) resetHistory();
             wasProcessing = fading = false;
+            warmRemaining = restRemaining = 0;
             // Keep only the FIR history warm. Restarting it on an arbitrary
             // waveform edge would inject an impulse during re-engagement.
             auto identity = juce::dsp::AudioBlock<double> (scratch).getSubsetChannelBlock (0, static_cast<std::size_t> (channels)).getSubBlock (0, static_cast<std::size_t> (count));
@@ -108,17 +114,6 @@ void TransformerSaturation::process (juce::AudioBuffer<float>& buffer, int chann
             for (int channel = 0; channel < channels; ++channel)
                 buffer.copyFrom (channel, start, delayedDry, channel, 0, count);
             continue;
-        }
-        if (! fading && requestedVoicing != banks[currentBank].voicing)
-        {
-            if (! wasProcessing) configureBank (banks[currentBank], requestedVoicing);
-            else
-            {
-                configureBank (banks[1 - currentBank], requestedVoicing);
-                voicingFade.setCurrentAndTargetValue (0.0f);
-                voicingFade.setTargetValue (1.0f);
-                fading = true;
-            }
         }
         auto base = juce::dsp::AudioBlock<double> (scratch).getSubsetChannelBlock (0, static_cast<std::size_t> (channels)).getSubBlock (0, static_cast<std::size_t> (count));
         auto high = filters.processSamplesUp (base);
@@ -129,26 +124,42 @@ void TransformerSaturation::process (juce::AudioBuffer<float>& buffer, int chann
             {
                 if (wasProcessing) resetCoreHistory();
                 wasProcessing = fading = false;
+                warmRemaining = restRemaining = 0;
                 continue; // Identity FIR input; magnetic work stops sample-exactly.
             }
+            if (! wasProcessing && requestedVoicing != banks[currentBank].voicing)
+                configureBank (banks[currentBank], requestedVoicing);
             wasProcessing = true;
+            if (restRemaining > 0) --restRemaining;
+            if (! isVoicingTransitioning() && restRemaining == 0 && requestedVoicing != banks[currentBank].voicing)
+            {
+                configureBank (banks[1 - currentBank], requestedVoicing);
+                warmRemaining = warmSamples;
+            }
             const auto blend = fading ? voicingFade.getNextValue() : 0.0f;
             for (int channel = 0; channel < channels; ++channel)
             {
                 const auto ch = static_cast<std::size_t> (channel);
                 const auto original = high.getSample (static_cast<int> (ch), static_cast<int> (n));
                 auto output = processBank (banks[currentBank], channel, original, drive);
-                if (fading)
+                if (isVoicingTransitioning())
                 {
                     const auto other = processBank (banks[1 - currentBank], channel, original, drive);
                     output += blend * (other - output);
                 }
                 high.setSample (static_cast<int> (ch), static_cast<int> (n), output);
             }
+            if (warmRemaining > 0 && --warmRemaining == 0)
+            {
+                voicingFade.setCurrentAndTargetValue (0.0f);
+                voicingFade.setTargetValue (1.0f);
+                fading = true;
+            }
             if (fading && ! voicingFade.isSmoothing())
             {
                 currentBank = 1 - currentBank;
                 fading = false;
+                restRemaining = restSamples;
             }
         }
         filters.processSamplesDown (base);

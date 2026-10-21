@@ -16,6 +16,9 @@ public:
     void process (juce::AudioBuffer<float>& buffer, int channels) noexcept;
     int getLatencySamples() const noexcept { return latency; }
     int getOversamplingFactor() const noexcept { return factor; }
+    // Audio-thread/offline inspection only; UI continues to use atomic voicing.
+    bool isVoicingTransitioning() const noexcept { return fading || warmRemaining > 0; }
+    TransformerVoicing::Values getAppliedVoicing() const noexcept { return TransformerVoicing::decode (banks[currentBank].voicing); }
     const MagneticPrototype::TransformerAudioCircuit& getCircuit (int channel = 0) const noexcept
     { return banks[currentBank].state[static_cast<std::size_t> (channel)].core; }
 
@@ -50,4 +53,5 @@ private:
     double inputPower = 0.0, outputPower = 0.0, matchGain = 1.0;
     double powerCoefficient = 0.0, gainCoefficient = 0.0, maximumMatchGain = 1.0;
     bool fading = false, matchRequested = false, wasProcessing = false;
+    int warmRemaining = 0, restRemaining = 0, warmSamples = 0, restSamples = 0;
 };

@@ -29,6 +29,9 @@ public:
     };
 
     void prepare (double internalSampleRate, Parameters, bool linearReference = false, bool exactConstitutive = false) noexcept;
+    // Bounded bank reconfiguration: width, prepared weights and lookup stay
+    // fixed. Does not run prepare(), construct tables, allocate or evaluate pow.
+    void configureMagnetics (double weight, double memory, double cornerHz) noexcept;
     void setDriveGain (double linearGain) noexcept { drive = AudioSettings::fieldScale * linearGain; }
     void reset() noexcept;
     double processSample (double voltage) noexcept;
@@ -57,7 +60,7 @@ private:
     Parameters parameters;
     Diagnostics diagnostics;
     double field = 0.0, magnetization = 0.0, previousVoltage = 0.0;
-    double q = 0.0, tau = 0.0, drive = 1.0, linearSlope = 1.0;
+    double q = 0.0, tau = 0.0, drive = 1.0, linearSlope = 1.0, preparedRate = 48000.0;
     // Cached constitutive values at the last committed coordinates.
     std::array<double, Settings::operatorCount> committedValues {};
     double committedReversible = 0.0, committedClippedField = 0.0, committedTrialMagnetization = 0.0;

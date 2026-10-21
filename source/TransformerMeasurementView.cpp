@@ -108,8 +108,14 @@ void TransformerMeasurementView::startOrCancel()
         return;
     }
     const auto snapshot = state.read();
-    intro.setText ("48 kHz | Transformer only | Match off\nA: " + TransformerVoicingState::describe (snapshot.a, false)
-        + "\nB: " + TransformerVoicingState::describe (snapshot.b, false), juce::dontSendNotification);
+    juce::String captured = "48 kHz | Transformer only | Match off\nCaptured A / B";
+    for (std::size_t i = 0; i < TransformerVoicing::descriptors.size(); ++i)
+    {
+        const auto& d = TransformerVoicing::descriptors[i];
+        captured += "\n" + juce::String (d.label) + ": " + juce::String (snapshot.a[i], d.step < 0.1 ? 2 : 1)
+            + " / " + juce::String (snapshot.b[i], d.step < 0.1 ? 2 : 1) + " " + d.unit;
+    }
+    intro.setText (captured, juce::dontSendNotification);
     if (! worker->start ({ snapshot.a, snapshot.b, exporter ? exporter() : state.toJson() }))
     {
         status.setText ("Could not start measurement worker. Retry.", juce::dontSendNotification);
@@ -152,7 +158,7 @@ void TransformerMeasurementView::refresh()
 void TransformerMeasurementView::resized()
 {
     auto area = getLocalBounds();
-    intro.setBounds (area.removeFromTop (60));
+    intro.setBounds (area.removeFromTop (18 * static_cast<int> (2 + TransformerVoicing::descriptors.size())));
     for (std::size_t i = 0; i < selectors.size(); ++i)
     {
         auto row = area.removeFromTop (24);

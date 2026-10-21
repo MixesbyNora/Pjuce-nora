@@ -104,7 +104,15 @@ if(APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
         if(TARGET ${plugin_target})
             get_target_property(plugin_source ${plugin_target} JUCE_PLUGIN_ARTEFACT_FILE)
             get_target_property(plugin_destination ${plugin_target} JUCE_PLUGIN_COPY_DIR)
-            add_custom_command(TARGET ${plugin_target} POST_BUILD
+            set(deploy_after ${plugin_target})
+            if(CMAKE_GENERATOR STREQUAL "Xcode" AND plugin_target STREQUAL "${PROJECT_NAME}_AU")
+                # Xcode signs AU bundles after their POST_BUILD scripts. The
+                # normal three-format build finishes with Standalone; make it
+                # wait for the signed AU, then copy that completed bundle.
+                set(deploy_after ${PROJECT_NAME}_Standalone)
+                add_dependencies(${deploy_after} ${plugin_target})
+            endif()
+            add_custom_command(TARGET ${deploy_after} POST_BUILD
                 COMMAND "${CMAKE_COMMAND}"
                     "-Dconfig=$<CONFIG>"
                     "-Dsrc=$<GENEX_EVAL:${plugin_source}>"

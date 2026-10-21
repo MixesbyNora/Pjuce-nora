@@ -28,6 +28,7 @@ TransformerVoicingPanel::TransformerVoicingPanel (TransformerVoicingState& state
         slider.setTextValueSuffix (" " + juce::String (descriptor.unit));
         slider.setRange (descriptor.minimum, descriptor.maximum, descriptor.step);
         slider.setSkewFactor (descriptor.skew);
+        slider.setDoubleClickReturnValue (true, descriptor.defaultValue);
         slider.onValueChange = [this]
         {
             pasteError.clear();
@@ -70,7 +71,7 @@ TransformerVoicingPanel::TransformerVoicingPanel (TransformerVoicingState& state
     };
     addAndMakeVisible (reference);
     addAndMakeVisible (match);
-    hint.setText ("Private tuning workbench\n\nAdjust one control at a time, compare A/B, then copy settings with your listening notes.\n\nLet Match level settle before comparing. Disable it for reference and harmonic measurements.", juce::dontSendNotification);
+    hint.setText ("Adjust one control, compare A/B, then copy settings with listening notes.\n\nLet edits and Match level settle before comparing. Disable matching for measurements.", juce::dontSendNotification);
     hint.setFont (juce::FontOptions (13.0f));
     hint.setJustificationType (juce::Justification::topLeft);
     addAndMakeVisible (hint);
@@ -96,7 +97,7 @@ void TransformerVoicingPanel::refresh()
     match.setToggleState (snapshot.levelMatch, juce::dontSendNotification);
     copySlot.setButtonText (snapshot.useB ? "B > A" : "A > B");
     status.setText (pasteError.isNotEmpty() ? pasteError
-        : juce::String ("Workbench v3 | ") + (snapshot.reference ? "Default" : snapshot.useB ? "Editing B" : "Editing A")
+        : juce::String ("Workbench v") + juce::String (TransformerVoicing::version) + " | " + (snapshot.reference ? "Default" : snapshot.useB ? "Editing B" : "Editing A")
             + "\nSettings and both snapshots are saved with the project."
             + (snapshot.legacyShelvesIgnored ? "\nLegacy LF emphasis and shelf frequency ignored: shelves removed." : ""), juce::dontSendNotification);
 }
@@ -135,16 +136,16 @@ void TransformerVoicingPanel::resized()
     b.setBounds (row.removeFromLeft (48));
     row.removeFromLeft (6);
     copySlot.setBounds (row);
-    area.removeFromTop (16);
+    area.removeFromTop (8);
     for (std::size_t i = 0; i < sliders.size(); ++i)
     {
-        labels[i].setBounds (area.removeFromTop (24));
-        sliders[i].setBounds (area.removeFromTop (32));
-        area.removeFromTop (12);
+        labels[i].setBounds (area.removeFromTop (20));
+        sliders[i].setBounds (area.removeFromTop (28));
+        area.removeFromTop (6);
     }
     reference.setBounds (area.removeFromTop (28));
     match.setBounds (area.removeFromTop (28));
-    area.removeFromTop (12);
+    area.removeFromTop (8);
     reset.setBounds (area.removeFromTop (28));
     area.removeFromTop (8);
     row = area.removeFromTop (28);
@@ -152,6 +153,6 @@ void TransformerVoicingPanel::resized()
     row.removeFromLeft (8);
     paste.setBounds (row);
     area.removeFromTop (12);
-    hint.setBounds (area.removeFromTop (164));
+    hint.setBounds (area.removeFromTop (100));
     status.setBounds (area);
 }

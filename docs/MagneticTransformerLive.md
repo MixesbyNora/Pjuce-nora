@@ -28,8 +28,10 @@ unchanged. Each channel has independent magnetic state. Amount still maps -24 to
 There are no shelf coefficients, shelf state or per-sample biquad calls inside
 `TransformerSaturation` now. Sidechain filters and LFM are separate and unchanged.
 
-Two prepared fixed banks retain the 20 ms voicing crossfade. Rapid edits coalesce
-until the current transition finishes. Out/Amount activity uses its existing 10 ms
+Two fixed banks retain the 20 ms voicing crossfade. The incoming bank first runs
+muted for 20 ms; a 100 ms rest coalesces rapid edits after each fade. Lookup tables
+and play weights stay prepared; only scalar magnetic coefficients are updated.
+See the current workbench measurements below for transition CPU and limitations. Out/Amount activity uses its existing 10 ms
 fade. The optional linked RMS audition matching remains after the transformer;
 it never affects the detector and is bypassed for exact zero/Out behavior.
 Rendering uses fixed/prepared storage, with no allocations, locks, logging or UI.
@@ -57,15 +59,17 @@ No oversampling parameter, new latency or stereo mode is introduced.
 
 Transformer Voicing remains a collapsible, model-agnostic tuning panel alongside
 the generic editor and meters. A descriptor table defines each private ID, label,
-unit, range, step, default and skew. Only drive calibration is active, first in the
-table. UI sliders, A/B values, quantization, JSON and measurement metadata use it.
+unit, range, step, default and skew. Drive calibration remains first, followed by
+magnetization weight k, memory and magnetic circuit corner. Their defaults retain
+the previous shelf-free engine bit-for-bit. UI sliders, A/B values, quantization, JSON and measurement metadata use it.
 Packing widths are computed from descriptors; both snapshots and flags currently
 fit in one lock-free atomic. A compile-time limit prevents silent overflow if
 future controls outgrow it. Audio reads one word without retry loops.
 
-Version 3 exports identify `lumiere-voicing-workbench-v3`. Version 1 and 2 JSON and
-project state retain drive calibration, slot selection and audition flags, while
-ignoring old `emphasisDb` and `cornerHz`. Panel status explains this migration;
+Version 4 exports identify `lumiere-voicing-workbench-v4`. Versions 1, 2 and 3
+JSON and project state retain drive calibration, selection and audition flags,
+with defaults for newly introduced magnetic controls. Old `emphasisDb` and
+`cornerHz` never control shelves or the new `magneticCornerHz` descriptor. Panel status explains this migration;
 it is not an error, and obsolete fields never re-enable shelves. The notice is
 preserved on save/export. Unknown future schemas are rejected without replacing
 current private settings; projects with no private child still load defaults.
@@ -207,8 +211,10 @@ outside this simplified model.
 
 Use the repository's Xcode workflow; never build Benchmarks:
 
-Only Release AU/VST3 builds deploy into the user's plugin folders. Debug builds
-remain in the build directory and cannot overwrite the installed Release copies.
+The three-format Release build deploys AU/VST3 into the user's plugin folders.
+With Xcode, AU deployment waits until Standalone's post-build phase, after the AU
+dependency has completed native local signing. Building AU alone leaves its
+bundle in the build directory. Debug cannot overwrite installed Release copies.
 Deployment stages and verifies each bundle, preserving the previous installation
 under `Builds/plugin-backups`. Reload the DAW plugin after deployment; an existing
 instance continues running its previously loaded binary. Use the Release Standalone
@@ -233,7 +239,7 @@ LUMIERE_MAGNETIC_CPU_REPORT_DIR=/private/tmp/lumiere-after \
 Builds/Release/Tests '[magnetic-live-cpu]' --reporter compact
 ```
 
-The standalone solver probe uses the unchanged circuit and its full combined
+The standalone solver probe uses the unchanged solve equations and full combined
 calibration/drive range, including instant drive reversals:
 
 ```bash
@@ -248,6 +254,130 @@ Structured results/provenance are in the [measurement manifest](measurements/mag
 Historical shelf-equipped live results remain archived in
 [magnetic_live_v2](measurements/magnetic_live_v2/README.md), and the earlier clamp
 findings are preserved in [TransformerCommitDiagnosis.md](TransformerCommitDiagnosis.md).
-Magnetization weight, memory and magnetic-corner controls require a preparation
-and crossfade-policy decision before implementation. The series commit stage
-remains deferred.
+Magnetization weight, memory and magnetic-corner controls are now private
+workbench descriptors, using the bounded warm-up/fade/rest policy described
+below. The optional series commit stage remains deferred.
+
+
+## Magnetic workbench controls
+
+The v4 workbench exposes the existing k, memory and small-signal magnetic corner
+alongside drive calibration. Defaults remain 4, 0.35 and 5 Hz; they do not change
+the shelf-free default sound. These are private research controls, not host
+parameters or a hardware calibration. [Ranges and migration](TransformerVoicing.md)
+come from the same descriptor table used by UI, A/B, JSON and measurement CSV.
+
+The inactive bank reuses prepared lookup tables, radii and weights. It updates
+bounded scalar coefficients, resets fixed state, runs muted for 20 ms on the
+incoming oversampled signal, then uses the existing 20 ms crossfade. A 100 ms rest
+coalesces rapid requests to the latest value. Only warm-up/fade run both cores;
+no full preparation, table construction, allocation, locking or UI work occurs
+in processing. The warm-up is bounded and does not reconstruct arbitrary prior
+hysteresis history. It has not been judged by listening as a physical transition.
+There is no new audio delay; reported latency remains 144/144/137/124 samples.
+
+### Release CPU measurements
+
+The retained [before](measurements/magnetic_workbench_v4/before/plugin_cpu.csv)
+and [after](measurements/magnetic_workbench_v4/after/plugin_cpu.csv) use the same
+complete-plugin 0.7-peak 60/73 Hz stereo workload, Amount 100%, default controls,
+256-frame blocks, median of seven 16,384-frame runs. Timings were isolated from
+our builds/tests; the workload includes stimulus generation and all plugin DSP.
+
+| Rate | Before, one-core budget | After | Change |
+|---:|---:|---:|---:|
+| 48 kHz | 34.67% | 34.02% | -0.64 percentage points |
+| 96 kHz | 32.33% | 32.69% | +0.36 percentage points |
+| 192 kHz | 34.20% | 34.09% | -0.11 percentage points |
+
+These small mixed differences do not establish an optimization or a clear
+steady-state regression. Checksums agree; exact audio checks use the retained
+pre-implementation sample fixture, not the checksum alone.
+
+The separate [edit workload](measurements/magnetic_workbench_v4/after/voicing_cpu.csv)
+times processBlock only, stereo, 512-frame blocks, 0.6 seconds per pass and the
+median of three passes after warm-up. Default and extreme rows hold settings
+fixed. The rapid-edit row requests different calibration/memory every block,
+with k=16 and corner=30 Hz. P95 and maximum are measured across all timed blocks.
+The extreme fixed configuration (calibration +12, memory 1, k 16, corner 30) costs
+less on this input; that does not establish a general best/worst setting.
+
+| Rate | Default average | Extreme average | Rapid-edit average | Edit block P95 | Slowest edit block |
+|---:|---:|---:|---:|---:|---:|
+| 48 kHz | 33.76% | 21.84% | 39.11% | 56.02% | 61.55% |
+| 96 kHz | 32.94% | 20.87% | 36.06% | 56.93% | 58.97% |
+| 192 kHz | 34.16% | 22.11% | 32.25% | 58.44% | 68.26% |
+
+These are local numerical timing observations, not FL Studio meter readings or
+worst-case deadline guarantees. Host scheduling, other plugins and settings can
+change headroom. Release installation retains the safeguards described above.
+
+### Validation and behavior changes
+
+Results and provenance are retained in
+[the v4 manifest](measurements/magnetic_workbench_v4/manifest.json).
+All requested plugin tests pass in Debug and Release, and all requested format
+builds finish without compiler warnings or errors. The initial Debug CTest driver
+also enumerated the intentionally unbuilt Benchmarks placeholder as Not Run;
+every case in the separately enumerated non-Benchmarks suite passed. The final
+Release driver excludes that placeholder, as do the documented future commands.
+Benchmarks was not built.
+The pre-implementation Debug and Release sample captures were identical and are
+stored once as `tests/data/WorkbenchDefaultMagneticV3.bin`; the regression test
+only reads it. Mono/stereo, supported rates, zero/half/full Amount and Xfrm Out
+are covered. Frozen `tests/helpers/TransformerAudioReference*`, the root
+tolerance, oversampling design and host parameter declarations remain unchanged.
+
+Measured results: the shipped-stage grid's worst band residual is -103.73 dBr,
+worst off-grid artifact -138.89 dBr and worst applicable tail error -157.01 dBr.
+The added voiced-extreme grid reaches -103.13 dBr, -120.21 dBr and -174.22 dBr,
+respectively, with no solver failures. Its selected configurations are calibration
++12/k16/memory1/corner30; calibration -12/k16/memory0/corner0.5;
+calibration0/k0/memory0/corner30; and calibration+6/k8/memory0.75/corner15.
+It covers low/high and close high-frequency multitones and Gaussian transients
+at peak4 across supported rates. It does not certify every intermediate voicing,
+arbitrary material or the spectrum of a moving control. The panel retains its
+250 ms warm-up / one-second analysis window; very low corners can retain slow
+transients in that window. Its readings are not guaranteed settled harmonics.
+
+The reconfiguration matrix and separate extended solver probe both report zero
+failures and at most 61 evaluations; their maximum scaled residuals remain below
+1e-13. Reassembled committed equations retain the existing 2e-13 roundoff bound.
+These are numerical checks, not hardware measurements or listening judgments.
+
+New checks compare bounded reconfiguration with fully prepared circuits over
+magnetic parameter extremes and the combined -36 to +24 dB drive endpoints,
+including DC reversals, deterministic noise and very quiet samples. Existing
+solver/reference and latency/bypass checks are retained. The shipped-stage grid
+and new voiced extremes use independent analytic-input high-rate scalar
+references with the existing -100 dBr convergence / -80 dBr candidate screens;
+no thresholds are loosened.
+
+Transition tests cover loud bass, DC, rapid requests during warm-up/fade/rest,
+mono/stereo, all supported rates and block partitions 1/127/4096. They retain the
+0.05 excess single-sample-step limit, check finite output, final-request recall,
+solver status and bit-identical output across partitions. Extreme-control tests
+also retain exact delayed zero/Out bypass. State tests now exercise all descriptor
+fields in coherent atomic snapshots, old projects and JSON migration, future
+rejection, panel bounds and real slider updates. Offline measurement coverage
+uses an analytical low-level 20 Hz response with a 30 Hz corner and includes
+all descriptors in captured CSV metadata. Existing meter, detector, Mix/Delta,
+measurement cancellation and A/B workflows remain covered.
+
+The intentional behavior change is that private edits now use the bounded
+warm-up/fade/rest policy, including drive-only edits. Defaults and recalled old
+steady voicings preserve the prior magnetic engine. Low-frequency response,
+harmonics and hysteresis can change when the new controls are edited. Whether
+those changes improve the sound or the sense of committed saturation remains an
+untested listening hypothesis. The x-H/D architecture is unchanged, the optional
+series commit stage stays deferred, and no hardware-accuracy claim is made.
+
+For full offline checks (CPU must be exported separately):
+
+```bash
+LUMIERE_MAGNETIC_LIVE_REPORT_DIR=/private/tmp/lumiere-v4 \
+LUMIERE_MAGNETIC_VOICING_REPORT_DIR=/private/tmp/lumiere-v4 \
+Builds/Release/Tests '[magnetic-live][validation],[magnetic-voicing][validation],[magnetic-voicing][solver]' --reporter compact
+LUMIERE_MAGNETIC_VOICING_REPORT_DIR=/private/tmp/lumiere-v4 \
+Builds/Release/Tests '[magnetic-voicing-cpu]' --reporter compact
+```

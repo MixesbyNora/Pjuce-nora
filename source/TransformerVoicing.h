@@ -5,11 +5,13 @@
 #include <bit>
 #include <cmath>
 #include <cstdint>
+#include <initializer_list>
 
 namespace TransformerVoicing
 {
-inline constexpr int version = 3;
-inline constexpr const char* model = "lumiere-voicing-workbench-v3";
+inline constexpr int version = 4;
+inline constexpr const char* model = "lumiere-voicing-workbench-v4";
+inline constexpr const char* legacyWorkbenchModel = "lumiere-voicing-workbench-v3";
 inline constexpr const char* legacyModel = "transformer-tanh-residual-adaa-v1";
 inline constexpr const char* legacyMagneticModel = "transformer-magnetic-play-v2";
 struct Descriptor
@@ -22,9 +24,13 @@ struct Descriptor
 // The workbench schema is independent of host automation and DSP implementation.
 // Drive stays first. New controls require an explicit DSP/state migration decision.
 inline constexpr std::array descriptors {
-    Descriptor { "driveCalibrationDb", "Drive calibration", "dB", -12.0, 12.0, 0.1, 0.0, 1.0 }
+    Descriptor { "driveCalibrationDb", "Drive calibration", "dB", -12.0, 12.0, 0.1, 0.0, 1.0 },
+    Descriptor { "magnetizationWeight", "Magnetization weight k", "", 0.0, 16.0, 0.1, 4.0, 1.0 },
+    Descriptor { "memory", "Memory", "", 0.0, 1.0, 0.01, 0.35, 1.0 },
+    Descriptor { "magneticCornerHz", "Magnetic corner", "Hz", 0.5, 30.0, 0.5, 5.0, 0.5 }
 };
 inline constexpr std::size_t driveCalibration = 0;
+inline constexpr std::size_t magnetizationWeight = 1, memory = 2, magneticCorner = 3;
 using Word = std::uint64_t;
 constexpr Word steps (const Descriptor& d) noexcept
 {
@@ -49,9 +55,22 @@ struct Values
         for (std::size_t i = 0; i < result.size(); ++i) result[i] = static_cast<float> (descriptors[i].defaultValue);
         return result;
     }();
+    Values() noexcept = default;
+    // Partial research/test values retain descriptor defaults for other fields.
+    Values (std::initializer_list<float> initial) noexcept
+    {
+        std::copy_n (initial.begin(), std::min (initial.size(), data.size()), data.begin());
+    }
     float& operator[] (std::size_t i) noexcept { return data[i]; }
     float operator[] (std::size_t i) const noexcept { return data[i]; }
 };
+inline double dspValue (Values values, std::size_t i) noexcept
+{
+    // The public snapshot uses float; retain the original double constants at
+    // defaults (notably memory=0.35) so the default engine remains bit-exact.
+    return std::bit_cast<std::uint32_t> (values[i]) == std::bit_cast<std::uint32_t> (static_cast<float> (descriptors[i].defaultValue))
+        ? descriptors[i].defaultValue : static_cast<double> (values[i]);
+}
 inline float bounded (float value, const Descriptor& d) noexcept
 {
     if ((std::bit_cast<std::uint32_t> (value) & 0x7f800000U) == 0x7f800000U)

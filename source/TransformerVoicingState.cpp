@@ -90,16 +90,18 @@ bool TransformerVoicingState::restoreJson (const juce::String& json)
     const auto current = static_cast<int> (root["version"]) == TransformerVoicing::version && root["model"].toString() == TransformerVoicing::model;
     const auto legacy = (static_cast<int> (root["version"]) == 1 && root["model"].toString() == TransformerVoicing::legacyModel)
         || (static_cast<int> (root["version"]) == 2 && root["model"].toString() == TransformerVoicing::legacyMagneticModel);
-    if (! current && ! legacy)
+    const auto workbenchV3 = static_cast<int> (root["version"]) == 3 && root["model"].toString() == TransformerVoicing::legacyWorkbenchModel;
+    if (! current && ! legacy && ! workbenchV3)
         return false;
-    if (current && ! root["legacyShelvesIgnored"].isVoid() && ! root["legacyShelvesIgnored"].isBool())
+    if ((current || workbenchV3) && ! root["legacyShelvesIgnored"].isVoid() && ! root["legacyShelvesIgnored"].isBool())
         return false;
-    const auto readValues = [] (const juce::var& object, TransformerVoicing::Values& values)
+    const auto readValues = [current] (const juce::var& object, TransformerVoicing::Values& values)
     {
         if (! object.isObject())
             return false;
         for (std::size_t i = 0; i < TransformerVoicing::descriptors.size(); ++i)
         {
+            if (! current && i != TransformerVoicing::driveCalibration) continue;
             const auto value = object[TransformerVoicing::descriptors[i].id];
             if (! value.isDouble() && ! value.isInt() && ! value.isInt64())
                 return false;
