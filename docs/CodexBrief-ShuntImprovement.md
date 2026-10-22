@@ -158,7 +158,20 @@ No sound verdicts in the report.
 per-point fit quality, the list of what cannot be matched, and the renders.
 Do not proceed.
 
-## Step 3 — ON HOLD: knee shape and HF roll-off
+## Step 2 — DONE
+
+Reported in [ShuntImprovement.md](ShuntImprovement.md). Correction to 2b: the
+datasheet's "200 Ω / 600 Ω" is the impedance seen at each side (600 Ω ÷ 1.7²),
+not a source resistor; the application circuit is a low-impedance driver into
+600 Ω.
+
+## Step 3 — DONE (owner-authorized): saturation onset and even harmonics
+
+A retired; new variant C (hysteresis before one saturating curve, with
+polarity asymmetry). Reported in [ShuntImprovement.md](ShuntImprovement.md).
+HF roll-off remains on hold (no published VTB1148 HF data).
+
+## Original Step 3 text — superseded: knee shape and HF roll-off
 
 Not authorized. After the owner listens at the calibrated drive, they may
 authorize either or both, using the VTB1148 data as targets:

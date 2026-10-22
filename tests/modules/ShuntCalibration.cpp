@@ -41,6 +41,7 @@ struct Target
     int order = 0;
     double noisePercentAtMinus38 = 0.20; // 1 kHz THD+N floor at -38 dBu generator.
     double gainDb = 0;
+    bool upperBound = false; // Contaminated point: only exceeding it counts as error.
 };
 // Plot readings are estimates; see the reference CSV for figure and page.
 const std::vector<Target> targets {
@@ -61,6 +62,16 @@ const std::vector<Target> targets {
     { "f32-h5", Metric::harmonic, 20, -38, -66, 5 },
     { "f50-h2", Metric::harmonic, 1000, 4, -100, 2 }, { "f50-h3", Metric::harmonic, 1000, 4, -83, 3 },
 };
+// Step 3 adds the edge of the published clean range, so saturation onset is
+// constrained: the last valid 20 Hz point before driver failure (Fig.54), and
+// 50 Hz at +16 dBu as an upper bound only (mains-contaminated).
+std::vector<Target> step3Targets()
+{
+    auto result = targets;
+    result.push_back ({ "g16-p7.5", Metric::thdn, 20, 7.5, 0.075, 0, 0.025, 16 });
+    result.push_back ({ "g16-50-p16", Metric::thdn, 50, 16, 0.027, 0, 0.025, 16, true });
+    return result;
+}
 // Noise/hum floor of the published THD+N, generator-referred: it falls 1:1 with level.
 double noisePercent (const Target& t)
 {
@@ -130,7 +141,9 @@ struct Fit
     Variant variant;
     TransformerParameters parameters;
     double cost = 0;
+    std::string label = {}; // Defaults to the variant letter.
 };
+std::string labelOf (const Fit& fit) { return fit.label.empty() ? std::string (name (fit.variant)) : fit.label; }
 TransformerParameters thesisCircuit()
 {
     TransformerParameters p;
@@ -155,17 +168,29 @@ double modelValue (const Target& t, const Sine& s)
 }
 double errorDb (const Target& t, double model)
 {
-    return t.metric == Metric::harmonic ? model - t.value : db (model / t.value);
+    const auto error = t.metric == Metric::harmonic ? model - t.value : db (model / t.value);
+    return t.upperBound ? std::max (error, 0.0) : error;
 }
-std::vector<Sine> measureTargets (Variant v, const TransformerParameters& p)
+std::vector<Sine> measureTargets (Variant v, const TransformerParameters& p, const std::vector<Target>& list = targets)
 {
     std::vector<std::future<Sine>> jobs;
-    for (const auto& t : targets) jobs.push_back (std::async (std::launch::async, [=] { return measureSine (v, p, t.hz, t.primaryDbu); }));
+    for (const auto& t : list) jobs.push_back (std::async (std::launch::async, [=] { return measureSine (v, p, t.hz, t.primaryDbu); }));
     std::vector<Sine> result;
     for (auto& job : jobs) result.push_back (job.get());
     return result;
 }
 // Equal-weight RMS error in dB over all targets: misfits are not weighted away.
+double rmsError (Variant v, const TransformerParameters& p, const std::vector<Target>& list)
+{
+    const auto values = measureTargets (v, p, list);
+    double sum = 0;
+    for (std::size_t i = 0; i < list.size(); ++i)
+    {
+        if (values[i].failures > 0) return 1.0e6;
+        sum += std::pow (errorDb (list[i], modelValue (list[i], values[i])), 2);
+    }
+    return std::sqrt (sum / static_cast<double> (list.size()));
+}
 double cost (Variant v, const std::vector<double>& x)
 {
     const auto p = fromVector (x);
@@ -174,14 +199,7 @@ double cost (Variant v, const std::vector<double>& x)
     if (p.saturation < d[0].minimum || p.saturation > d[0].maximum || p.knee < d[1].minimum || p.knee > d[1].maximum
         || p.driveDb < d[4].minimum || p.driveDb > d[4].maximum || (x.size() > 3 && (x[3] < 0 || x[3] > 1)))
         return 1.0e6;
-    const auto values = measureTargets (v, p);
-    double sum = 0;
-    for (std::size_t i = 0; i < targets.size(); ++i)
-    {
-        if (values[i].failures > 0) return 1.0e6;
-        sum += std::pow (errorDb (targets[i], modelValue (targets[i], values[i])), 2);
-    }
-    return std::sqrt (sum / static_cast<double> (targets.size()));
+    return rmsError (v, p, targets);
 }
 std::vector<double> nelderMead (const std::function<double (const std::vector<double>&)>& f, std::vector<double> start, const std::vector<double>& step, int evaluations)
 {
@@ -332,35 +350,25 @@ double residualRatioDb (const std::array<std::vector<double>, 2>& out, const std
     return powerDb (residual / std::max (outputPower, 1.0e-30));
 }
 
-void calibrationReport (const juce::File& root)
+void writeFitRows (std::ofstream& out, const std::vector<Fit>& fits, const std::vector<Target>& list)
 {
-    auto search = csv (root, "step2_search.csv", "variant,drive_calibration_db,saturation,knee,memory,rms_error_db");
-    std::vector<Fit> fits;
-    for (auto v : { Variant::smooth, Variant::play3 }) fits.push_back (fitVariant (v, search));
-    REQUIRE (search.good());
-
-    auto parameters = csv (root, "step2_parameters.csv", "variant,drive_calibration_db,saturation,knee,memory,loss,source_ohms,load_ohms,rms_error_db,at_descriptor_bound");
-    auto fitOut = csv (root, "step2_fit.csv", "variant,target,metric,frequency_hz,primary_dbu,published,model,model_thd_only_percent,error_db,noise_percent,maximum_iterations,solver_failures");
     for (const auto& fit : fits)
     {
-        const auto& p = fit.parameters; const auto& d = transformerDescriptors;
-        const auto atBound = std::abs (p.driveDb - d[4].minimum) < 0.05 || std::abs (p.driveDb - d[4].maximum) < 0.05
-            || p.saturation < d[0].minimum * 1.01 || p.saturation > d[0].maximum * 0.99 || p.knee < d[1].minimum * 1.01 || p.knee > d[1].maximum * 0.99;
-        parameters << name (fit.variant) << ',' << p.driveDb << ',' << p.saturation << ',' << p.knee << ',' << (fit.variant == Variant::play3 ? p.memory : 0.0) << ',' << p.loss << ',' << p.sourceOhms << ',' << p.loadOhms << ',' << fit.cost << ',' << atBound << '\n';
-        const auto values = measureTargets (fit.variant, p);
-        for (std::size_t i = 0; i < targets.size(); ++i)
+        const auto values = measureTargets (fit.variant, fit.parameters, list);
+        for (std::size_t i = 0; i < list.size(); ++i)
         {
-            const auto& t = targets[i]; const auto model = modelValue (t, values[i]);
-            fitOut << name (fit.variant) << ',' << t.id << ',' << (t.metric == Metric::thdn ? "thd+n_percent" : "harmonic_dbc") << ',' << t.hz << ',' << t.primaryDbu << ',' << t.value << ',' << model << ',' << 100 * values[i].thd << ','
-                   << errorDb (t, model) << ',' << (t.metric == Metric::thdn ? noisePercent (t) : 0.0) << ',' << values[i].maximumIterations << ',' << values[i].failures << '\n';
+            const auto& t = list[i]; const auto model = modelValue (t, values[i]);
+            out << labelOf (fit) << ',' << t.id << ',' << (t.metric == Metric::thdn ? (t.upperBound ? "thd+n_percent_upper_bound" : "thd+n_percent") : "harmonic_dbc") << ',' << t.hz << ',' << t.primaryDbu << ',' << t.value << ',' << model << ',' << 100 * values[i].thd << ','
+                << errorDb (t, model) << ',' << (t.metric == Metric::thdn ? noisePercent (t) : 0.0) << ',' << values[i].maximumIterations << ',' << values[i].failures << '\n';
             CHECK (values[i].failures == 0);
         }
     }
-    REQUIRE (parameters.good()); REQUIRE (fitOut.good());
-
-    // Level sweep and application comparison at the fitted values, beyond the
-    // published range too (marked), so the owner can see where the model goes.
-    auto levelSweep = csv (root, "step2_level_sweep.csv", "variant,circuit,frequency_hz,primary_dbu,dbfs,published_range,thd_percent,h2_dbc,h3_dbc,h5_dbc,gain_db,phase_degrees,maximum_iterations,solver_failures,limited_inputs");
+}
+// Level sweep and application comparison at the fitted values, beyond the
+// published range too (marked), so the owner can see where the model goes.
+void writeLevelSweep (const juce::File& root, const char* file, const std::vector<Fit>& fits)
+{
+    auto levelSweep = csv (root, file, "variant,circuit,frequency_hz,primary_dbu,dbfs,published_range,thd_percent,h2_dbc,h3_dbc,h5_dbc,gain_db,phase_degrees,maximum_iterations,solver_failures,limited_inputs");
     for (const auto& fit : fits)
         for (int circuit = 0; circuit < 2; ++circuit)
         {
@@ -370,30 +378,34 @@ void calibrationReport (const juce::File& root)
                 for (double dbu = -38; dbu <= 24.01; dbu += 2)
                 {
                     const auto s = measureSine (fit.variant, p, hz, dbu);
-                    levelSweep << name (fit.variant) << ',' << (circuit == 0 ? "thesis" : "datasheet-600-load") << ',' << hz << ',' << dbu << ',' << dbu - fullScaleDbu << ',' << (dbu <= (hz < 50 ? 7.5 : 16) ? 1 : 0) << ',' << 100 * s.thd << ','
+                    levelSweep << labelOf (fit) << ',' << (circuit == 0 ? "thesis" : "datasheet-600-load") << ',' << hz << ',' << dbu << ',' << dbu - fullScaleDbu << ',' << (dbu <= (hz < 50 ? 7.5 : 16) ? 1 : 0) << ',' << 100 * s.thd << ','
                           << s.harmonicDbc[2] << ',' << s.harmonicDbc[3] << ',' << s.harmonicDbc[5] << ',' << s.gainDb << ',' << s.phaseDegrees << ',' << s.maximumIterations << ',' << s.failures << ',' << s.limited << '\n';
                     CHECK (s.failures == 0);
                 }
             levelSweep.flush();
         }
     REQUIRE (levelSweep.good());
-
-    // Small-signal LF response at the thesis circuit, versus 1 kHz.
-    auto lf = csv (root, "step2_lf_response.csv", "variant,frequency_hz,primary_dbu,gain_rel_1k_db,phase_degrees,published");
+}
+// Small-signal LF response at the thesis circuit, versus 1 kHz.
+void writeLfResponse (const juce::File& root, const char* file, const std::vector<Fit>& fits)
+{
+    auto lf = csv (root, file, "variant,frequency_hz,primary_dbu,gain_rel_1k_db,phase_degrees,published");
     for (const auto& fit : fits)
     {
         const auto reference = measureSine (fit.variant, fit.parameters, 1000, -20);
         for (double hz : { 20.0, 30.0, 50.0, 100.0 })
         {
             const auto s = measureSine (fit.variant, fit.parameters, hz, -20);
-            lf << name (fit.variant) << ',' << hz << ",-20," << s.gainDb - reference.gainDb << ',' << s.phaseDegrees - reference.phaseDegrees << ',' << (hz < 25 ? "loss <0.5 dB; phase about -5 to -10 degrees (Fig.28-29)" : "") << '\n';
+            lf << labelOf (fit) << ',' << hz << ",-20," << s.gainDb - reference.gainDb << ',' << s.phaseDegrees - reference.phaseDegrees << ',' << (hz < 25 ? "loss <0.5 dB; phase about -5 to -10 degrees (Fig.28-29)" : "") << '\n';
         }
     }
     REQUIRE (lf.good());
-
-    // Renders: existing synthetic material at nominal level (-18 dBFS RMS = 0 dBu).
-    const auto audioRoot = root.getChildFile ("step2_audio"); REQUIRE (audioRoot.createDirectory().wasOk());
-    auto renders = csv (root, "step2_renders.csv", "file,material,model,extra_drive_db,applied_drive_db,matched_gain,band_20_63_db,band_63_125_db,band_125_250_db,band_250_500_db,band_500_1k_db,band_1k_2k_db,band_2k_4k_db,band_4k_8k_db,band_8k_16k_db,band_16k_24k_db,residual_to_output_db,maximum_iterations,solver_failures,limited_inputs");
+}
+// Renders: existing synthetic material at nominal level (-18 dBFS RMS = 0 dBu).
+void writeRenders (const juce::File& root, const char* folder, const char* file, const std::vector<Fit>& fits)
+{
+    const auto audioRoot = root.getChildFile (folder); REQUIRE (audioRoot.createDirectory().wasOk());
+    auto renders = csv (root, file, "file,material,model,extra_drive_db,applied_drive_db,matched_gain,band_20_63_db,band_63_125_db,band_125_250_db,band_250_500_db,band_500_1k_db,band_1k_2k_db,band_2k_4k_db,band_4k_8k_db,band_8k_16k_db,band_16k_24k_db,residual_to_output_db,maximum_iterations,solver_failures,limited_inputs");
     for (int materialIndex = 0; materialIndex < 4; ++materialIndex)
     {
         const auto label = materialIndex == 0 ? "bass" : materialIndex == 1 ? "drums" : materialIndex == 2 ? "vocal-like" : "log-sweep";
@@ -413,8 +425,8 @@ void calibrationReport (const juce::File& root)
                 p.driveDb = std::min (p.driveDb, transformerDescriptors[4].maximum);
                 auto r = render8x (fit.variant, p, input, scale, frames);
                 CHECK (r.failures == 0);
-                const auto stem = std::string (label) + "_" + name (fit.variant) + "_shunt_8x_vtb1148_drive+" + std::to_string (static_cast<int> (extra)) + "dB";
-                files.push_back ({ stem, name (fit.variant), extra, p.driveDb, std::move (r) });
+                const auto stem = std::string (label) + "_" + labelOf (fit) + "_shunt_8x_vtb1148_drive+" + std::to_string (static_cast<int> (extra)) + "dB";
+                files.push_back ({ stem, labelOf (fit), extra, p.driveDb, std::move (r) });
             }
         const auto inputBands = octaveBands (dry[0]);
         const auto inputRms = rms (dry);
@@ -426,7 +438,7 @@ void calibrationReport (const juce::File& root)
             writeWav (audioRoot.getChildFile (juce::String (f.stem) + ".wav"), f.r.audio, gain);
             const auto bands = octaveBands (f.r.audio[0]);
             const auto levelOffset = 20 * std::log10 (inputRms / std::max (rms (f.r.audio), 1.0e-30));
-            renders << "step2_audio/" << f.stem << ".wav," << label << ',' << f.model << ',' << f.extra << ',' << f.applied << ',' << gain;
+            renders << folder << '/' << f.stem << ".wav," << label << ',' << f.model << ',' << f.extra << ',' << f.applied << ',' << gain;
             for (std::size_t b = 0; b < bands.size(); ++b) renders << ',' << bands[b] + levelOffset - inputBands[b];
             renders << ',' << (f.model == "input" ? -300.0 : residualRatioDb (f.r.audio, dry)) << ',' << f.r.maximumIterations << ',' << f.r.failures << ',' << f.r.limited << '\n';
         }
@@ -434,6 +446,151 @@ void calibrationReport (const juce::File& root)
         std::cout << "vtb1148 renders " << label << std::endl;
     }
     REQUIRE (renders.good());
+}
+const char* fitHeader = "variant,target,metric,frequency_hz,primary_dbu,published,model,model_thd_only_percent,error_db,noise_percent,maximum_iterations,solver_failures";
+
+void calibrationReport (const juce::File& root)
+{
+    auto search = csv (root, "step2_search.csv", "variant,drive_calibration_db,saturation,knee,memory,rms_error_db");
+    std::vector<Fit> fits;
+    for (auto v : { Variant::smooth, Variant::play3 }) fits.push_back (fitVariant (v, search));
+    REQUIRE (search.good());
+
+    auto parameters = csv (root, "step2_parameters.csv", "variant,drive_calibration_db,saturation,knee,memory,loss,source_ohms,load_ohms,rms_error_db,at_descriptor_bound");
+    for (const auto& fit : fits)
+    {
+        const auto& p = fit.parameters; const auto& d = transformerDescriptors;
+        const auto atBound = std::abs (p.driveDb - d[4].minimum) < 0.05 || std::abs (p.driveDb - d[4].maximum) < 0.05
+            || p.saturation < d[0].minimum * 1.01 || p.saturation > d[0].maximum * 0.99 || p.knee < d[1].minimum * 1.01 || p.knee > d[1].maximum * 0.99;
+        parameters << name (fit.variant) << ',' << p.driveDb << ',' << p.saturation << ',' << p.knee << ',' << (fit.variant == Variant::play3 ? p.memory : 0.0) << ',' << p.loss << ',' << p.sourceOhms << ',' << p.loadOhms << ',' << fit.cost << ',' << atBound << '\n';
+    }
+    auto fitOut = csv (root, "step2_fit.csv", fitHeader);
+    writeFitRows (fitOut, fits, targets);
+    REQUIRE (parameters.good()); REQUIRE (fitOut.good());
+    writeLevelSweep (root, "step2_level_sweep.csv", fits);
+    writeLfResponse (root, "step2_lf_response.csv", fits);
+    writeRenders (root, "step2_audio", "step2_renders.csv", fits);
+}
+
+// Step 3, variant C. Saturation is fixed at 1 during the shape fit: (saturation,
+// knee, width, drive) scaled together leave the curve unchanged, so one of them
+// is redundant. Onset is then moved along (saturation, knee) x s, which keeps
+// the small-signal slope and hysteresis and only changes the flux capacity.
+TransformerParameters fromStep3 (const std::vector<double>& x, double asymmetry = 0, double onsetScale = 1)
+{
+    auto p = thesisCircuit();
+    p.driveDb = x[0]; p.saturation = onsetScale; p.knee = std::exp (x[1]) * onsetScale;
+    p.width = std::exp (x[2]); p.memory = std::clamp (x[3], 0.0, 1.0); p.asymmetry = asymmetry;
+    return p;
+}
+bool inDescriptorRange (const TransformerParameters& p)
+{
+    const auto& d = transformerDescriptors;
+    const std::array values { p.saturation, p.knee, p.memory, p.loss, p.driveDb, p.width, p.asymmetry };
+    for (std::size_t i = 0; i < values.size(); ++i) if (values[i] < d[i].minimum || values[i] > d[i].maximum) return false;
+    return true;
+}
+// Level (dBu) at which THD first reaches 1%, by linear interpolation in dB; NaN if never by +36 dBu.
+double onePercentLevel (const TransformerParameters& p, double hz)
+{
+    double previousLevel = -10, previous = 100 * measureSine (Variant::play3Outer, p, hz, previousLevel).thd;
+    for (double dbu = -9; dbu <= 36.01; dbu += 1)
+    {
+        const auto value = 100 * measureSine (Variant::play3Outer, p, hz, dbu).thd;
+        if (value >= 1 && previous < 1) return previousLevel + (dbu - previousLevel) * (0 - db (previous / 100) + db (0.01)) / (db (value / 100) - db (previous / 100));
+        previous = value; previousLevel = dbu;
+    }
+    return std::numeric_limits<double>::quiet_NaN();
+}
+void step3Report (const juce::File& root)
+{
+    const auto all = step3Targets();
+    std::vector<Target> symmetric;
+    for (const auto& t : all) if (! (t.metric == Metric::harmonic && t.order == 2)) symmetric.push_back (t);
+
+    // Stage 1: symmetric C shape fit (even-harmonic targets excluded; a symmetric curve cannot make them).
+    auto search = csv (root, "step3_search.csv", "stage,drive_calibration_db,saturation,knee,width,memory,asymmetry,rms_error_db");
+    const auto evaluate = [&] (const std::vector<double>& x)
+    {
+        const auto p = fromStep3 (x);
+        const auto value = inDescriptorRange (p) ? rmsError (Variant::play3Outer, p, symmetric) : 1.0e6;
+        search << "shape," << p.driveDb << ',' << p.saturation << ',' << p.knee << ',' << p.width << ',' << p.memory << ',' << p.asymmetry << ',' << value << '\n';
+        return value;
+    };
+    std::vector<std::pair<double, std::vector<double>>> grid;
+    for (double drive : { -36.0, -24.0, -12.0, 0.0, 12.0, 24.0 })
+        for (double knee : { 0.1, 0.5, 1.5 })
+            for (double width : { 0.01, 0.1, 1.0 })
+                for (double memory : { 0.3, 0.7, 1.0 })
+                {
+                    std::vector<double> x { drive, std::log (knee), std::log (width), memory };
+                    grid.emplace_back (evaluate (x), x);
+                }
+    std::sort (grid.begin(), grid.end(), [] (const auto& a, const auto& b) { return a.first < b.first; });
+    std::vector<double> shape; double shapeCost = 1.0e30;
+    for (std::size_t start = 0; start < 3; ++start)
+    {
+        const auto x = nelderMead (evaluate, grid[start].second, { 4.0, 0.5, 0.7, 0.15 }, 220);
+        const auto value = evaluate (x);
+        if (value < shapeCost) { shapeCost = value; shape = x; }
+        std::cout << "vtb1148 step3 shape start " << start << " cost " << value << std::endl;
+    }
+    search.flush();
+
+    // Onset scan: cost over the published range and the 1% THD level versus s.
+    auto onset = csv (root, "step3_onset_scan.csv", "onset_scale,saturation,knee,in_descriptor_range,rms_error_db,thd1_level_20hz_dbu,thd1_level_50hz_dbu");
+    std::vector<std::pair<double, double>> scan;
+    for (double s = 0.1; s <= 16.01; s *= std::pow (2.0, 0.25))
+    {
+        const auto p = fromStep3 (shape, 0, s);
+        const auto inRange = inDescriptorRange (p);
+        const auto value = inRange ? rmsError (Variant::play3Outer, p, symmetric) : 1.0e6;
+        onset << s << ',' << p.saturation << ',' << p.knee << ',' << inRange << ',' << value << ',' << onePercentLevel (p, 20) << ',' << onePercentLevel (p, 50) << '\n';
+        if (inRange) scan.emplace_back (s, value);
+        onset.flush();
+    }
+    REQUIRE (! scan.empty());
+    // Earliest onset the published data allows: smallest s within 0.25 dB of the best scanned error.
+    const auto best = std::min_element (scan.begin(), scan.end(), [] (const auto& a, const auto& b) { return a.second < b.second; })->second;
+    double chosen = scan.back().first;
+    for (const auto& [s, value] : scan) if (value <= best + 0.25) { chosen = s; break; }
+
+    // Stage 2: asymmetry for even harmonics, all other values held.
+    auto asym = csv (root, "step3_asymmetry_scan.csv", "asymmetry,rms_error_db_all_targets,h2_20hz_m38_dbc,h2_1khz_p4_dbc");
+    double bestAsymmetry = 0, bestAsymmetryCost = rmsError (Variant::play3Outer, fromStep3 (shape, 0, chosen), all);
+    for (double asymmetry = 0.001; asymmetry <= 0.9; asymmetry *= std::pow (10.0, 0.1))
+    {
+        const auto p = fromStep3 (shape, asymmetry, chosen);
+        if (! inDescriptorRange (p)) continue;
+        const auto value = rmsError (Variant::play3Outer, p, all);
+        asym << p.asymmetry << ',' << value << ',' << measureSine (Variant::play3Outer, p, 20, -38).harmonicDbc[2] << ',' << measureSine (Variant::play3Outer, p, 1000, 4).harmonicDbc[2] << '\n';
+        if (value < bestAsymmetryCost) { bestAsymmetryCost = value; bestAsymmetry = p.asymmetry; }
+    }
+    REQUIRE (asym.good());
+
+    // Final values and the Step 2 B fit for comparison.
+    TransformerParameters b = thesisCircuit();
+    b.driveDb = 9.8368043; b.saturation = 1.446579206; b.knee = 0.06138119471; b.memory = 0.9888762544; // step2_parameters.csv
+    const std::vector<Fit> fits {
+        { Variant::play3, b, rmsError (Variant::play3, b, all), "B" },
+        { Variant::play3Outer, fromStep3 (shape, 0, chosen), rmsError (Variant::play3Outer, fromStep3 (shape, 0, chosen), all), "C-sym" },
+        { Variant::play3Outer, fromStep3 (shape, bestAsymmetry, chosen), bestAsymmetryCost, "C" },
+    };
+    auto parameters = csv (root, "step3_parameters.csv", "variant,drive_calibration_db,saturation,knee,width,memory,asymmetry,loss,source_ohms,load_ohms,rms_error_db_all_targets,onset_scale,thd1_level_20hz_dbu,thd1_level_50hz_dbu");
+    for (const auto& fit : fits)
+    {
+        const auto& p = fit.parameters;
+        const auto c = fit.variant == Variant::play3Outer;
+        parameters << labelOf (fit) << ',' << p.driveDb << ',' << p.saturation << ',' << p.knee << ',' << (c ? p.width : 1.0) << ',' << p.memory << ',' << (c ? p.asymmetry : 0.0) << ',' << p.loss << ',' << p.sourceOhms << ',' << p.loadOhms << ',' << fit.cost << ','
+                   << (c ? chosen : 0.0) << ',' << (c ? onePercentLevel (p, 20) : 0.0) << ',' << (c ? onePercentLevel (p, 50) : 0.0) << '\n';
+    }
+    REQUIRE (parameters.good());
+    auto fitOut = csv (root, "step3_fit.csv", fitHeader);
+    writeFitRows (fitOut, fits, all);
+    REQUIRE (fitOut.good());
+    writeLevelSweep (root, "step3_level_sweep.csv", fits);
+    writeLfResponse (root, "step3_lf_response.csv", fits);
+    writeRenders (root, "step3_audio", "step3_renders.csv", { fits[0], fits[2] });
 }
 }
 
@@ -449,11 +606,29 @@ TEST_CASE ("Integer-period harmonic measurement recovers a known transfer", "[sh
     CHECK (std::abs (peakForDbu (18) - 1.0) < 1.0e-15);
 }
 
+TEST_CASE ("Variant C reduces to A without memory and makes even harmonics only with asymmetry", "[shunt-calibration]")
+{
+    auto p = thesisCircuit(); p.memory = 0; p.knee = 0.2; p.driveDb = 12;
+    const auto a = measureSine (Variant::smooth, p, 20, 4), c = measureSine (Variant::play3Outer, p, 20, 4);
+    CHECK (std::abs (a.thd - c.thd) <= 1.0e-9 * a.thd + 1.0e-15);
+    CHECK (std::abs (a.gainDb - c.gainDb) < 1.0e-9);
+    p.memory = 0.7; p.width = 0.05;
+    const auto symmetric = measureSine (Variant::play3Outer, p, 20, -10);
+    p.asymmetry = 0.2;
+    const auto biased = measureSine (Variant::play3Outer, p, 20, -10);
+    // Residual H2 without bias comes from the start-up history (about -124 dBc here).
+    CHECK (symmetric.harmonicDbc[2] < -110);
+    CHECK (biased.harmonicDbc[2] > symmetric.harmonicDbc[2] + 20);
+    CHECK (symmetric.failures == 0); CHECK (biased.failures == 0);
+}
+
 TEST_CASE ("Export VTB1148 shunt calibration", "[shunt-report]")
 {
     const auto* taskValue = std::getenv ("LUMIERE_MODULE_TASK");
-    if (taskValue == nullptr || std::string (taskValue) != "shunt-step2") { SUCCEED ("Explicit shunt calibration opt-in"); return; }
+    const std::string task = taskValue ? taskValue : "";
+    if (task != "shunt-step2" && task != "shunt-step3") { SUCCEED ("Explicit shunt calibration opt-in"); return; }
     const auto* directory = std::getenv ("LUMIERE_MODULE_REPORT_DIR"); REQUIRE (directory != nullptr);
     const juce::File root (juce::String::fromUTF8 (directory)); REQUIRE (root.createDirectory().wasOk());
-    calibrationReport (root);
+    if (task == "shunt-step2") calibrationReport (root);
+    else step3Report (root);
 }

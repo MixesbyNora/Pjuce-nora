@@ -18,10 +18,11 @@ public:
         sourceR = sourceOhms / TransformerCircuit::impedanceBase;
         reset();
     }
-    void reset() noexcept { smooth.reset(); play.reset(); oldFlux = oldVoltage = current = 0; diagnostics = {}; }
+    void reset() noexcept { smooth.reset(); play.reset(); outer.reset(); oldFlux = oldVoltage = current = 0; diagnostics = {}; }
     double process (double excitation) noexcept
     {
-        auto& element = variant == Variant::smooth ? static_cast<MagneticElement&> (smooth) : static_cast<MagneticElement&> (play);
+        auto& element = variant == Variant::smooth ? static_cast<MagneticElement&> (smooth)
+            : variant == Variant::play3 ? static_cast<MagneticElement&> (play) : static_cast<MagneticElement&> (outer);
         const auto rl = parameters.loadOhms / TransformerCircuit::impedanceBase;
         const auto winding = 0.1 + parameters.loss;
         auto lo = -1000000.0, hi = 1000000.0, i = current;
@@ -47,12 +48,12 @@ public:
         diagnostics.maximumIterations = std::max (diagnostics.maximumIterations, iteration + 1);
         diagnostics.maximumResidual = std::max (diagnostics.maximumResidual, std::abs (residual));
         if (iteration >= 96 || ! isFinite (i)) { ++diagnostics.failures; return 0; }
-        current = i; oldFlux = flux; oldVoltage = voltage; element.commit (i);
+        current = i; oldFlux = flux; oldVoltage = voltage; element.commit (i, parameters);
         return topology == Topology::shunt ? voltage : rl * i;
     }
     SolverDiagnostics diagnostics;
 private:
-    SmoothElement smooth; PlayElement play;
+    SmoothElement smooth; PlayElement play; OuterPlayElement outer;
     TransformerParameters parameters;
     Variant variant = Variant::smooth;
     Topology topology = Topology::shunt;

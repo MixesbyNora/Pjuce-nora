@@ -4,21 +4,28 @@
 
 namespace ModuleSpike
 {
-enum class Variant { smooth, play3 };
+// A = smooth (retired for the VTB1148 output stage in shunt Step 3), B = play3,
+// C = play3Outer: play hysteresis first, then one saturating curve (Step 3).
+enum class Variant { smooth, play3, play3Outer };
 enum class Topology { shunt, series };
 inline constexpr std::array transformerDescriptors {
     Descriptor { "saturation", "Saturation point", "normalized flux", 0.1, 4.0, 0.01, 1.0, 1.0 },
     Descriptor { "knee", "Knee", "normalized current", 0.02, 2.0, 0.01, 0.2, 0.5 },
     Descriptor { "memory", "Memory", "", 0.0, 1.0, 0.01, 0.35, 1.0 },
     Descriptor { "loss", "Winding loss", "normalized resistance", 0.01, 1.0, 0.01, 0.1, 1.0 },
-    // Upper bound widened from 24 to 48 dB in shunt Step 2: the VTB1148 fit plus
-    // the +18 dB render setting exceeds 24 dB.
-    Descriptor { "driveCalibrationDb", "Drive calibration", "dB", -24, 48, 0.1, 0, 1.0 }
+    // Widened from +/-24 dB in shunt Steps 2 (upper, renders) and 3 (lower, C fit).
+    Descriptor { "driveCalibrationDb", "Drive calibration", "dB", -48, 48, 0.1, 0, 1.0 },
+    // C only. Width scales the play radii independently of the saturation knee;
+    // asymmetry weights the hysteretic part differently for each polarity, which
+    // makes even harmonics that scale with the hysteresis (as published, H2 tracks H3).
+    Descriptor { "width", "Hysteresis width", "", 0.001, 20.0, 0.001, 1.0, 0.3 },
+    Descriptor { "asymmetry", "Hysteresis asymmetry", "", -0.9, 0.9, 0.001, 0.0, 1.0 }
 };
 struct TransformerParameters
 {
     double saturation = transformerDescriptors[0].defaultValue, knee = transformerDescriptors[1].defaultValue;
     double memory = transformerDescriptors[2].defaultValue, loss = transformerDescriptors[3].defaultValue, driveDb = transformerDescriptors[4].defaultValue;
+    double width = transformerDescriptors[5].defaultValue, asymmetry = transformerDescriptors[6].defaultValue;
     double sourceOhms = 1000.0, loadOhms = 10000.0;
 };
 // Separate input protection, before drive and before the circuit. Not magnetics.
@@ -42,7 +49,7 @@ class MagneticElement
 public:
     virtual ~MagneticElement() = default;
     virtual MagneticTrial evaluate (double current, const TransformerParameters&) const noexcept = 0;
-    virtual void commit (double current) noexcept = 0;
+    virtual void commit (double current, const TransformerParameters&) noexcept = 0;
     virtual void reset() noexcept = 0;
 };
 class SmoothElement final : public MagneticElement
@@ -53,7 +60,7 @@ public:
         const auto m = std::tanh (i / p.knee);
         return { 0.1 * i + p.saturation * m, 0.1 + p.saturation / p.knee * (1.0 - m * m), 0.1 * std::abs (i) + p.saturation * std::abs (m) };
     }
-    void commit (double) noexcept override {}
+    void commit (double, const TransformerParameters&) noexcept override {}
     void reset() noexcept override {}
 };
 class PlayElement final : public MagneticElement
@@ -76,14 +83,50 @@ public:
             0.1 + p.saturation * ((1.0 - p.memory) / p.knee * (1.0 - reversible * reversible) + p.memory * derivative),
             0.1 * std::abs (i) + p.saturation * ((1.0 - p.memory) * std::abs (reversible) + p.memory * magnitude) };
     }
-    void commit (double i) noexcept override
+    void commit (double i, const TransformerParameters&) noexcept override
     {
         for (std::size_t n = 0; n < positions.size(); ++n) positions[n] = std::clamp (positions[n], i - radii[n], i + radii[n]);
     }
     void reset() noexcept override { positions = {}; }
-private:
     // Reduced play construction, not an identified material or a fit of the live core.
     inline static constexpr std::array radii { 0.02, 0.15, 0.6 };
+private:
+    std::array<double, 3> positions {};
+};
+// C: h = (1-memory)*i + memory*mean(w(play_j(i))), w(x) = x*(1 + asymmetry*sgn(x)),
+// lambda = 0.1*i + saturation*tanh(h/knee). B applies tanh inside
+// each operator, so wide operators stay frozen until the core saturates and
+// hysteresis width is tied to the knee; here width and knee are independent.
+class OuterPlayElement final : public MagneticElement
+{
+public:
+    MagneticTrial evaluate (double i, const TransformerParameters& p) const noexcept override
+    {
+        auto h = (1.0 - p.memory) * i, slope = 1.0 - p.memory;
+        for (std::size_t n = 0; n < positions.size(); ++n)
+        {
+            const auto radius = PlayElement::radii[n] * p.width;
+            const auto position = std::clamp (positions[n], i - radius, i + radius);
+            // Continuous and monotone for |asymmetry| < 1; symmetric when it is 0.
+            const auto weight = 1.0 + (position > 0 ? p.asymmetry : position < 0 ? -p.asymmetry : 0.0);
+            h += p.memory * weight * position / 3.0;
+            if (i - radius > positions[n] || i + radius < positions[n])
+                slope += p.memory * weight / 3.0;
+        }
+        const auto t = std::tanh (h / p.knee);
+        return { 0.1 * i + p.saturation * t, 0.1 + p.saturation / p.knee * (1.0 - t * t) * slope,
+            0.1 * std::abs (i) + p.saturation * std::abs (t) };
+    }
+    void commit (double i, const TransformerParameters& p) noexcept override
+    {
+        for (std::size_t n = 0; n < positions.size(); ++n)
+        {
+            const auto radius = PlayElement::radii[n] * p.width;
+            positions[n] = std::clamp (positions[n], i - radius, i + radius);
+        }
+    }
+    void reset() noexcept override { positions = {}; }
+private:
     std::array<double, 3> positions {};
 };
 struct SolverDiagnostics
@@ -102,7 +145,7 @@ public:
     static constexpr double fluxScale = 0.005, impedanceBase = 1000.0, tolerance = 1.0e-13;
     void prepare (double rate, Variant v, Topology t, TransformerParameters p) noexcept
     { dt = 0.5 / rate; variant = v; topology = t; parameters = p; reset(); }
-    void reset() noexcept { smooth.reset(); play.reset(); current = flux = previousVoltage = 0; diagnostics = {}; }
+    void reset() noexcept { smooth.reset(); play.reset(); outer.reset(); current = flux = previousVoltage = 0; diagnostics = {}; }
     double process (double u) noexcept
     {
         const auto rs = parameters.sourceOhms / impedanceBase + parameters.loss, rl = parameters.loadOhms / impedanceBase;
@@ -116,7 +159,8 @@ public:
         // error bound, not a fixed absolute floor that would freeze quiet tails.
         constexpr auto epsilon = std::numeric_limits<double>::epsilon();
         constexpr auto gamma = 32 * epsilon / (1 - 32 * epsilon);
-        auto& element = variant == Variant::smooth ? static_cast<MagneticElement&> (smooth) : static_cast<MagneticElement&> (play);
+        auto& element = variant == Variant::smooth ? static_cast<MagneticElement&> (smooth)
+            : variant == Variant::play3 ? static_cast<MagneticElement&> (play) : static_cast<MagneticElement&> (outer);
         auto lo = -std::max (1.0, (std::abs (constant) + 2 * fluxScale * parameters.saturation) / (fluxScale * 0.1 + dt * b / a));
         auto hi = -lo;
         auto i = std::clamp (current, lo, hi);
@@ -139,7 +183,7 @@ public:
         diagnostics.maximumIterations = std::max (diagnostics.maximumIterations, std::min (iterations + 1, 96));
         diagnostics.maximumResidual = std::max (diagnostics.maximumResidual, std::abs (residual) / (1 + std::abs (constant)));
         if (iterations >= 96 || ! isFinite (i)) { ++diagnostics.failures; return 0; }
-        current = i; flux = fluxScale * trial.flux; element.commit (i);
+        current = i; flux = fluxScale * trial.flux; element.commit (i, parameters);
         previousVoltage = (u - b * i) / a;
         return topology == Topology::shunt ? previousVoltage : rl * i;
     }
@@ -147,6 +191,7 @@ public:
 private:
     SmoothElement smooth;
     PlayElement play;
+    OuterPlayElement outer;
     TransformerParameters parameters;
     Variant variant = Variant::smooth;
     Topology topology = Topology::shunt;
@@ -169,6 +214,7 @@ public:
         };
         p.saturation = bound (p.saturation, 0); p.knee = bound (p.knee, 1);
         p.memory = bound (p.memory, 2); p.loss = bound (p.loss, 3); p.driveDb = bound (p.driveDb, 4);
+        p.width = bound (p.width, 5); p.asymmetry = bound (p.asymmetry, 6);
         p.sourceOhms = bounded (p.sourceOhms, 0.01, 1.0e8, 1000);
         p.loadOhms = bounded (p.loadOhms, 0.01, 1.0e8, 10000);
         parameters = p; variant = v; topology = t;
@@ -188,7 +234,7 @@ public:
     Info info() const noexcept override
     {
         Info result;
-        result.partId = variant == Variant::smooth ? "transformer.smooth" : "transformer.play3";
+        result.partId = variant == Variant::smooth ? "transformer.smooth" : variant == Variant::play3 ? "transformer.play3" : "transformer.play3-outer";
         result.version = "2-spike"; result.tailSamples = -1; // Asymptotic, not a finite truncation promise.
         result.nonlinear = true; result.preferredFactor = variant == Variant::smooth ? 4 : 8;
         result.parameters = transformerDescriptors;

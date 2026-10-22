@@ -9,7 +9,7 @@ namespace ModuleResearch
 using namespace ModuleSpike;
 using Waveform = std::function<double (double)>;
 enum class Coupling { transformer, buffered, divider, loadAware, reference };
-inline const char* name (Variant v) { return v == Variant::smooth ? "A" : "B"; }
+inline const char* name (Variant v) { return v == Variant::smooth ? "A" : v == Variant::play3 ? "B" : "C"; }
 inline const char* name (Topology t) { return t == Topology::shunt ? "shunt" : "series"; }
 inline const char* name (Coupling c)
 {

@@ -432,3 +432,155 @@ LUMIERE_MODULE_REPORT_DIR="$PWD/docs/measurements/shunt_improvement" LUMIERE_MOD
 - CPU and latency budgets.
 
 Stop at the Step 2 gate.
+
+# Step 3 — saturation onset and even harmonics (variant C)
+
+Executed by Claude at the owner's request. Owner decisions:
+- retire A;
+- fix B's saturation onset first, then even harmonics.
+
+**A is retired** for the VTB1148 output stage. It is not fitted, rendered or
+compared from Step 3 on. Its code remains so earlier exports and tests still
+reproduce.
+
+## Why B could not be fixed with parameters
+
+In B, each play operator passes through its own `tanh(position/knee)`. Scaling
+the operator widths is mathematically the same as rescaling knee, saturation
+and drive together, which the Step 2 fit already searched. So a width parameter
+would add nothing.
+
+At B's fitted knee, the two wider operators are 2.5× and 10× the knee. They stay
+frozen until the core is already saturating, which removes about two-thirds of
+the flux capacity. That is why B saturates just above +4 dBu at 20 Hz.
+
+## New variant C (curve change, A and B unchanged)
+
+[TransformerModule.h](../source/modules/TransformerModule.h), `OuterPlayElement`:
+
+```
+h      = (1 - memory)*i + memory * mean_j( w(play_j(i)) ),  radii_j = width * {0.02, 0.15, 0.6}
+w(x)   = x * (1 + asymmetry * sgn(x))
+lambda = fluxScale * [ 0.1*i + saturation * tanh(h / knee) ]
+```
+
+- **Hysteresis first, then one saturating curve.** Hysteresis width
+  (`width`) and saturation knee are now independent.
+- **`asymmetry` weights the hysteretic part differently by polarity.** It makes
+  even harmonics that scale with the hysteresis. The published data needs this:
+  H2 sits about 20 dB under H3 at both −38 dBu/20 Hz and +4 dBu/1 kHz.
+- **A first attempt failed and was replaced.** It biased the saturating `tanh`,
+  but that barely moved H2 at low level (−104 dBc against a target of −67).
+- **Checks** (`[shunt-calibration]`): with memory 0, C reproduces A to
+  numerical precision; without asymmetry, H2 stays below −110 dBc.
+
+**Range changes:**
+- New descriptors: `width` (0.001–20) and `asymmetry` (−0.9 to 0.9).
+- `driveCalibrationDb` lower bound widened from −24 to −48 dB: C's shape fit
+  sat on −24.
+
+The circuit, solver and stopping rule are unchanged. Shipped DSP is untouched.
+
+## Method
+
+1. **Shape fit.** Saturation is fixed at 1, because (saturation, knee, width,
+   drive) scaled together leave the curve unchanged. Fitted: drive, knee, width,
+   memory. Grid, then Nelder–Mead.
+   - Targets: the 30 Step 2 points, plus two that bound onset: 20 Hz at
+     +7.5 dBu (last valid point, 0.075%) and 50 Hz at +16 dBu (≤ 0.027%, upper
+     bound only).
+   - The two H2 targets are excluded here, because a symmetric curve cannot
+     make them.
+2. **Onset scan.** (saturation, knee) × s keeps the small-signal slope and the
+   hysteresis, and changes only the flux capacity. The chosen s is the smallest
+   within 0.25 dB of the best error, i.e. the earliest onset the data allows.
+3. **Asymmetry scan.** All 32 targets, other values held.
+
+## Results
+
+[step3_parameters.csv](measurements/shunt_improvement/step3_parameters.csv),
+[step3_fit.csv](measurements/shunt_improvement/step3_fit.csv),
+[step3_onset_scan.csv](measurements/shunt_improvement/step3_onset_scan.csv),
+[step3_asymmetry_scan.csv](measurements/shunt_improvement/step3_asymmetry_scan.csv).
+
+**MEASUREMENT — fitted values and error over all 32 targets:**
+
+| Variant | Drive cal. | Saturation | Knee | Width | Memory | Asymmetry | RMS error |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| B (Step 2) | +9.84 dB | 1.447 | 0.0614 | — | 0.989 | — | 11.3 dB |
+| C symmetric | −26.26 dB | 0.1 | 0.200 | 0.00814 | 0.881 | 0 | 18.9 dB |
+| **C** | **−26.26 dB** | **0.1** | **0.200** | **0.00814** | **0.881** | **0.0316** | **3.07 dB** |
+
+C symmetric's 18.9 dB is almost entirely the two even-harmonic targets. On the
+30 targets it was fitted to, its error is 3.13 dB.
+
+**What C now matches:**
+
+- **Distortion vs level.** Every 20 Hz point from −20 to +7.5 dBu is within
+  −3.9/+1.8 dB. 50 Hz at +16 dBu reads 0.035% against a ≤ 0.027% bound
+  (+2.3 dB).
+- **Distortion vs frequency.** All 30–500 Hz points are within −4.5/+3.7 dB.
+- **Even harmonics.** H2 is −67.9 dBc (published −67) at 20 Hz/−38 dBu and
+  −100.1 dBc (published −100) at 1 kHz/+4 dBu, both from one asymmetry value.
+- **H3.** −45.2 dBc (published −43) at 20 Hz/−38 dBu; −86.0 dBc (published
+  −83) at 1 kHz/+4 dBu.
+- **LF response.** −0.11 dB and 3.5° at 20 Hz. Published is < 0.5 dB loss and
+  roughly 5–10° of phase; B gave 0.34°.
+- **Solver.** 4–6 iterations per sample on sines and material, against B's
+  44–51 on bass and drums at higher drive.
+
+**What C still misses:**
+
+1. **H5** at 20 Hz/−38 dBu is −53.7 dBc against a published −66 (+12.3 dB).
+2. **Saturation onset is not set by data.** The error is flat across the scan
+   (3.11 to 3.13 dB from s = 0.95 down to s = 0.1). The scan stopped at the
+   saturation descriptor minimum (0.1), not at a data limit.
+
+   **Chosen: s = 0.1, which puts 1% THD at +23.1 dBu at 20 Hz (+5.1 dBFS)
+   and +34.5 dBu at 50 Hz.** The data would also allow an earlier onset; the
+   only constraints are the clean points up to +7.5 dBu (20 Hz) and +16 dBu
+   (50 Hz). The thesis has no transformer data above +7.5 dBu at 20 Hz. Where
+   onset *should* sit is an owner listening decision.
+3. **The shape fit's knee hit its bound** (2.0 at saturation 1). It is reported,
+   not widened.
+
+## Renders
+
+[step3_audio/](measurements/shunt_improvement/step3_audio/),
+[step3_renders.csv](measurements/shunt_improvement/step3_renders.csv).
+Input, B (Step 2) and C, at 0, +12 and +18 dB drive, with the same material and
+matching as Step 2.
+
+- **Octave bands:** every C render is within 0.1 dB of the input.
+- **Residual after gain match:** about −36 dB on bass at every drive. It is
+  dominated by the linear 20 Hz phase (3.5°), not by harmonics. The gain-only
+  residual can't separate the two.
+- **C at +18 dB is still close to clean.** Even at +18 dB, the bass material
+  stays below C's 1% onset (+23 dBu at 20 Hz). That matches the published
+  VTB1148, which is still clean where its data ends, but it means saturation
+  isn't audible in these renders.
+
+## Verification
+
+- The calibration export passed 1038 checks.
+- The three Debug plugin targets and Tests (Debug and Release) built with no
+  warnings.
+- Debug and Release suites: 159/159 passed each, including the shipped
+  bit-exact baseline and latency tests.
+- Benchmarks not built.
+- Reproduce:
+
+```bash
+LUMIERE_MODULE_REPORT_DIR="$PWD/docs/measurements/shunt_improvement" LUMIERE_MODULE_TASK=shunt-step3 Builds/Release/Tests "Export VTB1148 shunt calibration"
+```
+
+**OPEN — owner decisions:**
+- Listen to C against the input and B.
+- Choose where saturation should begin (the onset scale s). The data only
+  requires it to stay clean through +7.5 dBu at 20 Hz and +16 dBu at 50 Hz.
+  s = 0.1 (1% at +23 dBu, 20 Hz) is the earliest the current saturation
+  range allows; earlier needs that range widened.
+- Whether H5 needs attention.
+- The CPU and latency budgets, before Step 4 (solver cost).
+
+Stop at the Step 3 gate.
