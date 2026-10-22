@@ -256,6 +256,9 @@ endif()
 # Everything related to the tests target
 pamplejuce_add_tests()
 
+# Isolated module-contract research. Never add these headers to SharedCode.
+target_sources(Tests PRIVATE source/modules/ModuleContract.h)
+
 # The magnetic circuit is shared by plugin, Standalone and offline measurements.
 
 # A separate target for Benchmarks (keeps the Tests target fast)
