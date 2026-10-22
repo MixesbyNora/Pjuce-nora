@@ -11,7 +11,9 @@ inline constexpr std::array transformerDescriptors {
     Descriptor { "knee", "Knee", "normalized current", 0.02, 2.0, 0.01, 0.2, 0.5 },
     Descriptor { "memory", "Memory", "", 0.0, 1.0, 0.01, 0.35, 1.0 },
     Descriptor { "loss", "Winding loss", "normalized resistance", 0.01, 1.0, 0.01, 0.1, 1.0 },
-    Descriptor { "driveCalibrationDb", "Drive calibration", "dB", -24, 24, 0.1, 0, 1.0 }
+    // Upper bound widened from 24 to 48 dB in shunt Step 2: the VTB1148 fit plus
+    // the +18 dB render setting exceeds 24 dB.
+    Descriptor { "driveCalibrationDb", "Drive calibration", "dB", -24, 48, 0.1, 0, 1.0 }
 };
 struct TransformerParameters
 {

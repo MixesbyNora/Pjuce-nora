@@ -1,0 +1,17 @@
+kind,material,model,drive_db,reference_64_128_dbr
+measurement,bass,A,0,-96.29464083858943
+measurement,bass,B,0,-96.212802994567824
+measurement,bass,A,6,-96.288407424369936
+measurement,bass,B,6,-96.198444248925114
+measurement,drums,A,0,-61.128486770938238
+measurement,drums,B,0,-61.059364409596419
+measurement,drums,A,6,-61.125620853791844
+measurement,drums,B,6,-61.060996034704409
+measurement,vocal-like,A,0,-153.77846847150522
+measurement,vocal-like,B,0,-150.42308905063865
+measurement,vocal-like,A,6,-153.77824944109477
+measurement,vocal-like,B,6,-135.92122835451465
+measurement,log-sweep,A,0,-139.72487656172805
+measurement,log-sweep,B,0,-138.45419230096149
+measurement,log-sweep,A,6,-139.59436724640813
+measurement,log-sweep,B,6,-129.74304021041195

@@ -1,0 +1,423 @@
+{
+  "kind": "measurement-analysis",
+  "models": {
+    "A": {
+      "literal_lowest_factor_below_harmonics_every_band": null,
+      "reference_64_128_dbr_range": [
+        -155.79209474024458,
+        -128.8249366609501
+      ],
+      "worst_period_difference_dbr": -216.4025355516481,
+      "factor_worst_nonharmonic_dbfs": {
+        "4": -234.46785273591263,
+        "8": -234.4678555296356,
+        "16": -234.46786102029358,
+        "32": -234.4678826097785
+      },
+      "ratio_limit": "Literal band comparison includes bands with no measurable upper harmonic; null is not proof of audible aliasing."
+    },
+    "B": {
+      "literal_lowest_factor_below_harmonics_every_band": null,
+      "reference_64_128_dbr_range": [
+        -154.5541011773859,
+        -128.91097799898316
+      ],
+      "worst_period_difference_dbr": -216.404531149134,
+      "factor_worst_nonharmonic_dbfs": {
+        "4": -150.63321075499715,
+        "8": -162.85952347023485,
+        "16": -175.07983798572315,
+        "32": -187.1670142242795
+      },
+      "ratio_limit": "Literal band comparison includes bands with no measurable upper harmonic; null is not proof of audible aliasing."
+    },
+    "shipped": {
+      "literal_lowest_factor_below_harmonics_every_band": null,
+      "reference_64_128_dbr_range": null,
+      "worst_period_difference_dbr": -177.72036604202742,
+      "factor_worst_nonharmonic_dbfs": {
+        "16": -156.9410740143894
+      },
+      "ratio_limit": "Literal band comparison includes bands with no measurable upper harmonic; null is not proof of audible aliasing."
+    }
+  },
+  "conditioning": {
+    "16384": {
+      "off_grid_dbr_range": [
+        -78.36139954724186,
+        -63.98849025054503
+      ],
+      "reference_off_grid_dbr_range": [
+        -78.36141529105396,
+        -63.988407811308534
+      ],
+      "all_original_off_grid_screens_pass": false,
+      "worst_reference_convergence_dbr": -121.26930051925336
+    },
+    "192000": {
+      "off_grid_dbr_range": [
+        -147.89042984829686,
+        -125.08029152006804
+      ],
+      "reference_off_grid_dbr_range": [
+        -148.57336185707086,
+        -145.74490490751975
+      ],
+      "all_original_off_grid_screens_pass": true,
+      "worst_reference_convergence_dbr": -121.2694782826959
+    },
+    "384000": {
+      "off_grid_dbr_range": [
+        -147.89042984829686,
+        -125.08029152006804
+      ],
+      "reference_off_grid_dbr_range": [
+        -148.57336185707086,
+        -145.74490490751975
+      ],
+      "all_original_off_grid_screens_pass": true,
+      "worst_reference_convergence_dbr": -121.2694782826959
+    }
+  },
+  "maximum_wav_rms_match_error_db": 4.861120757917274e-09,
+  "bass_input_note_boundary_steps": [
+    {
+      "kind": "measurement",
+      "time_s": 0.25,
+      "raw_left_step": 0.22856167307342615
+    },
+    {
+      "kind": "measurement",
+      "time_s": 0.5,
+      "raw_left_step": -0.14160419695612805
+    },
+    {
+      "kind": "measurement",
+      "time_s": 0.75,
+      "raw_left_step": 0.09114305189399259
+    }
+  ],
+  "material_reference_64_128_dbr": [
+    {
+      "kind": "measurement",
+      "material": "bass",
+      "model": "A",
+      "drive_db": "0",
+      "reference_64_128_dbr": "-96.29464083858943"
+    },
+    {
+      "kind": "measurement",
+      "material": "bass",
+      "model": "B",
+      "drive_db": "0",
+      "reference_64_128_dbr": "-96.212802994567824"
+    },
+    {
+      "kind": "measurement",
+      "material": "bass",
+      "model": "A",
+      "drive_db": "6",
+      "reference_64_128_dbr": "-96.288407424369936"
+    },
+    {
+      "kind": "measurement",
+      "material": "bass",
+      "model": "B",
+      "drive_db": "6",
+      "reference_64_128_dbr": "-96.198444248925114"
+    },
+    {
+      "kind": "measurement",
+      "material": "drums",
+      "model": "A",
+      "drive_db": "0",
+      "reference_64_128_dbr": "-61.128486770938238"
+    },
+    {
+      "kind": "measurement",
+      "material": "drums",
+      "model": "B",
+      "drive_db": "0",
+      "reference_64_128_dbr": "-61.059364409596419"
+    },
+    {
+      "kind": "measurement",
+      "material": "drums",
+      "model": "A",
+      "drive_db": "6",
+      "reference_64_128_dbr": "-61.125620853791844"
+    },
+    {
+      "kind": "measurement",
+      "material": "drums",
+      "model": "B",
+      "drive_db": "6",
+      "reference_64_128_dbr": "-61.060996034704409"
+    },
+    {
+      "kind": "measurement",
+      "material": "vocal-like",
+      "model": "A",
+      "drive_db": "0",
+      "reference_64_128_dbr": "-153.77846847150522"
+    },
+    {
+      "kind": "measurement",
+      "material": "vocal-like",
+      "model": "B",
+      "drive_db": "0",
+      "reference_64_128_dbr": "-150.42308905063865"
+    },
+    {
+      "kind": "measurement",
+      "material": "vocal-like",
+      "model": "A",
+      "drive_db": "6",
+      "reference_64_128_dbr": "-153.77824944109477"
+    },
+    {
+      "kind": "measurement",
+      "material": "vocal-like",
+      "model": "B",
+      "drive_db": "6",
+      "reference_64_128_dbr": "-135.92122835451465"
+    },
+    {
+      "kind": "measurement",
+      "material": "log-sweep",
+      "model": "A",
+      "drive_db": "0",
+      "reference_64_128_dbr": "-139.72487656172805"
+    },
+    {
+      "kind": "measurement",
+      "material": "log-sweep",
+      "model": "B",
+      "drive_db": "0",
+      "reference_64_128_dbr": "-138.45419230096149"
+    },
+    {
+      "kind": "measurement",
+      "material": "log-sweep",
+      "model": "A",
+      "drive_db": "6",
+      "reference_64_128_dbr": "-139.59436724640813"
+    },
+    {
+      "kind": "measurement",
+      "material": "log-sweep",
+      "model": "B",
+      "drive_db": "6",
+      "reference_64_128_dbr": "-129.74304021041195"
+    }
+  ],
+  "material_reference_band_dbr_range": [
+    -154.47920626807604,
+    -128.80241374851192
+  ],
+  "all_material_band_rms_references_below_minus100": true,
+  "reference_scope": "Band RMS convergence only; no peak-error or general aliasing certification inferred.",
+  "sustained_fold_ridge_candidates": [],
+  "bass_high_band_raw_dbfs": [
+    {
+      "kind": "measurement",
+      "material": "bass",
+      "model": "A",
+      "drive_db": "0",
+      "factor": "4",
+      "band_low_hz": "8000",
+      "band_high_hz": "20000",
+      "raw_band_dbfs": "-64.976487013383519"
+    },
+    {
+      "kind": "measurement",
+      "material": "bass",
+      "model": "A",
+      "drive_db": "0",
+      "factor": "8",
+      "band_low_hz": "8000",
+      "band_high_hz": "20000",
+      "raw_band_dbfs": "-64.976493541403258"
+    },
+    {
+      "kind": "measurement",
+      "material": "bass",
+      "model": "A",
+      "drive_db": "0",
+      "factor": "16",
+      "band_low_hz": "8000",
+      "band_high_hz": "20000",
+      "raw_band_dbfs": "-64.976500815534038"
+    },
+    {
+      "kind": "measurement",
+      "material": "bass",
+      "model": "A",
+      "drive_db": "0",
+      "factor": "32",
+      "band_low_hz": "8000",
+      "band_high_hz": "20000",
+      "raw_band_dbfs": "-64.976511958575117"
+    },
+    {
+      "kind": "measurement",
+      "material": "bass",
+      "model": "B",
+      "drive_db": "0",
+      "factor": "4",
+      "band_low_hz": "8000",
+      "band_high_hz": "20000",
+      "raw_band_dbfs": "-64.976394977921714"
+    },
+    {
+      "kind": "measurement",
+      "material": "bass",
+      "model": "B",
+      "drive_db": "0",
+      "factor": "8",
+      "band_low_hz": "8000",
+      "band_high_hz": "20000",
+      "raw_band_dbfs": "-64.976402632179941"
+    },
+    {
+      "kind": "measurement",
+      "material": "bass",
+      "model": "B",
+      "drive_db": "0",
+      "factor": "16",
+      "band_low_hz": "8000",
+      "band_high_hz": "20000",
+      "raw_band_dbfs": "-64.976410718246512"
+    },
+    {
+      "kind": "measurement",
+      "material": "bass",
+      "model": "B",
+      "drive_db": "0",
+      "factor": "32",
+      "band_low_hz": "8000",
+      "band_high_hz": "20000",
+      "raw_band_dbfs": "-64.976421931850027"
+    },
+    {
+      "kind": "measurement",
+      "material": "bass",
+      "model": "shipped",
+      "drive_db": "0",
+      "factor": "16",
+      "band_low_hz": "8000",
+      "band_high_hz": "20000",
+      "raw_band_dbfs": "-64.070129847823964"
+    },
+    {
+      "kind": "measurement",
+      "material": "bass",
+      "model": "input",
+      "drive_db": "0",
+      "factor": "0",
+      "band_low_hz": "8000",
+      "band_high_hz": "20000",
+      "raw_band_dbfs": "-64.070102898430605"
+    },
+    {
+      "kind": "measurement",
+      "material": "bass",
+      "model": "A",
+      "drive_db": "6",
+      "factor": "4",
+      "band_low_hz": "8000",
+      "band_high_hz": "20000",
+      "raw_band_dbfs": "-64.976488289057485"
+    },
+    {
+      "kind": "measurement",
+      "material": "bass",
+      "model": "A",
+      "drive_db": "6",
+      "factor": "8",
+      "band_low_hz": "8000",
+      "band_high_hz": "20000",
+      "raw_band_dbfs": "-64.976494817353498"
+    },
+    {
+      "kind": "measurement",
+      "material": "bass",
+      "model": "A",
+      "drive_db": "6",
+      "factor": "16",
+      "band_low_hz": "8000",
+      "band_high_hz": "20000",
+      "raw_band_dbfs": "-64.97650209155313"
+    },
+    {
+      "kind": "measurement",
+      "material": "bass",
+      "model": "A",
+      "drive_db": "6",
+      "factor": "32",
+      "band_low_hz": "8000",
+      "band_high_hz": "20000",
+      "raw_band_dbfs": "-64.976513234614814"
+    },
+    {
+      "kind": "measurement",
+      "material": "bass",
+      "model": "B",
+      "drive_db": "6",
+      "factor": "4",
+      "band_low_hz": "8000",
+      "band_high_hz": "20000",
+      "raw_band_dbfs": "-64.976342471840908"
+    },
+    {
+      "kind": "measurement",
+      "material": "bass",
+      "model": "B",
+      "drive_db": "6",
+      "factor": "8",
+      "band_low_hz": "8000",
+      "band_high_hz": "20000",
+      "raw_band_dbfs": "-64.976352235368125"
+    },
+    {
+      "kind": "measurement",
+      "material": "bass",
+      "model": "B",
+      "drive_db": "6",
+      "factor": "16",
+      "band_low_hz": "8000",
+      "band_high_hz": "20000",
+      "raw_band_dbfs": "-64.976360650396884"
+    },
+    {
+      "kind": "measurement",
+      "material": "bass",
+      "model": "B",
+      "drive_db": "6",
+      "factor": "32",
+      "band_low_hz": "8000",
+      "band_high_hz": "20000",
+      "raw_band_dbfs": "-64.976371983975781"
+    },
+    {
+      "kind": "measurement",
+      "material": "bass",
+      "model": "shipped",
+      "drive_db": "6",
+      "factor": "16",
+      "band_low_hz": "8000",
+      "band_high_hz": "20000",
+      "raw_band_dbfs": "-64.070140827749469"
+    },
+    {
+      "kind": "measurement",
+      "material": "bass",
+      "model": "input",
+      "drive_db": "6",
+      "factor": "0",
+      "band_low_hz": "8000",
+      "band_high_hz": "20000",
+      "raw_band_dbfs": "-64.070102898430605"
+    }
+  ]
+}

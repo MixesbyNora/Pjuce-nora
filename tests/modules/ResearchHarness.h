@@ -24,6 +24,13 @@ inline const char* name (Coupling c)
     return "unknown";
 }
 inline constexpr int capacity = 256;
+// Periodic spectra must be conditioned in elapsed time, not a fixed number of
+// base-rate frames. One second is checked against two seconds in Step 1; this
+// is a measurement policy, not a model/tail guarantee for arbitrary settings.
+inline int periodicWarmFrames (double sampleRate) noexcept
+{
+    return static_cast<int> (std::ceil (sampleRate / capacity)) * capacity;
+}
 // Offline/JUCE filter owner. Allocates only in constructor, not processing.
 // Kernels remain allocation-free; oversampling is outside the module contract.
 class Processor

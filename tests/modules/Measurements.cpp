@@ -123,7 +123,7 @@ void validationReport (const juce::File& root)
                     for (double peak : { 0.05, 1.0, 4.0 })
                     {
                         const Stimulus s (signal, rate, peak);
-                        const auto warm = s.periodic() || signal == Signal::impulse ? windowSize : 1024;
+                        const auto warm = s.periodic() ? periodicWarmFrames (rate) : signal == Signal::impulse ? windowSize : 1024;
                         const Waveform wave = [&] (double n) { return s.at (n); };
                         auto lower = render (rate, 32, v, topology, {}, wave, true, Coupling::transformer, 1000, true, 1, warm);
                         auto reference = render (rate, 64, v, topology, {}, wave, true, Coupling::transformer, 1000, true, 1, warm);
