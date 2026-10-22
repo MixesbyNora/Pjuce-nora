@@ -1,21 +1,23 @@
 #pragma once
 #include "ModuleContract.h"
+#include <limits>
 
 namespace ModuleSpike
 {
 enum class Variant { smooth, play3 };
 enum class Topology { shunt, series };
-struct TransformerParameters
-{
-    double saturation = 1.0, knee = 0.2, memory = 0.35, loss = 0.1, driveDb = 0.0;
-    double sourceOhms = 1000.0, loadOhms = 10000.0;
-};
 inline constexpr std::array transformerDescriptors {
     Descriptor { "saturation", "Saturation point", "normalized flux", 0.1, 4.0, 0.01, 1.0, 1.0 },
     Descriptor { "knee", "Knee", "normalized current", 0.02, 2.0, 0.01, 0.2, 0.5 },
     Descriptor { "memory", "Memory", "", 0.0, 1.0, 0.01, 0.35, 1.0 },
-    Descriptor { "loss", "Linear magnetic slope", "", 0.01, 1.0, 0.01, 0.1, 1.0 },
+    Descriptor { "loss", "Winding loss", "normalized resistance", 0.01, 1.0, 0.01, 0.1, 1.0 },
     Descriptor { "driveCalibrationDb", "Drive calibration", "dB", -24, 24, 0.1, 0, 1.0 }
+};
+struct TransformerParameters
+{
+    double saturation = transformerDescriptors[0].defaultValue, knee = transformerDescriptors[1].defaultValue;
+    double memory = transformerDescriptors[2].defaultValue, loss = transformerDescriptors[3].defaultValue, driveDb = transformerDescriptors[4].defaultValue;
+    double sourceOhms = 1000.0, loadOhms = 10000.0;
 };
 // Separate input protection, before drive and before the circuit. Not magnetics.
 struct InputSafety
@@ -31,7 +33,7 @@ struct InputSafety
     }
     void reset() noexcept { limited = invalid = 0; }
 };
-struct MagneticTrial { double flux = 0, derivative = 0; };
+struct MagneticTrial { double flux = 0, derivative = 0, magnitude = 0; };
 // Flux linkage versus normalized magnetizing current. Trials never mutate history.
 class MagneticElement
 {
@@ -47,7 +49,7 @@ public:
     MagneticTrial evaluate (double i, const TransformerParameters& p) const noexcept override
     {
         const auto m = std::tanh (i / p.knee);
-        return { p.loss * i + p.saturation * m, p.loss + p.saturation / p.knee * (1.0 - m * m) };
+        return { 0.1 * i + p.saturation * m, 0.1 + p.saturation / p.knee * (1.0 - m * m), 0.1 * std::abs (i) + p.saturation * std::abs (m) };
     }
     void commit (double) noexcept override {}
     void reset() noexcept override {}
@@ -57,18 +59,20 @@ class PlayElement final : public MagneticElement
 public:
     MagneticTrial evaluate (double i, const TransformerParameters& p) const noexcept override
     {
-        auto m = 0.0, derivative = 0.0;
+        auto m = 0.0, derivative = 0.0, magnitude = 0.0;
         for (std::size_t n = 0; n < positions.size(); ++n)
         {
             const auto position = std::clamp (positions[n], i - radii[n], i + radii[n]);
             const auto value = std::tanh (position / p.knee);
             m += value / 3.0;
+            magnitude += std::abs (value) / 3.0;
             if (i - radii[n] > positions[n] || i + radii[n] < positions[n])
                 derivative += (1.0 - value * value) / (3.0 * p.knee);
         }
         const auto reversible = std::tanh (i / p.knee);
-        return { p.loss * i + p.saturation * ((1.0 - p.memory) * reversible + p.memory * m),
-            p.loss + p.saturation * ((1.0 - p.memory) / p.knee * (1.0 - reversible * reversible) + p.memory * derivative) };
+        return { 0.1 * i + p.saturation * ((1.0 - p.memory) * reversible + p.memory * m),
+            0.1 + p.saturation * ((1.0 - p.memory) / p.knee * (1.0 - reversible * reversible) + p.memory * derivative),
+            0.1 * std::abs (i) + p.saturation * ((1.0 - p.memory) * std::abs (reversible) + p.memory * magnitude) };
     }
     void commit (double i) noexcept override
     {
@@ -99,12 +103,19 @@ public:
     void reset() noexcept { smooth.reset(); play.reset(); current = flux = previousVoltage = 0; diagnostics = {}; }
     double process (double u) noexcept
     {
-        const auto rs = parameters.sourceOhms / impedanceBase, rl = parameters.loadOhms / impedanceBase;
+        const auto rs = parameters.sourceOhms / impedanceBase + parameters.loss, rl = parameters.loadOhms / impedanceBase;
         const auto a = topology == Topology::shunt ? 1.0 + rs / rl : 1.0;
         const auto b = topology == Topology::shunt ? rs : rs + rl;
         const auto constant = flux + dt * (u / a + previousVoltage);
+        // The equation is flux balance. A voltage-equivalent goal scales with
+        // dt; a fixed flux cutoff otherwise freezes quiet tails at high rates.
+        // Roundoff must use individual term magnitudes: hysteretic contributions
+        // can cancel even with a near-zero *net* flux. Use an operation-count
+        // error bound, not a fixed absolute floor that would freeze quiet tails.
+        constexpr auto epsilon = std::numeric_limits<double>::epsilon();
+        constexpr auto gamma = 32 * epsilon / (1 - 32 * epsilon);
         auto& element = variant == Variant::smooth ? static_cast<MagneticElement&> (smooth) : static_cast<MagneticElement&> (play);
-        auto lo = -std::max (1.0, (std::abs (constant) + 2 * fluxScale * parameters.saturation) / (fluxScale * parameters.loss + dt * b / a));
+        auto lo = -std::max (1.0, (std::abs (constant) + 2 * fluxScale * parameters.saturation) / (fluxScale * 0.1 + dt * b / a));
         auto hi = -lo;
         auto i = std::clamp (current, lo, hi);
         MagneticTrial trial;
@@ -114,14 +125,16 @@ public:
         {
             trial = element.evaluate (i, parameters);
             residual = fluxScale * trial.flux + dt * b / a * i - constant;
-            if (std::abs (residual) <= tolerance * (1 + std::abs (constant))) break;
+            const auto roundoff = gamma * (fluxScale * trial.magnitude + std::abs (dt * b / a * i) + std::abs (constant));
+            const auto rootGoal = std::max (tolerance * dt, roundoff);
+            if (std::abs (residual) <= rootGoal) break;
             if (residual > 0) hi = i; else lo = i;
             const auto candidate = i - residual / (fluxScale * trial.derivative + dt * b / a);
             // Bound Newton effort, then bisect the monotone bracket. A sequence
             // of accepted near-endpoint Newton steps must not stall convergence.
             i = iterations < 8 && candidate > lo && candidate < hi ? candidate : 0.5 * (lo + hi);
         }
-        diagnostics.maximumIterations = std::max (diagnostics.maximumIterations, iterations + 1);
+        diagnostics.maximumIterations = std::max (diagnostics.maximumIterations, std::min (iterations + 1, 96));
         diagnostics.maximumResidual = std::max (diagnostics.maximumResidual, std::abs (residual) / (1 + std::abs (constant)));
         if (iterations >= 96 || ! isFinite (i)) { ++diagnostics.failures; return 0; }
         current = i; flux = fluxScale * trial.flux; element.commit (i);
@@ -147,11 +160,13 @@ public:
     }
     void configure (Variant v, Topology t, TransformerParameters p) noexcept
     {
-        p.saturation = bounded (p.saturation, 0.1, 4, 1);
-        p.knee = bounded (p.knee, 0.02, 2, 0.2);
-        p.memory = bounded (p.memory, 0, 1, 0.35);
-        p.loss = bounded (p.loss, 0.01, 1, 0.1);
-        p.driveDb = bounded (p.driveDb, -24, 24, 0);
+        const auto bound = [] (double value, std::size_t index) noexcept
+        {
+            const auto& d = transformerDescriptors[index];
+            return bounded (value, d.minimum, d.maximum, d.defaultValue);
+        };
+        p.saturation = bound (p.saturation, 0); p.knee = bound (p.knee, 1);
+        p.memory = bound (p.memory, 2); p.loss = bound (p.loss, 3); p.driveDb = bound (p.driveDb, 4);
         p.sourceOhms = bounded (p.sourceOhms, 0.01, 1.0e8, 1000);
         p.loadOhms = bounded (p.loadOhms, 0.01, 1.0e8, 10000);
         parameters = p; variant = v; topology = t;
@@ -172,7 +187,7 @@ public:
     {
         Info result;
         result.partId = variant == Variant::smooth ? "transformer.smooth" : "transformer.play3";
-        result.version = "1-spike"; result.tailSamples = -1; // Asymptotic/uncertified, not a finite truncation promise.
+        result.version = "2-spike"; result.tailSamples = -1; // Asymptotic, not a finite truncation promise.
         result.nonlinear = true; result.preferredFactor = variant == Variant::smooth ? 4 : 8;
         result.parameters = transformerDescriptors;
         result.input = Impedance::scalar (1000); // Nominal metadata; not the nonlinear dynamic driving-point impedance.

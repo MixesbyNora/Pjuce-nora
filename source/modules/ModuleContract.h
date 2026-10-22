@@ -121,13 +121,13 @@ public:
         if (! value.valid()) return false;
         spec = value;
         for (auto* module : selected)
-            if (module && ! module->prepare (spec)) return false;
+            if (module && (! module->prepare (spec) || module->info().latency < 0 || module->info().latency > slotDelay)) return false;
         reset(); return true;
     }
     bool select (std::size_t slot, Module* module) noexcept
     {
-        if (slot >= slots || (module && (module->info().latency != 0 || ! module->prepare (spec)))) return false;
-        selected[slot] = module; return true;
+        if (slot >= slots || (module && (! module->prepare (spec) || module->info().latency < 0 || module->info().latency > slotDelay))) return false;
+        selected[slot] = module; delay[slot] = {}; positions[slot] = 0; return true;
     }
     void reset() noexcept
     {
@@ -147,6 +147,8 @@ public:
             for (std::size_t slot = 0; slot < slots; ++slot)
             {
                 if (selected[slot]) selected[slot]->process (part, modulation);
+                const auto length = static_cast<std::size_t> (slotDelay - (selected[slot] ? selected[slot]->info().latency : 0));
+                if (length == 0) continue;
                 for (std::size_t n = 0; n < part.samples; ++n)
                 {
                     auto& position = positions[slot];
@@ -157,7 +159,7 @@ public:
                         part.data[ch][n] = delay[slot][ch][position];
                         delay[slot][ch][position] = sanitized (x);
                     }
-                    position = (position + 1) % slotDelay;
+                    position = (position + 1) % length;
                 }
             }
         }

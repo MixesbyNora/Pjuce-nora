@@ -72,3 +72,33 @@ TEST_CASE ("Module contract: optional impedance never injects nonfinite gain", "
         }
     CHECK (divider (Impedance::scalar (100), Impedance::scalar (100)) == 0.5);
 }
+
+TEST_CASE ("Module contract pads a nonzero module delay to the fixed slot budget", "[module-contract]")
+{
+    class DelayedFixture final : public Module
+    {
+    public:
+        bool prepare (Spec spec) noexcept override { reset(); return spec.valid(); }
+        void reset() noexcept override { data = {}; position = 0; }
+        Info info() const noexcept override { Info result; result.latency = 5; return result; }
+        void process (Block block, Modulation = {}) noexcept override
+        {
+            for (std::size_t n = 0; n < block.samples; ++n)
+            {
+                for (int ch = 0; ch < block.channels; ++ch)
+                {
+                    const auto c = static_cast<std::size_t> (ch); const auto x = block.data[c][n];
+                    block.data[c][n] = data[c][position]; data[c][position] = x;
+                }
+                position = (position + 1) % 5;
+            }
+        }
+        std::array<std::array<double, 5>, 2> data {};
+        std::size_t position = 0;
+    } fixture;
+    Chain chain; REQUIRE (chain.prepare ({ 48000, 256, 2 })); REQUIRE (chain.select (0, &fixture));
+    std::array<double, 256> left {}, right {}; left[0] = 1;
+    chain.process ({ { left.data(), right.data() }, left.size(), 2 });
+    for (std::size_t n = 0; n < left.size(); ++n) CHECK (std::abs (left[n] - (n == 64 ? 1.0 : 0.0)) < 1.0e-15);
+    CHECK (chain.select (0, nullptr)); CHECK (chain.latencySamples() == 64);
+}

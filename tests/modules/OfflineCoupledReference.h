@@ -6,7 +6,7 @@ namespace ModuleSpike
 // OFFLINE MEASUREMENT TOOL ONLY, not a production module/configuration.
 // Same source family as the fixture; load current feeds back *inside* tanh:
 // terminal = tanh(4*(excitation - Rsource*Iterminal))/4.
-// Winding R=100 ohms is separate from that source impedance. Trial flux gives
+// Winding R=100 ohms + loss*1000 ohms is separate from source impedance. Trial flux gives
 // winding voltage by the trapezoidal equation; KCL/KVL leaves one scalar root.
 class OfflineCoupledReference
 {
@@ -23,7 +23,7 @@ public:
     {
         auto& element = variant == Variant::smooth ? static_cast<MagneticElement&> (smooth) : static_cast<MagneticElement&> (play);
         const auto rl = parameters.loadOhms / TransformerCircuit::impedanceBase;
-        constexpr double winding = 0.1;
+        const auto winding = 0.1 + parameters.loss;
         auto lo = -1000000.0, hi = 1000000.0, i = current;
         double voltage = 0, flux = 0, residual = 0;
         int iteration = 0;

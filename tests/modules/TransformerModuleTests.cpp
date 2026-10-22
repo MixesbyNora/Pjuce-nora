@@ -44,3 +44,31 @@ TEST_CASE ("Experimental transformer variants obey reset partition stereo and la
                 CHECK (chain.latencySamples() == 64);
             }
 }
+
+TEST_CASE ("Experimental high-rate quiet tails match independent linear circuit recurrence", "[module-transformer]")
+{
+    for (double rate : { 44100.0, 48000.0, 96000.0, 192000.0 })
+        for (auto variant : { Variant::smooth, Variant::play3 })
+            for (auto topology : { Topology::shunt, Topology::series })
+            {
+                TransformerParameters p;
+                TransformerCircuit circuit; circuit.prepare (rate * 512, variant, topology, p);
+                const auto dt = 0.5 / (rate * 512);
+                const auto rs = p.sourceOhms / 1000 + p.loss, rl = p.loadOhms / 1000;
+                const auto a = topology == Topology::shunt ? 1 + rs / rl : 1;
+                const auto b = topology == Topology::shunt ? rs : rs + rl;
+                const auto inductance = TransformerCircuit::fluxScale * (0.1 + p.saturation / p.knee * (variant == Variant::smooth ? 1 : 1 - p.memory));
+                const auto pole = (inductance - dt * b / a) / (inductance + dt * b / a);
+                const auto forcing = dt / a / (inductance + dt * b / a);
+                double current = 0, previous = 0, error = 0;
+                for (int n = 0; n < 4096; ++n)
+                {
+                    const auto x = n < 64 ? 0.0001 : 0.0;
+                    current = pole * current + forcing * (x + previous); previous = x;
+                    const auto expected = topology == Topology::shunt ? (x - rs * current) / a : rl * current;
+                    error = std::max (error, std::abs (circuit.process (x) - expected));
+                }
+                CAPTURE (rate, static_cast<int> (variant), static_cast<int> (topology), error);
+                CHECK (error < 1.0e-12); CHECK (circuit.diagnostics.failures == 0);
+            }
+}
