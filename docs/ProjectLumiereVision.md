@@ -1,10 +1,17 @@
 # Project Lumiere: product vision
 
 Captured from the owner's [original notes](notes/2026-10-20-project-lumiere-ideas.md)
-and subsequent model-count/bypass, USER sidechain EQ, Model selector and analog
-component-view clarifications on 2026-10-20. This document organizes the intended
+and subsequent model-count/bypass, USER sidechain EQ, Model selector, analog
+component-view and single-product modular architecture clarifications. This document organizes the intended
 product direction. It does not describe completed features, establish a release schedule or authorize their
 implementation. Current behavior and development status remain in [SPEC.md](SPEC.md).
+
+**DECISION** means owner-selected direction or scope; **PROPOSAL** means an
+approach to investigate, not an accepted implementation; **OPEN** means a decision
+or result remains outstanding. The [module-contract spike](Architecture.md)
+uses these same labels. Its initial capture authorized documentation only; the
+owner subsequently authorized an isolated Tests-only experiment on 2026-10-22.
+That experiment does not authorize shipped-plugin integration.
 
 ## Beyond Analog
 
@@ -16,27 +23,29 @@ sonic building blocks; the user chooses how to combine them.
 The aim is an accessible compressor that can be configured deeply, with useful
 choices presented clearly rather than requiring knowledge of circuit design.
 
-## Two related products
+## One modular compressor
 
-The planned family consists of two separate plugins built on a shared framework:
+**DECISION:** Beyond Analog is moving toward one analog-inspired compressor
+plugin with swappable tube stages, transformers, compression circuits and PSU
+modules. This supersedes the earlier plan for separate tube and solid-state
+products. The existing `Lumiere` project and plugin identity remain unchanged.
 
-| Product direction | Intended focus |
-|---|---|
-| Tube compressor | The current Lumiere project develops toward a tube/vari-mu-inspired product, with selectable tube coloration and transformer models. |
-| Solid-state compressor | A separate future product, exploring selectable solid-state compression characteristics and transistor, VCA and op-amp-inspired coloration/building blocks. |
-
-These are product directions, not a statement that the current processor already
-models those circuits. Final product names, identifiers, packaging and the exact
-shared-code boundary are undecided. The existing `Lumiere` project and plugin
-identity remain unchanged.
+Parts are independently selectable, including intentionally free-for-all
+combinations and independent Off choices. This direction does not claim that the
+current processor implements those module families. **OPEN:** final model lineup,
+electrical/modulation interactions and the eventual production module contract.
+The first contract and transformer experiment is a **PROPOSAL**, isolated from
+the shipped processor and under Tests-only evaluation; see
+[Architecture.md](Architecture.md). No final module/coupling architecture is selected.
 
 ## Independent sonic choices
 
 The intended user-facing capabilities are:
 
 - Choose the input transformer model independently of the output transformer model.
-- Select tube coloration in the tube product, or appropriate solid-state building
-  blocks in the solid-state product.
+- Select tube coloration independently of the compression circuit. Other
+  coloration building blocks remain possible future choices, not a second
+  product commitment or a selected implementation.
 - Disable coloration stages independently, including operating without tube
   coloration, transformer coloration, or both.
 - Choose compression characteristics independently of the coloration choices.
@@ -56,10 +65,11 @@ references, not verified component inventories or established emulation targets.
 Specific component identities and any hardware-accuracy claims need supporting
 research or measurements before entering a model specification.
 
-## Tube product: model groups
+## Independently swappable model groups
 
-The owner has specified five independently selectable groups for the tube
-product. Each group offers three models plus an explicit **Off** option:
+**DECISION:** retain the previously specified five independently selectable groups
+within the single plugin. Each group offers three models plus an explicit **Off**
+option. These are product requirements, not measured or implemented capabilities:
 
 | Group | Model choices | Independent Off behavior |
 |---|---|---|
@@ -85,8 +95,8 @@ other controls such as Box Tone, gain and monitoring remains separately defined.
 Specific tube types, circuit references, transformer identities and PSU models
 have not yet been selected. PSU characteristics, coupling, ordering, switching
 transitions and exact bypass contracts still need design and validation. These
-counts apply to the tube product; equivalent counts for the solid-state product
-have not been specified. Mixing and matching here means choosing across groups;
+counts carry forward into the single-product vision; an additional solid-state
+lineup has not been selected. Mixing and matching here means choosing across groups;
 continuous blending between models within a group is not yet specified.
 
 ## Model selector and Easy/Expert workflow
@@ -101,7 +111,7 @@ uses **Easy** and **Expert** modes:
 | Expert | Expose the individual component selectors so the user chooses each group's model or Off state independently. |
 
 An Easy-mode model is a component configuration preset, not a separate
-compression engine. For the tube product it selects a combination across tube
+compression engine. For the modular plugin it selects a combination across tube
 saturation, compression circuit, input transformer, output transformer and PSU.
 The same underlying component choices remain available in Expert mode, including
 all independent Off options. The curated model count is separate from the three
@@ -195,8 +205,8 @@ meters and development panels remain the current implementation.
 
 ## Decisions still needed
 
-- Which specific models fill the three slots in each tube-product group, and
-  what qualifies a model for inclusion? What is the solid-state product's lineup?
+- Which specific models fill the three slots in each component group, and
+  what qualifies a model for inclusion? Are additional types of building block needed?
 - How should the independently selectable groups interact sonically while
   preserving their independent Off controls? Which PSU behaviors are modeled?
 - What does disabling each stage preserve: gain, frequency response, latency and
@@ -220,18 +230,18 @@ additional features selected by the owner.
 ## Relationship to current work
 
 The modular vision supports continuing to keep DSP components separate and
-centralizing tuning values. It does not expand the current milestone into a
-model selector, a second plugin, new routing, Box Tone, USER sidechain EQ or a
-final custom UI.
-Existing deferred features remain deferred until explicitly scheduled.
+centralizing tuning values. **DECISION:** the owner resumed only the isolated
+[module-contract spike](Architecture.md) on 2026-10-22, with a report-and-stop
+boundary. The shipped plugin remains unchanged.
+It does not authorize a model selector, new routing, Box Tone, USER sidechain EQ,
+or a final custom UI. Existing deferred features remain deferred until explicitly
+scheduled. Historical magnetic research validates numerical behavior, not a
+calibrated hardware transformer.
 
-The live transformer remains the current tanh/residual-ADAA stage with the saved
-favorite voicing. The magnetic model remains offline research. Its recent
-[artifact refinement](MagneticArtifactRefinement.md) validates numerical behavior,
-not a calibrated hardware transformer. On 2026-10-21 development resumed with a
-Tests-only [audio-in/audio-out coupling prototype](TransformerAudioPrototype.md),
-complete-chain measurements and level/latency-matched listening comparisons.
-That work does not implement the future product features recorded here.
+The permanent, descriptor-driven [Voicing workbench](TransformerVoicing.md)
+remains central to owner-led tuning: listening, A/B, copy/paste, exported settings
+and measurements support repeatable feedback. Its future use for other module
+types is a direction, not an implemented generic module hookup.
 
 ### Magnetic engine milestone (2026-10-21)
 
