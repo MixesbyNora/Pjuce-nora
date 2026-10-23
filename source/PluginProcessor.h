@@ -40,7 +40,9 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
     TransformerVoicingState& getTransformerVoicing() noexcept { return transformerVoicing; }
-    juce::String exportTransformerVoicing() const;
+    TransformerVoicingState& getInputTransformerVoicing() noexcept { return inputTransformerVoicing; }
+    // Workbench feedback JSON for the output (default) or input transformer.
+    juce::String exportTransformerVoicing (bool inputStage = false) const;
 
     // Maximum positive attenuation in the most recent block; safe for UI polling.
     float getGainReductionDb() const noexcept
@@ -86,7 +88,7 @@ private:
     std::unique_ptr<GainLinkController> gainLink;
     std::atomic<float> currentGainReductionDb { 0.0f };
     LevelMeterPeaks levelPeaks;
-    TransformerVoicingState transformerVoicing;
+    TransformerVoicingState transformerVoicing, inputTransformerVoicing;
 
     static_assert (std::atomic<float>::is_always_lock_free);
 

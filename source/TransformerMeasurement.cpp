@@ -12,11 +12,11 @@ const Row& Result::at (int frequency, int level, int amount) const noexcept
 }
 
 std::optional<Metrics> measurePoint (TransformerVoicing::Values voice, double frequencyHz,
-    float inputDbfs, float amountPercent, const Cancel& cancel)
+    float inputDbfs, float amountPercent, const Cancel& cancel, const ModuleSpike::TransformerParameters& calibration)
 {
     juce::ScopedNoDenormals noDenormals;
     VtbOutputTransformer transformer;
-    transformer.prepare (sampleRate, amountPercent, false, voice, false);
+    transformer.prepare (sampleRate, amountPercent, false, voice, false, calibration);
     juce::AudioBuffer<float> block (1, 256);
     constexpr std::array orders { 1, 2, 3, 5, 7 };
     std::array<std::complex<double>, 5> sums {}, oscillators {}, rotations {};
@@ -82,7 +82,7 @@ std::optional<Result> measure (const Request& request, const Cancel& cancel,
                 point.amountPercent = amount;
                 for (std::size_t voice = 0; voice < 2; ++voice)
                 {
-                    const auto metrics = measurePoint (voice == 0 ? request.a : request.b, frequency, level, amount, cancel);
+                    const auto metrics = measurePoint (voice == 0 ? request.a : request.b, frequency, level, amount, cancel, request.calibration);
                     if (! metrics)
                         return std::nullopt;
                     point.voices[voice] = *metrics;
@@ -96,7 +96,7 @@ std::optional<Result> measure (const Request& request, const Cancel& cancel,
 
 juce::String toCsv (const Result& result)
 {
-    juce::String csv = "# Transformer snapshots A/B; voltage-driven magnetic hysteresis; match off; transformer In.\n"
+    juce::String csv = "# " + result.request.stage + " transformer snapshots A/B; variant C hysteresis; match off; transformer In.\n"
         "# 48000 Hz; discard 0.25 s; analyze 1 s; no emphasis shelves; not hardware measurements.\n";
     csv += "# Workbench schema: " + juce::String (TransformerVoicing::model) + "\n";
     for (int voice = 0; voice < 2; ++voice)

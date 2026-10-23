@@ -1,5 +1,6 @@
 #include <PluginProcessor.h>
 #include <dsp/SoftKneeGainComputer.h>
+#include "helpers/CompressorUnderTest.h"
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <bit>
@@ -25,7 +26,13 @@ void setParameter (PluginProcessor& processor, const juce::String& id, float val
     parameter->setValueNotifyingHost (parameter->convertTo0to1 (value));
 }
 
-juce::AudioBuffer<float> renderConstant (PluginProcessor& processor, int samples, float left, float right)
+void setParameter (CompressorUnderTest& compressor, const juce::String& id, float value)
+{
+    compressor.set (id, value);
+}
+
+template <typename Processor>
+juce::AudioBuffer<float> renderConstant (Processor& processor, int samples, float left, float right)
 {
     juce::AudioBuffer<float> buffer (2, samples);
     juce::FloatVectorOperations::fill (buffer.getWritePointer (0), left, samples);
@@ -122,7 +129,7 @@ TEST_CASE ("Compressor and BA bar expose stable parameters and persist state", "
 
 TEST_CASE ("Signal below the knee passes unchanged with unity input and makeup", "[compressor]")
 {
-    PluginProcessor processor;
+    CompressorUnderTest processor;
     processor.prepareToPlay (48000.0, 256);
     auto buffer = renderConstant (processor, 256, 0.01f, -0.03f);
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
@@ -135,7 +142,7 @@ TEST_CASE ("Signal below the knee passes unchanged with unity input and makeup",
 
 TEST_CASE ("Above-threshold signal reaches the fixed four-to-one gain reduction", "[compressor]")
 {
-    PluginProcessor processor;
+    CompressorUnderTest processor;
     processor.prepareToPlay (48000.0, 256);
     const auto level = juce::Decibels::decibelsToGain (-6.0f);
     const auto buffer = renderConstant (processor, samplesFor (48000.0, 100.0), level, level);
@@ -149,7 +156,7 @@ TEST_CASE ("Stereo link follows either louder channel and preserves channel bala
 {
     for (bool rightIsLouder : { false, true })
     {
-        PluginProcessor processor;
+        CompressorUnderTest processor;
         processor.prepareToPlay (48000.0, 256);
         const auto left = rightIsLouder ? -0.025f : 0.5f;
         const auto right = rightIsLouder ? 0.5f : -0.025f;
@@ -169,7 +176,7 @@ TEST_CASE ("Attack retains its dB time constant independent of sample rate", "[c
     for (double sampleRate : { 44100.0, 48000.0, 96000.0, 192000.0 })
     {
         CAPTURE (sampleRate);
-        PluginProcessor processor;
+        CompressorUnderTest processor;
         setParameter (processor, "attack", 10.0f);
         setParameter (processor, "release", 200.0f);
         processor.prepareToPlay (sampleRate, 256);
@@ -191,7 +198,7 @@ TEST_CASE ("Attack retains its dB time constant independent of sample rate", "[c
 
 TEST_CASE ("Attack automation still selects prepared time coefficients", "[compressor][ballistics]")
 {
-    PluginProcessor processor;
+    CompressorUnderTest processor;
     processor.prepareToPlay (48000.0, 256);
     setParameter (processor, "attack", 30.0f);
     setParameter (processor, "release", 50.0f);
@@ -220,7 +227,7 @@ TEST_CASE ("Soft knee joins unity and four-to-one curves continuously", "[compre
 
 TEST_CASE ("Input drives detection and makeup follows gain reduction", "[compressor][gain]")
 {
-    PluginProcessor processor;
+    CompressorUnderTest processor;
     setParameter (processor, "input", 6.0f);
     setParameter (processor, "makeup", 3.0f);
     processor.prepareToPlay (48000.0, 256);
@@ -235,7 +242,7 @@ TEST_CASE ("Input and makeup automation ramp in dB over twenty milliseconds", "[
 {
     for (const auto* id : { "input", "makeup" })
     {
-        PluginProcessor processor;
+        CompressorUnderTest processor;
         processor.prepareToPlay (48000.0, 256);
         setParameter (processor, id, 6.0f);
         const auto buffer = renderConstant (processor, 960 + processor.getLatencySamples(), 0.001f, -0.001f);

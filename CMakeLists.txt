@@ -174,6 +174,8 @@ set(SourceFiles
     source/dsp/DbGainEnvelope.h
     source/dsp/TransformerSettings.h
     source/dsp/MagneticOversampling.h
+    source/dsp/VtbTransformerCore.h
+    source/dsp/VtbTransformerCore.cpp
     source/dsp/VtbOutputTransformer.h
     source/dsp/VtbOutputTransformer.cpp
     source/modules/ModuleContract.h

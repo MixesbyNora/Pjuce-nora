@@ -2,7 +2,9 @@
 
 PluginEditor::PluginEditor (PluginProcessor& processorToUse)
     : AudioProcessorEditor (processorToUse), processorRef (processorToUse), parameterEditor (processorToUse),
-      voicingPanel (processorToUse.getTransformerVoicing(), [&processorToUse] { return processorToUse.exportTransformerVoicing(); })
+      voicingPanel (processorToUse.getTransformerVoicing(), [&processorToUse] { return processorToUse.exportTransformerVoicing(); }),
+      inputVoicingPanel (processorToUse.getInputTransformerVoicing(), [&processorToUse] { return processorToUse.exportTransformerVoicing (true); },
+          "Input Transformer Voicing", "inputTransformerVoicingPanel", ModuleSpike::vtb9046LineInputC(), "VTB9046 line input")
 {
     parameterEditor.setResizable (false, false);
     addAndMakeVisible (parameterEditor);
@@ -10,12 +12,28 @@ PluginEditor::PluginEditor (PluginProcessor& processorToUse)
     addAndMakeVisible (inputMeter);
     addAndMakeVisible (outputMeter);
     addAndMakeVisible (voicingPanel);
+    addChildComponent (inputVoicingPanel);
     addAndMakeVisible (voicingToggle);
+    addAndMakeVisible (inputStage);
+    addAndMakeVisible (outputStage);
+    inputStage.setComponentID ("voicingStageInput");
+    outputStage.setComponentID ("voicingStageOutput");
+    for (auto* button : { &inputStage, &outputStage })
+    {
+        button->setClickingTogglesState (false);
+        button->setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xff287f9b));
+    }
+    inputStage.onClick = [this] { showStage (true); };
+    outputStage.onClick = [this] { showStage (false); };
+    outputStage.setToggleState (true, juce::dontSendNotification);
     voicingToggle.setComponentID ("voicingToggle");
     voicingToggle.onClick = [this]
     {
-        const auto show = ! voicingPanel.isVisible();
-        voicingPanel.setVisible (show);
+        const auto show = ! voicingVisible();
+        voicingPanel.setVisible (show && ! showingInput);
+        inputVoicingPanel.setVisible (show && showingInput);
+        inputStage.setVisible (show);
+        outputStage.setVisible (show);
         voicingToggle.setButtonText (show ? "Hide voicing" : "Show voicing");
         setSize (show ? 960 : 640, 936);
     };
@@ -28,6 +46,19 @@ PluginEditor::PluginEditor (PluginProcessor& processorToUse)
 PluginEditor::~PluginEditor()
 {
     stopTimer();
+}
+
+void PluginEditor::showStage (bool input)
+{
+    showingInput = input;
+    inputStage.setToggleState (input, juce::dontSendNotification);
+    outputStage.setToggleState (! input, juce::dontSendNotification);
+    if (voicingVisible())
+    {
+        voicingPanel.setVisible (! input);
+        inputVoicingPanel.setVisible (input);
+        resized();
+    }
 }
 
 void PluginEditor::paint (juce::Graphics& graphics)
@@ -46,14 +77,19 @@ void PluginEditor::resized()
     bottom.removeFromTop (4);
     outputMeter.setBounds (bottom);
     area.removeFromBottom (16);
-    if (voicingPanel.isVisible())
+    if (voicingVisible())
     {
         auto panel = area.removeFromRight (300);
         panel.removeFromTop (32);
+        auto stages = panel.removeFromTop (24);
+        inputStage.setBounds (stages.removeFromLeft (stages.getWidth() / 2).reduced (2, 0));
+        outputStage.setBounds (stages.reduced (2, 0));
+        panel.removeFromTop (6);
         voicingPanel.setBounds (panel);
+        inputVoicingPanel.setBounds (panel);
         area.removeFromRight (20);
     }
-    voicingToggle.setBounds (getWidth() - 316, 18, voicingPanel.isVisible() ? 300 : 148, 24);
+    voicingToggle.setBounds (getWidth() - 316, 18, voicingVisible() ? 300 : 148, 24);
     meter.setBounds (area.removeFromRight (160));
     area.removeFromRight (16);
     area.removeFromTop (32);
@@ -63,6 +99,7 @@ void PluginEditor::resized()
 void PluginEditor::timerCallback()
 {
     voicingPanel.refresh();
+    inputVoicingPanel.refresh();
     meter.setGainReductionDb (processorRef.getGainReductionDb());
     const auto peaks = processorRef.readLevelPeaks();
     inputMeter.setLevelsDb (juce::Decibels::gainToDecibels (peaks.inL, -60.0f),

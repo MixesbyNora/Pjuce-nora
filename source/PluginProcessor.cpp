@@ -105,12 +105,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::createParam
 BaParameters::Values PluginProcessor::readBaParameters() const noexcept
 {
     const auto voicing = transformerVoicing.readAudio();
+    const auto inputVoicing = inputTransformerVoicing.readAudio();
     return { baIn->load (std::memory_order_relaxed), baOut->load (std::memory_order_relaxed),
         baLfm->load (std::memory_order_relaxed), baMix->load (std::memory_order_relaxed),
         baBypass->load (std::memory_order_relaxed) >= 0.5f,
         juce::roundToInt (baMonitor->load (std::memory_order_relaxed)),
         xfrmOut->load (std::memory_order_relaxed) >= 0.5f,
-        xfrmAmount->load (std::memory_order_relaxed), voicing.voicing, voicing.levelMatch };
+        xfrmAmount->load (std::memory_order_relaxed), voicing.voicing, voicing.levelMatch,
+        inputVoicing.voicing, inputVoicing.levelMatch };
 }
 
 juce::AudioProcessorParameter* PluginProcessor::getBypassParameter() const
@@ -276,9 +278,10 @@ juce::AudioProcessorEditor* PluginProcessor::createEditor()
     return new PluginEditor (*this);
 }
 
-juce::String PluginProcessor::exportTransformerVoicing() const
+juce::String PluginProcessor::exportTransformerVoicing (bool inputStage) const
 {
-    auto json = juce::JSON::parse (transformerVoicing.toJson());
+    auto json = juce::JSON::parse ((inputStage ? inputTransformerVoicing : transformerVoicing).toJson());
+    json.getDynamicObject()->setProperty ("transformer", inputStage ? "VTB9046 line input" : "VTB1148 output");
     auto context = std::make_unique<juce::DynamicObject>();
     for (auto* p : getParameters())
         if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
@@ -294,6 +297,8 @@ void PluginProcessor::getStateInformation (juce::MemoryBlock& destData)
     auto state = parameters.copyState();
     state.addChild (juce::ValueTree ("TRANSFORMER_VOICING",
         { { "json", transformerVoicing.toJson() } }), -1, nullptr);
+    state.addChild (juce::ValueTree ("INPUT_TRANSFORMER_VOICING",
+        { { "json", inputTransformerVoicing.toJson() } }), -1, nullptr);
     if (auto xml = state.createXml())
         copyXmlToBinary (*xml, destData);
 }
@@ -309,6 +314,11 @@ void PluginProcessor::setStateInformation (const void* data, int sizeInBytes)
             if (! voicing.isValid() || ! transformerVoicing.restoreJson (voicing.getProperty ("json").toString()))
                 transformerVoicing.resetAll();
             state.removeChild (voicing, nullptr);
+            // Sessions before the input transformer existed restore its defaults.
+            const auto inputVoicing = state.getChildWithName ("INPUT_TRANSFORMER_VOICING");
+            if (! inputVoicing.isValid() || ! inputTransformerVoicing.restoreJson (inputVoicing.getProperty ("json").toString()))
+                inputTransformerVoicing.resetAll();
+            state.removeChild (inputVoicing, nullptr);
             // The retired xfrmModel choice (2026-10-22 builds only) has no parameter now.
             state.removeChild (state.getChildWithProperty ("id", "xfrmModel"), nullptr);
             gainLink->beginStateRestore();

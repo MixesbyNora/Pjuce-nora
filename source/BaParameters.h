@@ -52,6 +52,9 @@ struct Values
     float transformerAmountPercent = xfrmAmount.initial;
     TransformerVoicing::Values transformerVoicing;
     bool voicingLevelMatch = false;
+    // Input transformer (VTB9046) workbench voicing; the stage is always in circuit.
+    TransformerVoicing::Values inputTransformerVoicing;
+    bool inputVoicingLevelMatch = false;
 };
 
 void appendLayout (juce::AudioProcessorValueTreeState::ParameterLayout& layout);

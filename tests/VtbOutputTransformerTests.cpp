@@ -3,6 +3,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <bit>
+#include <complex>
 
 namespace
 {
@@ -187,4 +188,89 @@ TEST_CASE ("VTB1148 voicing changes crossfade without discontinuity and reach th
     double difference = 0;
     for (int i = 256 * 40; i < 256 * 56; ++i) difference = std::max (difference, static_cast<double> (std::abs (audio.getSample (0, i) - unchanged.getSample (0, i))));
     CHECK (difference > 1.0e-3);
+}
+
+namespace
+{
+double harmonicDb (const juce::AudioBuffer<float>& audio, double hz, int order, int start, int count)
+{
+    std::complex<double> fundamental, harmonic;
+    for (int i = start; i < start + count; ++i)
+    {
+        const auto x = static_cast<double> (audio.getSample (0, i));
+        const auto phase = 2.0 * juce::MathConstants<double>::pi * hz * i / 48000.0;
+        fundamental += x * std::polar (1.0, -phase);
+        harmonic += x * std::polar (1.0, -phase * order);
+    }
+    return 20.0 * std::log10 (std::abs (harmonic) / std::abs (fundamental) + 1.0e-15);
+}
+juce::AudioBuffer<float> renderProcessor (PluginProcessor& processor, double hz, double levelDb, int samples)
+{
+    processor.prepareToPlay (48000.0, 512);
+    auto audio = sine (48000.0, hz, levelDb, samples);
+    juce::MidiBuffer midi;
+    for (int start = 0; start < samples; start += 512)
+    {
+        juce::AudioBuffer<float> view (audio.getArrayOfWritePointers(), 2, start, juce::jmin (512, samples - start));
+        processor.processBlock (view, midi);
+    }
+    return audio;
+}
+}
+
+TEST_CASE ("Input transformer is always in circuit and Digital IN drives it", "[vtb][input]")
+{
+    // Output transformer out (Amount 0), compressor at threshold 0: only the input
+    // transformer can add the 3rd harmonic of a 30 Hz tone.
+    const auto thirdAt = [] (float inGainDb)
+    {
+        PluginProcessor processor;
+        set (processor, "threshold", 0.0f);
+        set (processor, "xfrmAmount", 0.0f);
+        set (processor, "inGain", inGainDb);
+        // Window of whole 30 Hz periods after one second of settling.
+        const auto audio = renderProcessor (processor, 30.0, -12.0, 48000 + 4800);
+        return harmonicDb (audio, 30.0, 3, 48000, 4800);
+    };
+    const auto clean = thirdAt (-12.0f), driven = thirdAt (12.0f);
+    CAPTURE (clean, driven);
+    // Pushing Digital IN into the input iron raises H3 well above its quiet-level
+    // hysteresis floor (about -64 dBc here; the VTB data's distortion falls with
+    // level until saturation onset).
+    CHECK (driven > -55.0);
+    CHECK (driven > clean + 10.0);
+}
+
+TEST_CASE ("Input transformer voicing reaches the audio and round-trips through state", "[vtb][input][voicing]")
+{
+    const auto render = [] (bool voiced)
+    {
+        PluginProcessor processor;
+        set (processor, "threshold", 0.0f);
+        set (processor, "inGain", 12.0f);
+        if (voiced) processor.getInputTransformerVoicing().setCurrent ({ -12.0f, 24.0f });
+        return renderProcessor (processor, 30.0, -12.0, 48000 + 4800);
+    };
+    const auto plain = render (false), voiced = render (true);
+    // Earlier onset and more even harmonics: H2 rises.
+    CHECK (harmonicDb (voiced, 30.0, 2, 48000, 4800) > harmonicDb (plain, 30.0, 2, 48000, 4800) + 6.0);
+    // The two workbenches are independent and both persist.
+    PluginProcessor processor;
+    processor.getInputTransformerVoicing().setCurrent ({ 3.0f });
+    processor.getTransformerVoicing().setCurrent ({ -3.0f });
+    juce::MemoryBlock block;
+    processor.getStateInformation (block);
+    PluginProcessor restored;
+    restored.setStateInformation (block.getData(), static_cast<int> (block.getSize()));
+    CHECK (restored.getInputTransformerVoicing().readAudio().voicing[TransformerVoicing::onset] == Catch::Approx (3.0f));
+    CHECK (restored.getTransformerVoicing().readAudio().voicing[TransformerVoicing::onset] == Catch::Approx (-3.0f));
+    // Sessions saved before the input transformer existed restore its defaults.
+    auto xml = juce::AudioProcessor::getXmlFromBinary (block.getData(), static_cast<int> (block.getSize()));
+    auto tree = juce::ValueTree::fromXml (*xml);
+    tree.removeChild (tree.getChildWithName ("INPUT_TRANSFORMER_VOICING"), nullptr);
+    juce::AudioProcessor::copyXmlToBinary (*tree.createXml(), block);
+    restored.setStateInformation (block.getData(), static_cast<int> (block.getSize()));
+    CHECK (TransformerVoicing::equal (restored.getInputTransformerVoicing().readAudio().voicing, {}));
+    const auto exported = juce::JSON::parse (restored.exportTransformerVoicing (true));
+    CHECK (exported["transformer"].toString() == "VTB9046 line input");
 }

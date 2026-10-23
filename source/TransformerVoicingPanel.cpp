@@ -1,10 +1,11 @@
 #include "TransformerVoicingPanel.h"
 
-TransformerVoicingPanel::TransformerVoicingPanel (TransformerVoicingState& stateToUse, std::function<juce::String()> exportSettings)
-    : state (stateToUse), measurements (stateToUse, exportSettings)
+TransformerVoicingPanel::TransformerVoicingPanel (TransformerVoicingState& stateToUse, std::function<juce::String()> exportSettings,
+    juce::String titleText, juce::String componentId, ModuleSpike::TransformerParameters calibration, juce::String stage)
+    : state (stateToUse), measurements (stateToUse, exportSettings, calibration, std::move (stage))
 {
-    setComponentID ("transformerVoicingPanel");
-    title.setText ("Transformer Voicing", juce::dontSendNotification);
+    setComponentID (componentId);
+    title.setText (titleText, juce::dontSendNotification);
     title.setFont (juce::FontOptions (18.0f));
     title.setJustificationType (juce::Justification::centredLeft);
     addAndMakeVisible (title);

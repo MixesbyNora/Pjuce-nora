@@ -1,8 +1,7 @@
 # Input transformer: VTB9046 / Neve 31267 line input
 
-**Status:** calibrated, as a research calibration only. It is **not in the live
-build yet**. That integration needs owner decisions on where the stage sits in
-the chain and how the plugin presents it.
+**Status:** calibrated and **in the live build** as the first stage of the
+analog chain (2026-10-23). See "Live chain" below.
 
 ## Owner decisions (2026-10-23)
 
@@ -109,3 +108,75 @@ same matching as the VTB1148 renders.
 - **Optional verification:** stepped 20 Hz sines into the Pre-73 line input at
   minimum gain, reading where THD rises. Note the GA unit's line transformer is
   not necessarily a 31267.
+
+## Live chain (owner decisions, 2026-10-23)
+
+```
+Digital IN (BA "IN")
+  -> [ shared oversampled region, 4/2/1: one up/down, 124/99/0 samples ]
+       Input transformer (VTB9046, always in circuit)
+       -> Analog Input (compressor "Input") -> compressor -> Makeup
+       -> Output transformer (VTB1148, Amount / Xfrm Out)
+  -> LF Mono -> Digital OUT (BA "OUT") -> Mix / Delta / Monitor / bypass
+```
+
+**Placement and drive**
+- The input transformer sits at the very start of the chain, as on most
+  vari-mu compressors.
+- It has **no In/Out and no Amount**. Digital IN sets how hard it is driven,
+  like a hotter source.
+- **Analog Input** is the compressor's existing Input control, after the input
+  transformer and before detection.
+- **Digital OUT** comes after LF Mono and before Mix, so the dry path is never
+  scaled and IN/OUT Link keeps dry and wet matched.
+
+**One oversampling region**
+- The compressor runs inside it, prepared at the internal rate, so its time
+  constants and sidechain filters follow that rate.
+- One up/down keeps latency at 124 / 99 / 0 samples, the same as before.
+- The output transformer's Amount/Out bypass ramp is applied inside the region.
+
+**Voicing**
+- Each transformer has its own workbench: an Input/Output switch above the
+  panel, separate A/B slots, measurement tab and copy/paste.
+- The input stage's state is saved as `INPUT_TRANSFORMER_VOICING`. Sessions
+  without it restore the defaults.
+- Feedback JSON names the transformer it came from.
+
+**Code**
+- [VtbTransformerCore](../source/dsp/VtbTransformerCore.h) is the per-sample
+  transformer at the internal rate, shared by both stages: voicing banks,
+  drive, level match.
+- [BaSignalPath](../source/dsp/BaSignalPath.cpp) builds the region.
+- `VtbOutputTransformer` remains as the standalone stage, with its own
+  oversampling, for offline measurement and tests, using either calibration.
+
+**Measured CPU** ([chain_cpu.csv](measurements/input_transformer/chain_cpu.csv),
+whole plugin, stereo, Release, threshold −24 dB, 0.5-peak 60/73 Hz test):
+
+| Rate | Output transformer out | Amount 57% (nominal) | Amount 100% |
+|---:|---:|---:|---:|
+| 44.1 kHz | 9.0% | 13.4% | 15.3% |
+| 48 kHz | 9.4% | 14.1% | 16.2% |
+| 96 kHz | 9.9% | 15.2% | 16.6% |
+| 192 kHz | 7.0% | 12.8% | 13.8% |
+
+For comparison, the retired Magnetic stage alone cost 26.4% at 48 kHz.
+
+**Behavior changes to know about**
+- The plugin no longer passes DC, because the input transformer blocks it.
+- With BA at defaults, it is no longer a bit-exact copy of the compressor. At
+  −18 dBFS and 1 kHz the difference from the input is below −40 dB.
+- The compressor now runs at 4× oversampling, so its detection is slightly
+  more precise.
+- The compressor-law tests that drive DC steps now test the compressor
+  directly (`tests/helpers/CompressorUnderTest.h`). The BA routing tests use
+  tones, or a twin render of the same chain as their reference.
+
+**Planned controls (not built)**
+- **Headroom:** one global drive offset for every saturation stage (both
+  transformers and future tubes), excluding the compressor.
+- **Calibration:** the compressor's own control for the level into its
+  detector path.
+- Both should act on `VtbTransformerCore::setExtraDriveDb` (Headroom) and the
+  compressor's detector input (Calibration) without changing this chain order.

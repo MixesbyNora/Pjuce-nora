@@ -21,8 +21,13 @@ private:
     juce::GenericAudioProcessorEditor parameterEditor;
     GainReductionMeter meter;
     StereoLevelMeter inputMeter { "IN" }, outputMeter { "OUT" };
-    TransformerVoicingPanel voicingPanel;
+    void showStage (bool input);
+    bool voicingVisible() const noexcept { return voicingPanel.isVisible() || inputVoicingPanel.isVisible(); }
+    TransformerVoicingPanel voicingPanel, inputVoicingPanel;
     juce::TextButton voicingToggle { "Hide voicing" };
+    // Which transformer the workbench shows: VTB9046 input or VTB1148 output.
+    juce::TextButton inputStage { "Input xfmr" }, outputStage { "Output xfmr" };
+    bool showingInput = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginEditor)
 };

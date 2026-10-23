@@ -7,7 +7,9 @@
 class TransformerVoicingPanel : public juce::Component
 {
 public:
-    explicit TransformerVoicingPanel (TransformerVoicingState& state, std::function<juce::String()> exportSettings = {});
+    explicit TransformerVoicingPanel (TransformerVoicingState& state, std::function<juce::String()> exportSettings = {},
+        juce::String titleText = "Output Transformer Voicing", juce::String componentId = "transformerVoicingPanel",
+        ModuleSpike::TransformerParameters calibration = ModuleSpike::vtb1148OutputC(), juce::String stage = "VTB1148 output");
     void refresh();
     void paint (juce::Graphics&) override;
     void resized() override;

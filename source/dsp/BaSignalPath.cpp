@@ -5,10 +5,24 @@ void BaSignalPath::prepare (double sampleRate, int maximumBlockSize,
 {
     chunkCapacity = juce::jmax (1, maximumBlockSize);
     dry.setSize (2, chunkCapacity);
-    compressor.prepare (sampleRate, compressorValues);
-    transformer.prepare (sampleRate, values.transformerAmountPercent, values.transformerOut,
-        values.transformerVoicing, values.voicingLevelMatch);
-    dryDelay.prepare (transformer.getLatencySamples());
+    factor = ModuleSpike::vtb1148OutputFactor (sampleRate);
+    MagneticAudio::prepareFilters (filters, factor);
+    latency = juce::roundToInt (filters.getLatencyInSamples());
+    jassert (latency <= MagneticAudio::maximumLatency && std::abs (filters.getLatencyInSamples() - latency) < 1.0e-10);
+    const auto internalRate = sampleRate * factor;
+    scratch.setSize (2, MagneticAudio::capacity);
+    compressorBlock.setSize (2, MagneticAudio::capacity * factor);
+    // The compressor runs at the internal rate; its time constants and sidechain
+    // filters follow the rate it is prepared with.
+    compressor.prepare (internalRate, compressorValues);
+    inputTransformer.prepare (internalRate, ModuleSpike::vtb9046LineInputC(), 0.0,
+        values.inputTransformerVoicing, values.inputVoicingLevelMatch);
+    outputTransformer.prepare (internalRate, ModuleSpike::vtb1148OutputC(),
+        VtbOutputTransformer::driveDbFor (values.transformerAmountPercent), values.transformerVoicing, values.voicingLevelMatch);
+    outputActive.reset (sampleRate, TransformerSettings::bypassRampSeconds);
+    outputActive.setCurrentAndTargetValue (values.transformerAmountPercent > 0.0f && ! values.transformerOut ? 1.0f : 0.0f);
+    outputWasProcessing = false;
+    dryDelay.prepare (latency);
     lfm.prepare (sampleRate, values.lfmHz);
     inputGain.reset (sampleRate, BaParameters::gainRampSeconds);
     outputGain.reset (sampleRate, BaParameters::gainRampSeconds);
@@ -25,6 +39,70 @@ void BaSignalPath::prepare (double sampleRate, int maximumBlockSize,
     }
 }
 
+float BaSignalPath::processAnalog (juce::AudioBuffer<float>& wet, int channels) noexcept
+{
+    auto peakDb = 0.0f;
+    for (int start = 0; start < wet.getNumSamples(); start += MagneticAudio::capacity)
+    {
+        const auto count = juce::jmin (MagneticAudio::capacity, wet.getNumSamples() - start);
+        auto engaged = false;
+        for (int n = 0; n < count; ++n)
+        {
+            activity[static_cast<std::size_t> (n)] = outputActive.getNextValue();
+            engaged |= activity[static_cast<std::size_t> (n)] > 0.0f;
+            for (int channel = 0; channel < channels; ++channel)
+                scratch.setSample (channel, n, wet.getSample (channel, start + n));
+        }
+        auto base = juce::dsp::AudioBlock<double> (scratch).getSubsetChannelBlock (0, static_cast<std::size_t> (channels)).getSubBlock (0, static_cast<std::size_t> (count));
+        auto high = filters.processSamplesUp (base);
+        const auto highCount = static_cast<int> (high.getNumSamples());
+        std::array<double, 2> frame {};
+        for (int n = 0; n < highCount; ++n)
+        {
+            for (int channel = 0; channel < channels; ++channel)
+                frame[static_cast<std::size_t> (channel)] = high.getSample (channel, n);
+            inputTransformer.processFrame (frame, channels);
+            for (int channel = 0; channel < channels; ++channel)
+                compressorBlock.setSample (channel, n, static_cast<float> (frame[static_cast<std::size_t> (channel)]));
+        }
+        // Non-owning view of preallocated storage (no heap allocation).
+        juce::AudioBuffer<float> view (compressorBlock.getArrayOfWritePointers(), channels, 0, highCount);
+        peakDb = juce::jmax (peakDb, compressor.process (view, channels));
+        for (int n = 0; n < highCount; ++n)
+        {
+            const auto amount = activity[static_cast<std::size_t> (n / factor)];
+            for (int channel = 0; channel < channels; ++channel)
+                frame[static_cast<std::size_t> (channel)] = compressorBlock.getSample (channel, n);
+            if (! engaged || amount <= 0.0f)
+            {
+                // Output transformer bypassed (Amount 0 or Out): its work stops sample-exactly.
+                outputTransformer.skip (1);
+                if (outputWasProcessing) outputTransformer.reset();
+                outputWasProcessing = false;
+            }
+            else
+            {
+                outputWasProcessing = true;
+                const auto original = frame;
+                outputTransformer.processFrame (frame, channels);
+                if (amount < 1.0f)
+                    for (int channel = 0; channel < channels; ++channel)
+                    {
+                        const auto ch = static_cast<std::size_t> (channel);
+                        frame[ch] = original[ch] + amount * (frame[ch] - original[ch]);
+                    }
+            }
+            for (int channel = 0; channel < channels; ++channel)
+                high.setSample (channel, n, frame[static_cast<std::size_t> (channel)]);
+        }
+        filters.processSamplesDown (base);
+        for (int channel = 0; channel < channels; ++channel)
+            for (int n = 0; n < count; ++n)
+                wet.setSample (channel, start + n, static_cast<float> (scratch.getSample (channel, n)));
+    }
+    return peakDb;
+}
+
 float BaSignalPath::crossfade (float dryValue, float wet, float amount) noexcept
 {
     if (amount <= 0.0f)
@@ -39,8 +117,10 @@ float BaSignalPath::process (juce::AudioBuffer<float>& buffer, int channels,
     LevelMeterPeaks* meters) noexcept
 {
     compressor.setParameters (compressorValues);
-    transformer.setParameters (values.transformerAmountPercent, values.transformerOut);
-    transformer.setVoicing (values.transformerVoicing, values.voicingLevelMatch);
+    outputTransformer.setExtraDriveDb (VtbOutputTransformer::driveDbFor (values.transformerAmountPercent));
+    outputTransformer.setVoicing (values.transformerVoicing, values.voicingLevelMatch);
+    outputActive.setTargetValue (values.transformerAmountPercent > 0.0f && ! values.transformerOut ? 1.0f : 0.0f);
+    inputTransformer.setVoicing (values.inputTransformerVoicing, values.inputVoicingLevelMatch);
     inputGain.setTargetValue (juce::Decibels::decibelsToGain (values.inGainDb));
     outputGain.setTargetValue (juce::Decibels::decibelsToGain (values.outGainDb));
     mix.setTargetValue (values.mixPercent * 0.01f);
@@ -73,15 +153,17 @@ float BaSignalPath::process (juce::AudioBuffer<float>& buffer, int channels,
             for (int channel = 0; channel < channels; ++channel)
                 inputPeaks[static_cast<std::size_t> (channel)] = juce::jmax (inputPeaks[static_cast<std::size_t> (channel)],
                     PeakAccumulator::findPeak (pointers[static_cast<std::size_t> (channel)], samples));
-        peakDb = juce::jmax (peakDb, compressor.process (wet, channels));
-        transformer.process (wet, channels);
+        peakDb = juce::jmax (peakDb, processAnalog (wet, channels));
         for (int sample = 0; sample < samples; ++sample)
         {
-            const auto gain = outputGain.getNextValue();
-            auto left = pointers[0][sample] * gain;
-            auto right = channels > 1 ? pointers[1][sample] * gain : left;
+            // LF Mono, then Digital OUT, before Mix: the dry path is never scaled.
+            auto left = pointers[0][sample];
+            auto right = channels > 1 ? pointers[1][sample] : left;
             if (channels > 1)
                 lfm.process (left, right);
+            const auto gain = outputGain.getNextValue();
+            left *= gain;
+            right *= gain;
             const auto dryValues = dryDelay.process (dry.getSample (0, sample), channels > 1 ? dry.getSample (1, sample) : dry.getSample (0, sample));
             const auto dryLeft = dryValues[0];
             const auto dryRight = dryValues[1];

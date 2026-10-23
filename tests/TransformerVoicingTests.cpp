@@ -174,8 +174,20 @@ TEST_CASE ("Voicing panel controls real processor state and collapses without di
     reset->onClick();
     CHECK (slider->getValue() == Catch::Approx (0.0).margin (1.0e-10));
     for (auto* child : editor->getChildren())
-        if (child != panel && child->getComponentID() != "voicingToggle")
+        if (child != panel && child->isVisible() && child->getComponentID() != "voicingToggle")
             CHECK_FALSE (child->getBounds().intersects (panel->getBounds()));
+    // The stage switch shows the input transformer's own workbench in the same place.
+    auto* inputStage = dynamic_cast<juce::Button*> (editor->findChildWithID ("voicingStageInput"));
+    auto* inputPanel = editor->findChildWithID ("inputTransformerVoicingPanel");
+    REQUIRE (inputStage != nullptr);
+    REQUIRE (inputPanel != nullptr);
+    CHECK_FALSE (inputPanel->isVisible());
+    inputStage->onClick();
+    CHECK (inputPanel->isVisible());
+    CHECK_FALSE (panel->isVisible());
+    CHECK (inputPanel->getBounds() == panel->getBounds());
+    dynamic_cast<juce::Button*> (editor->findChildWithID ("voicingStageOutput"))->onClick();
+    CHECK (panel->isVisible());
     auto* toggle = dynamic_cast<juce::Button*> (editor->findChildWithID ("voicingToggle"));
     REQUIRE (toggle != nullptr);
     toggle->onClick();

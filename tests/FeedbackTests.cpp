@@ -1,4 +1,5 @@
 #include <PluginProcessor.h>
+#include "helpers/CompressorUnderTest.h"
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <bit>
@@ -181,23 +182,19 @@ TEST_CASE ("Abrupt FB FF automation ramps smoothly in both directions", "[fbff][
     }
 }
 
-TEST_CASE ("FB FF processor automation reaches the detector without feeding back makeup", "[fbff][processor]")
+TEST_CASE ("FB FF automation reaches the detector without feeding back makeup", "[fbff][processor]")
 {
-    PluginProcessor processor;
-    for (const auto& [id, value] : std::array {
-             std::pair { "threshold", -30.0f }, std::pair { "makeup", 24.0f }, std::pair { "fbff", 0.0f } })
-    {
-        auto* p = parameter (processor, id);
-        REQUIRE (p != nullptr);
-        p->setValueNotifyingHost (p->convertTo0to1 (value));
-    }
+    // DC drive: the compressor alone (the plugin's input transformer blocks DC).
+    CompressorUnderTest processor;
+    processor.set ("threshold", -30.0f);
+    processor.set ("makeup", 24.0f);
+    processor.set ("fbff", 0.0f);
     processor.prepareToPlay (48000.0, 256);
     juce::AudioBuffer<float> audio (2, 256);
     juce::MidiBuffer midi;
     for (float percent : { 0.0f, 100.0f, 50.0f })
     {
-        auto* blend = parameter (processor, "fbff");
-        blend->setValueNotifyingHost (blend->convertTo0to1 (percent));
+        processor.set ("fbff", percent);
         for (int block = 0; block < 375; ++block)
         {
             for (int channel = 0; channel < 2; ++channel)

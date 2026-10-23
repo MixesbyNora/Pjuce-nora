@@ -7,7 +7,8 @@
 class TransformerMeasurementView : public juce::Component
 {
 public:
-    explicit TransformerMeasurementView (TransformerVoicingState&, std::function<juce::String()> exportSettings = {});
+    explicit TransformerMeasurementView (TransformerVoicingState&, std::function<juce::String()> exportSettings = {},
+        ModuleSpike::TransformerParameters calibration = ModuleSpike::vtb1148OutputC(), juce::String stage = "VTB1148 output");
     ~TransformerMeasurementView() override;
     void refresh();
     void paint (juce::Graphics&) override;
@@ -20,6 +21,8 @@ private:
     void startOrCancel();
     TransformerVoicingState& state;
     std::function<juce::String()> exporter;
+    ModuleSpike::TransformerParameters calibration;
+    juce::String stage;
     std::unique_ptr<Worker> worker;
     std::optional<TransformerMeasurement::Result> result;
     juce::Label intro, status;

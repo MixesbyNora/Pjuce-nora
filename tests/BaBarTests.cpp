@@ -45,6 +45,32 @@ juce::AudioBuffer<float> signal (int channels, int samples, float amplitude = 0.
     return buffer;
 }
 
+// Steady tone; the analog chain (input transformer) blocks DC, so wet-path
+// checks use AC. Right is inverted unless "same".
+juce::AudioBuffer<float> tone (int channels, int samples, float amplitude = 0.125f, double hz = 1000.0, bool opposite = true)
+{
+    juce::AudioBuffer<float> buffer (channels, samples);
+    for (int i = 0; i < samples; ++i)
+    {
+        const auto value = static_cast<float> (amplitude * std::sin (2.0 * juce::MathConstants<double>::pi * hz * i / 48000.0));
+        for (int channel = 0; channel < channels; ++channel)
+            buffer.setSample (channel, i, channel == 1 && opposite ? -value : value);
+    }
+    return buffer;
+}
+
+double residualDb (const juce::AudioBuffer<float>& a, const juce::AudioBuffer<float>& b, int start)
+{
+    double error = 0.0, power = 0.0;
+    for (int channel = 0; channel < a.getNumChannels(); ++channel)
+        for (int i = start; i < a.getNumSamples(); ++i)
+        {
+            error += std::pow (static_cast<double> (a.getSample (channel, i)) - b.getSample (channel, i), 2);
+            power += std::pow (static_cast<double> (b.getSample (channel, i)), 2);
+        }
+    return 10.0 * std::log10 (error / std::max (power, 1.0e-30) + 1.0e-30);
+}
+
 juce::AudioBuffer<float> delayed (juce::AudioBuffer<float> input, int samples = 124)
 {
     for (int channel = 0; channel < input.getNumChannels(); ++channel)
@@ -77,11 +103,12 @@ bool isFinite (const juce::AudioBuffer<float>& audio)
 }
 
 juce::AudioBuffer<float> render (BaParameters::Values values, int channels = 2,
-    const CompressorParameters::Values& compressor = neutral())
+    const CompressorParameters::Values& compressor = neutral(), juce::AudioBuffer<float> audio = {})
 {
     BaSignalPath path;
     path.prepare (48000.0, 64, compressor, values);
-    auto audio = signal (channels, 4096);
+    if (audio.getNumSamples() == 0)
+        audio = signal (channels, 4096);
     path.process (audio, channels, compressor, values);
     return audio;
 }
@@ -120,41 +147,61 @@ TEST_CASE ("BA parameter types ranges defaults skew text and host bypass are exp
     CHECK (monitor->getIndex() == 0);
 }
 
-TEST_CASE ("BA defaults preserve compressor output exactly after reported latency", "[ba][defaults]")
+TEST_CASE ("BA defaults leave the analog chain near unity and the compressor in control", "[ba][defaults]")
 {
+    // Digital IN -> input transformer -> compressor -> output transformer (Amount 0)
+    // -> Digital OUT. At BA defaults and a mid-band tone, only the input
+    // transformer's small coloration and the FIR delay separate output from input.
     for (int channels : { 1, 2 })
     {
         for (bool compressionActive : { false, true })
         {
+            CAPTURE (channels, compressionActive);
             auto settings = neutral();
             if (compressionActive)
                 settings.thresholdDb = -30.0f;
-            StereoCompressor original;
-            original.prepare (48000.0, settings);
             BaSignalPath path;
             path.prepare (48000.0, 17, settings, {});
-            auto expected = signal (channels, 4096);
-            auto actual = signal (channels, 4096);
-            original.process (expected, channels);
-            path.process (actual, channels, settings, {});
-            CHECK (identical (actual, delayed (expected, path.getLatencySamples())));
+            CHECK (path.getLatencySamples() == 124);
+            const auto input = tone (channels, 9600);
+            auto actual = input;
+            const auto reduction = path.process (actual, channels, settings, {});
+            if (compressionActive)
+            {
+                // A peak detector on a -18 dBFS tone settles near 4.9 dB here (9 dB for DC).
+                CHECK (reduction > 4.0f);
+                CHECK (actual.getRMSLevel (0, 4800, 4800) < 0.7f * input.getRMSLevel (0, 4800, 4800));
+            }
+            else
+            {
+                CHECK (reduction == 0.0f);
+                CHECK (residualDb (actual, delayed (input, path.getLatencySamples()), 4800) < -40.0);
+            }
         }
     }
 }
 
 TEST_CASE ("BA input and output gains and linear mix follow the requested signal flow", "[ba][gain][mix]")
 {
-    for (const auto* id : { "inGain", "outGain" })
+    const auto renderTone = [] (const char* id, float value)
     {
         PluginProcessor processor;
         set (processor, "threshold", 0.0f);
-        set (processor, id, 6.0f);
+        if (id != nullptr) set (processor, id, value);
         processor.prepareToPlay (48000.0, 64);
-        auto audio = signal (2, 4096, 0.03125f);
+        auto audio = tone (2, 9600, 0.03125f);
         juce::MidiBuffer midi;
         processor.processBlock (audio, midi);
-        CHECK (juce::Decibels::gainToDecibels (audio.getSample (0, 4000) / 0.03125f) == Catch::Approx (6.0f).margin (0.05f));
-    }
+        return audio;
+    };
+    const auto reference = renderTone (nullptr, 0.0f);
+    // Digital IN drives the input transformer (near-linear at this level);
+    // Digital OUT is a pure gain after it.
+    const auto in = renderTone ("inGain", 6.0f);
+    CHECK (juce::Decibels::gainToDecibels (in.getRMSLevel (0, 4800, 4800) / reference.getRMSLevel (0, 4800, 4800)) == Catch::Approx (6.0f).margin (0.05f));
+    const auto out = renderTone ("outGain", 6.0f);
+    for (int i = 4800; i < 9600; ++i)
+        CHECK (out.getSample (0, i) == Catch::Approx (reference.getSample (0, i) * juce::Decibels::decibelsToGain (6.0f)).margin (1.0e-7f));
     BaParameters::Values values;
     values.outGainDb = 6.0f;
     const auto wet = render (values);
@@ -181,26 +228,28 @@ TEST_CASE ("BA bypass crossfades to exact dry while the compressor keeps running
     set (processor, "threshold", -30.0f);
     processor.prepareToPlay (48000.0, 64);
     juce::MidiBuffer midi;
-    auto audio = signal (2, 4096);
+    const auto input = tone (2, 4096);
+    const auto dry = delayed (input, processor.getLatencySamples());
+    auto audio = input;
     processor.processBlock (audio, midi);
-    REQUIRE (processor.getGainReductionDb() > 5.0f);
+    REQUIRE (processor.getGainReductionDb() > 4.0f);
     set (processor, "bypass", 1.0f);
-    audio = signal (2, 4096);
+    audio = input;
     processor.processBlock (audio, midi);
+    // The compressor keeps running; the meter reports zero while bypassed.
     CHECK (processor.getGainReductionDb() == 0.0f);
-    CHECK (audio.getSample (0, 0) < 0.125f);
-    CHECK (audio.getSample (0, 1000) == Catch::Approx (0.125f));
     for (int sample = 480; sample < 4096; ++sample)
-        CHECK (audio.getSample (0, sample) == Catch::Approx (0.125f).epsilon (0.0));
+        CHECK (audio.getSample (0, sample) == Catch::Approx (dry.getSample (0, sample)).epsilon (0.0));
     set (processor, "bypass", 0.0f);
-    audio = signal (2, 4096);
+    audio = input;
     processor.processBlock (audio, midi);
-    CHECK (processor.getGainReductionDb() > 5.0f);
-    CHECK (audio.getSample (0, 1000) < 0.0625f);
-    audio = signal (2, 4096);
+    CHECK (processor.getGainReductionDb() > 4.0f);
+    CHECK (audio.getRMSLevel (0, 2048, 2048) < 0.7f * dry.getRMSLevel (0, 2048, 2048));
+    audio = input;
     processor.processBlockBypassed (audio, midi);
     CHECK (processor.getGainReductionDb() == 0.0f);
-    CHECK (audio.getSample (0, 1000) == Catch::Approx (0.125f));
+    for (int sample = 1000; sample < 4096; ++sample)
+        CHECK (audio.getSample (0, sample) == Catch::Approx (dry.getSample (0, sample)).epsilon (0.0));
 }
 
 TEST_CASE ("Gain link preserves offsets in both directions and clamps without linking when disabled", "[ba][link]")
@@ -275,9 +324,12 @@ TEST_CASE ("LFM attenuates low side content and preserves mid and high side cont
         CHECK (std::bit_cast<std::uint32_t> (left) == std::bit_cast<std::uint32_t> (value));
         CHECK (std::bit_cast<std::uint32_t> (right) == std::bit_cast<std::uint32_t> (-value));
     }
+    // Mono skips LF Mono entirely.
     BaParameters::Values values;
     values.lfmHz = 150.0f;
-    CHECK (identical (render (values, 1), delayed (signal (1, 4096))));
+    const auto withLfm = render (values, 1, neutral(), tone (1, 4096, 0.125f, 50.0));
+    values.lfmHz = 0.0f;
+    CHECK (identical (withLfm, render (values, 1, neutral(), tone (1, 4096, 0.125f, 50.0))));
 }
 
 TEST_CASE ("Monitor mid and side are post-bypass", "[ba][monitor]")
@@ -286,26 +338,32 @@ TEST_CASE ("Monitor mid and side are post-bypass", "[ba][monitor]")
     {
         for (bool opposite : { false, true })
         {
+            CAPTURE (mode, opposite);
+            const auto input = tone (2, 4096, 0.125f, 1000.0, opposite);
+            const auto stereo = render ({}, 2, neutral(), input);
             BaParameters::Values values;
             values.monitor = mode;
-            BaSignalPath path;
-            path.prepare (48000.0, 64, neutral(), values);
-            auto audio = signal (2, 4096, 0.125f, opposite);
-            path.process (audio, 2, neutral(), values);
-            const auto expected = (mode == 1 && ! opposite) || (mode == 2 && opposite) ? 0.125f : 0.0f;
-            CHECK (audio.getSample (0, 4000) == Catch::Approx (expected));
-            CHECK (audio.getSample (1, 4000) == Catch::Approx (expected));
+            const auto monitored = render (values, 2, neutral(), input);
+            for (int i = 2000; i < 4096; ++i)
+            {
+                const auto mid = 0.5f * (stereo.getSample (0, i) + stereo.getSample (1, i));
+                const auto side = 0.5f * (stereo.getSample (0, i) - stereo.getSample (1, i));
+                const auto expected = mode == 1 ? mid : side;
+                CHECK (monitored.getSample (0, i) == Catch::Approx (expected).margin (1.0e-6f));
+                CHECK (monitored.getSample (1, i) == Catch::Approx (expected).margin (1.0e-6f));
+            }
         }
     }
+    const auto mono = tone (1, 4096);
     BaParameters::Values values;
     values.monitor = 1;
-    CHECK (identical (render (values, 1), delayed (signal (1, 4096))));
+    CHECK (identical (render (values, 1, neutral(), mono), render ({}, 1, neutral(), mono)));
     values.monitor = 2;
-    const auto monoSide = render (values, 1);
+    const auto monoSide = render (values, 1, neutral(), mono);
     CHECK (monoSide.getMagnitude (0, monoSide.getNumSamples()) < 0.00001f);
 }
 
-TEST_CASE ("Processor Delta respects Mix and nulls against the untouched input", "[ba][monitor][delta]")
+TEST_CASE ("Processor Delta respects Mix and stays small for a neutral chain", "[ba][monitor][delta]")
 {
     auto dry = signal (2, 8192);
     // Different channel content exercises stereo linking and the LFM wet path.
@@ -315,7 +373,15 @@ TEST_CASE ("Processor Delta respects Mix and nulls against the untouched input",
         dry.setSample (0, i, 0.125f + 0.2f * std::sin (phase * 110.0f));
         dry.setSample (1, i, -0.0625f + 0.15f * std::sin (phase * 731.0f));
     }
-    const auto renderMonitor = [&dry] (int mode, float mixPercent, bool bypassed, bool neutralChain = false)
+    // The same tones without DC offsets: the input transformer blocks DC, which a
+    // neutral chain's Delta would otherwise show as slow settling.
+    auto acDry = dry;
+    for (int i = 0; i < acDry.getNumSamples(); ++i)
+    {
+        acDry.setSample (0, i, acDry.getSample (0, i) - 0.125f);
+        acDry.setSample (1, i, acDry.getSample (1, i) + 0.0625f);
+    }
+    const auto renderMonitor = [&dry, &acDry] (int mode, float mixPercent, bool bypassed, bool neutralChain = false)
     {
         PluginProcessor processor;
         // These host-notifying parameters are owned by the processor's APVTS;
@@ -335,7 +401,7 @@ TEST_CASE ("Processor Delta respects Mix and nulls against the untouched input",
             set (processor, "scFilter", 3.0f);
         }
         processor.prepareToPlay (48000.0, 256);
-        auto audio = dry;
+        auto audio = neutralChain ? acDry : dry;
         juce::MidiBuffer midi;
         processor.processBlock (audio, midi);
         return audio;
@@ -372,63 +438,72 @@ TEST_CASE ("Processor Delta respects Mix and nulls against the untouched input",
         const auto bypassed = renderMonitor (3, mixPercent, true);
         const auto neutralDelta = renderMonitor (3, mixPercent, false, true);
         CHECK (juce::Decibels::gainToDecibels (bypassed.getMagnitude (0, bypassed.getNumSamples()), -160.0f) < -100.0f);
-        CHECK (juce::Decibels::gainToDecibels (neutralDelta.getMagnitude (0, neutralDelta.getNumSamples()), -160.0f) < -100.0f);
+        // A neutral chain still includes the always-in input transformer, so Delta
+        // shows its small coloration (no longer a null) but stays well down.
+        CHECK (juce::Decibels::gainToDecibels (neutralDelta.getMagnitude (0, 2048, neutralDelta.getNumSamples() - 2048), -160.0f) < -35.0f);
     }
 }
 
 TEST_CASE ("Processor Delta retains monitor bypass and Mix crossfades", "[ba][monitor][delta][smoothing]")
 {
-    PluginProcessor processor;
-    set (processor, "threshold", 0.0f);
-    set (processor, "outGain", 6.0f);
-    processor.prepareToPlay (48000.0, 256);
-    juce::MidiBuffer midi;
-    const auto process = [&processor, &midi]
+    // A twin processor with LR monitor, no bypass and full Mix supplies the wet
+    // signal sample by sample; the analog chain is identical in both.
+    PluginProcessor processor, reference;
+    for (auto* p : { &processor, &reference })
     {
-        auto audio = signal (2, 1024);
+        set (*p, "threshold", 0.0f);
+        set (*p, "outGain", 6.0f);
+        p->prepareToPlay (48000.0, 256);
+    }
+    juce::MidiBuffer midi;
+    const auto process = [&processor, &reference, &midi]
+    {
+        auto audio = signal (2, 1024), wet = signal (2, 1024);
         processor.processBlock (audio, midi);
-        return audio;
+        reference.processBlock (wet, midi);
+        return std::pair { audio, wet };
     };
-    const auto wet = 0.125f * juce::Decibels::decibelsToGain (6.0f);
-    const auto delta = wet - 0.125f;
     process();
     set (processor, "monitor", 3.0f);
-    const auto monitorRamp = process();
-    CHECK (monitorRamp.getSample (0, 0) == Catch::Approx (wet - 0.125f / 480.0f).margin (0.000001f));
-    CHECK (monitorRamp.getSample (0, 479) == Catch::Approx (delta).margin (0.000001f));
+    const auto [monitorRamp, wet1] = process();
+    // Dry is the constant 0.125 here (one block in, past the FIR delay).
+    CHECK (monitorRamp.getSample (0, 0) == Catch::Approx (wet1.getSample (0, 0) - 0.125f / 480.0f).margin (0.000001f));
+    CHECK (monitorRamp.getSample (0, 479) == Catch::Approx (wet1.getSample (0, 479) - 0.125f).margin (0.000001f));
     set (processor, "bypass", 1.0f);
-    const auto bypassRamp = process();
-    CHECK (bypassRamp.getSample (0, 0) == Catch::Approx (delta * (1.0f - 1.0f / 480.0f)).margin (0.000001f));
-    CHECK (bypassRamp.getSample (0, 239) == Catch::Approx (delta * 0.5f).margin (0.000001f));
+    const auto [bypassRamp, wet2] = process();
+    CHECK (bypassRamp.getSample (0, 0) == Catch::Approx ((wet2.getSample (0, 0) - 0.125f) * (1.0f - 1.0f / 480.0f)).margin (0.000001f));
+    CHECK (bypassRamp.getSample (0, 239) == Catch::Approx ((wet2.getSample (0, 239) - 0.125f) * 0.5f).margin (0.000001f));
     CHECK (bypassRamp.getMagnitude (479, 545) < 0.00001f);
     set (processor, "bypass", 0.0f);
-    const auto enabledRamp = process();
-    CHECK (enabledRamp.getSample (0, 0) == Catch::Approx (delta / 480.0f).margin (0.000001f));
-    CHECK (enabledRamp.getSample (0, 479) == Catch::Approx (delta).margin (0.000001f));
+    const auto [enabledRamp, wet3] = process();
+    CHECK (enabledRamp.getSample (0, 0) == Catch::Approx ((wet3.getSample (0, 0) - 0.125f) / 480.0f).margin (0.000001f));
+    CHECK (enabledRamp.getSample (0, 479) == Catch::Approx (wet3.getSample (0, 479) - 0.125f).margin (0.000001f));
     set (processor, "mix", 0.0f);
-    const auto mixRamp = process();
-    CHECK (mixRamp.getSample (0, 0) == Catch::Approx (delta * (1.0f - 1.0f / 960.0f)).margin (0.000001f));
-    CHECK (mixRamp.getSample (0, 479) == Catch::Approx (delta * 0.5f).margin (0.000001f));
+    const auto [mixRamp, wet4] = process();
+    CHECK (mixRamp.getSample (0, 0) == Catch::Approx ((wet4.getSample (0, 0) - 0.125f) * (1.0f - 1.0f / 960.0f)).margin (0.000001f));
+    CHECK (mixRamp.getSample (0, 479) == Catch::Approx ((wet4.getSample (0, 479) - 0.125f) * 0.5f).margin (0.000001f));
     CHECK (mixRamp.getMagnitude (959, 65) < 0.00001f);
 }
 
 TEST_CASE ("Mix gain bypass monitor and LFM changes use finite bounded crossfades", "[ba][smoothing]")
 {
-    BaSignalPath path;
+    BaSignalPath path, reference;
     BaParameters::Values values;
     path.prepare (48000.0, 64, neutral(), values);
-    auto prime = signal (2, 4096);
+    reference.prepare (48000.0, 64, neutral(), values);
+    auto prime = tone (2, 4096), primeReference = prime;
     path.process (prime, 2, neutral(), values);
+    reference.process (primeReference, 2, neutral(), values);
     values.outGainDb = 6.0f;
-    auto audio = signal (2, 4096);
+    auto audio = tone (2, 4096), wet = audio;
     path.process (audio, 2, neutral(), values);
-    CHECK (audio.getSample (0, 0) > 0.125f);
-    CHECK (audio.getSample (0, 0) < 0.126f);
-    CHECK (audio.getSample (0, 1000) == Catch::Approx (0.125f * juce::Decibels::decibelsToGain (6.0f)));
+    reference.process (wet, 2, neutral(), {});
+    // Digital OUT ramps over 20 ms from unity to +6 dB.
+    CHECK (audio.getSample (0, 1) == Catch::Approx (wet.getSample (0, 1)).margin (0.001f));
+    CHECK (audio.getSample (0, 1000) == Catch::Approx (wet.getSample (0, 1000) * juce::Decibels::decibelsToGain (6.0f)).margin (1.0e-6f));
     values.mixPercent = 0.0f;
     audio = signal (2, 4096);
     path.process (audio, 2, neutral(), values);
-    CHECK (audio.getSample (0, 0) > 0.24f);
     CHECK (audio.getSample (0, 1000) == Catch::Approx (0.125f));
     values.monitor = 1;
     audio = signal (2, 4096);

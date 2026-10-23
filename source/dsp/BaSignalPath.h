@@ -2,6 +2,7 @@
 
 #include "StereoCompressor.h"
 #include "LowFrequencyMono.h"
+#include "MagneticOversampling.h"
 #include "VtbOutputTransformer.h"
 #include "../PeakAccumulator.h"
 
@@ -13,12 +14,27 @@ public:
     float process (juce::AudioBuffer<float>& buffer, int channels,
         const CompressorParameters::Values& compressorValues, const BaParameters::Values& values,
         LevelMeterPeaks* meters = nullptr) noexcept;
-    int getLatencySamples() const noexcept { return transformer.getLatencySamples(); }
+    int getLatencySamples() const noexcept { return latency; }
+    int getOversamplingFactor() const noexcept { return factor; }
+    // Audio-thread/offline inspection only.
+    const VtbTransformerCore& getInputTransformer() const noexcept { return inputTransformer; }
+    const VtbTransformerCore& getOutputTransformer() const noexcept { return outputTransformer; }
 
 private:
     static float crossfade (float dry, float wet, float amount) noexcept;
+    // Digital IN, then one shared oversampled region (4/2/1): input transformer
+    // (VTB9046, always in) -> Analog Input + compressor -> output transformer
+    // (VTB1148, Amount/Out), then LF Mono and Digital OUT at the base rate.
+    float processAnalog (juce::AudioBuffer<float>& wet, int channels) noexcept;
     StereoCompressor compressor;
-    VtbOutputTransformer transformer;
+    VtbTransformerCore inputTransformer, outputTransformer;
+    juce::dsp::Oversampling<double> filters { 2 };
+    juce::AudioBuffer<double> scratch;
+    juce::AudioBuffer<float> compressorBlock;
+    juce::SmoothedValue<float> outputActive;
+    std::array<float, MagneticAudio::capacity> activity {};
+    bool outputWasProcessing = false;
+    int latency = 0, factor = 4;
     LowFrequencyMono lfm;
     juce::AudioBuffer<float> dry;
     MagneticAudio::StereoDelay dryDelay;

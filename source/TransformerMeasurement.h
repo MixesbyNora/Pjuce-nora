@@ -1,6 +1,7 @@
 #pragma once
 
 #include "TransformerVoicing.h"
+#include "modules/TransformerModule.h"
 #include <juce_core/juce_core.h>
 #include <array>
 #include <functional>
@@ -29,6 +30,9 @@ struct Request
 {
     TransformerVoicing::Values a, b;
     juce::String contextJson;
+    // Which transformer the voicing applies to (VTB1148 output or VTB9046 input).
+    ModuleSpike::TransformerParameters calibration = ModuleSpike::vtb1148OutputC();
+    juce::String stage = "VTB1148 output";
 };
 struct Row
 {
@@ -44,7 +48,8 @@ struct Result
 };
 
 std::optional<Metrics> measurePoint (TransformerVoicing::Values, double frequencyHz,
-    float inputDbfs, float amountPercent, const Cancel& cancel = {});
+    float inputDbfs, float amountPercent, const Cancel& cancel = {},
+    const ModuleSpike::TransformerParameters& calibration = ModuleSpike::vtb1148OutputC());
 std::optional<Result> measure (const Request&, const Cancel& cancel = {},
     const std::function<void (float)>& progress = {});
 juce::String toCsv (const Result&);

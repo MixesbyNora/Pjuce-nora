@@ -52,8 +52,9 @@ juce::String harmonicText (const TransformerMeasurement::Metrics& metrics, std::
 }
 
 TransformerMeasurementView::TransformerMeasurementView (TransformerVoicingState& stateToUse,
-    std::function<juce::String()> exportSettings)
-    : state (stateToUse), exporter (std::move (exportSettings)), worker (std::make_unique<Worker>())
+    std::function<juce::String()> exportSettings, ModuleSpike::TransformerParameters calibrationToUse, juce::String stageName)
+    : state (stateToUse), exporter (std::move (exportSettings)), calibration (calibrationToUse), stage (std::move (stageName)),
+      worker (std::make_unique<Worker>())
 {
     setComponentID ("transformerMeasurementView");
     intro.setText ("48 kHz | Transformer only | Match off\nStored A/B snapshots; internal test tones.", juce::dontSendNotification);
@@ -116,7 +117,7 @@ void TransformerMeasurementView::startOrCancel()
             + " / " + juce::String (snapshot.b[i], d.step < 0.1 ? 2 : 1) + " " + d.unit;
     }
     intro.setText (captured, juce::dontSendNotification);
-    if (! worker->start ({ snapshot.a, snapshot.b, exporter ? exporter() : state.toJson() }))
+    if (! worker->start ({ snapshot.a, snapshot.b, exporter ? exporter() : state.toJson(), calibration, stage }))
     {
         status.setText ("Could not start measurement worker. Retry.", juce::dontSendNotification);
         return;
