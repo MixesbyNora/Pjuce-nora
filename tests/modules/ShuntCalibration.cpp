@@ -853,14 +853,20 @@ namespace
 {
 // Whole-plugin cost: Digital IN, shared 4/2/1 region (input transformer,
 // compressor at the internal rate, output transformer), LF Mono, Digital OUT.
-void chainCpuReport (const juce::File& root)
+// Whole plugin. chain_cpu.csv (input-transformer phase) predates the output tube,
+// so it is measured with the tube out; live_cpu.csv adds the tube in and out.
+void chainCpuReport (const juce::File& root, bool tubeColumn = false)
 {
-    auto out = csv (root, "chain_cpu.csv", "sample_rate_hz,amount_percent,threshold_db,median_realtime_percent,p999_realtime_percent");
+    auto out = csv (root, tubeColumn ? "live_cpu.csv" : "chain_cpu.csv",
+        tubeColumn ? "sample_rate_hz,amount_percent,output_tube,threshold_db,median_realtime_percent,p999_realtime_percent"
+                   : "sample_rate_hz,amount_percent,threshold_db,median_realtime_percent,p999_realtime_percent");
     for (double sampleRate : { 44100.0, 48000.0, 96000.0, 192000.0 })
         for (float amount : { 0.0f, 400.0f / 7.0f, 100.0f })
+            for (bool tubeIn : { false, true })
         {
+            if (tubeIn && ! tubeColumn) continue;
             PluginProcessor processor;
-            for (const auto& [id, value] : { std::pair { "xfrmAmount", amount }, std::pair { "threshold", -24.0f } })
+            for (const auto& [id, value] : { std::pair { "xfrmAmount", amount }, std::pair { "threshold", -24.0f }, std::pair { "outputTubeOut", tubeIn ? 0.0f : 1.0f } })
             {
                 for (auto* p : processor.getParameters())
                     if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p); ranged != nullptr && ranged->paramID == id)
@@ -876,8 +882,8 @@ void chainCpuReport (const juce::File& root)
                 for (int ch = 0; ch < 2; ++ch) for (int n = 0; n < capacity; ++n) audio.setSample (ch, n, block.getSample (ch, n));
             }, [] { return 0; });
             const auto percent = [&] (double ns) { return ns * sampleRate / (capacity * 1.0e7); };
-            out << sampleRate << ',' << amount << ",-24," << percent (t.median) << ',' << percent (t.p999) << '\n';
-            std::cout << "chain cpu " << sampleRate << " amount " << amount << " " << percent (t.median) << '%' << std::endl;
+            out << sampleRate << ',' << amount << ',' << (tubeColumn ? (tubeIn ? "in," : "out,") : "") << "-24," << percent (t.median) << ',' << percent (t.p999) << '\n';
+            std::cout << "chain cpu " << sampleRate << " amount " << amount << " tube " << tubeIn << " " << percent (t.median) << '%' << std::endl;
         }
     REQUIRE (out.good());
 }
@@ -940,7 +946,7 @@ TEST_CASE ("Export VTB1148 shunt calibration", "[shunt-report]")
 {
     const auto* taskValue = std::getenv ("LUMIERE_MODULE_TASK");
     const std::string task = taskValue ? taskValue : "";
-    if (task != "shunt-step2" && task != "shunt-step3" && task != "shunt-step3-ladder" && task != "shunt-step3-cpu" && task != "shunt-step3-aliasing" && task != "input-vtb9046" && task != "chain-cpu") { SUCCEED ("Explicit shunt calibration opt-in"); return; }
+    if (task != "shunt-step2" && task != "shunt-step3" && task != "shunt-step3-ladder" && task != "shunt-step3-cpu" && task != "shunt-step3-aliasing" && task != "input-vtb9046" && task != "chain-cpu" && task != "chain-cpu-tube") { SUCCEED ("Explicit shunt calibration opt-in"); return; }
     const auto* directory = std::getenv ("LUMIERE_MODULE_REPORT_DIR"); REQUIRE (directory != nullptr);
     const juce::File root (juce::String::fromUTF8 (directory)); REQUIRE (root.createDirectory().wasOk());
     if (task == "shunt-step2") calibrationReport (root);
@@ -949,5 +955,5 @@ TEST_CASE ("Export VTB1148 shunt calibration", "[shunt-report]")
     else if (task == "shunt-step3-cpu") cpuReport (root);
     else if (task == "shunt-step3-aliasing") aliasingReport (root);
     else if (task == "input-vtb9046") inputTransformerReport (root);
-    else chainCpuReport (root);
+    else chainCpuReport (root, task == "chain-cpu-tube");
 }

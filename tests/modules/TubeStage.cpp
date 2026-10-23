@@ -1,6 +1,7 @@
 #include "ShuntAnalysis.h"
 #include "TubeCouplingCircuit.h"
 #include "TubeCurveData.h"
+#include <dsp/VtbTransformerCore.h>
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <catch2/catch_test_macros.hpp>
 #include <algorithm>
@@ -294,6 +295,100 @@ void writeCouplingCpu (const juce::File& root)
     }
 }
 
+// ---- Live output stage: aliasing of the joint tube + VTB1148 solve ----
+// The same method as the transformer's (shunt Step 3d): steep FIR oversampling at
+// each factor around the live core, coherent tones and a two-tone case, against a
+// 64x render. Task tube-aliasing.
+class CoreAtFactor
+{
+public:
+    CoreAtFactor (int factor, double extraDb, VtbTransformerCore::Mode mode)
+    {
+        filters.clearOversamplingStages();
+        if (factor == 1) filters.addDummyOversamplingStage();
+        std::size_t index = 0;
+        for (int stage = 1; stage < factor; stage *= 2, ++index)
+        {
+            const auto up = index < MagneticAudio::upWidths.size() ? MagneticAudio::upWidths[index] : 0.08;
+            const auto down = index < MagneticAudio::downWidths.size() ? MagneticAudio::downWidths[index] : 0.08;
+            filters.addOversamplingStage (juce::dsp::Oversampling<double>::filterHalfBandFIREquiripple,
+                static_cast<float> (up), -120.0f, static_cast<float> (down), -120.0f);
+        }
+        filters.setUsingIntegerLatency (false); filters.initProcessing (ModuleResearch::capacity);
+        core.prepare (ShuntResearch::rate * factor, vtb1148OutputC(), extraDb, {}, false,
+            { {}, mode != VtbTransformerCore::Mode::transformer, mode != VtbTransformerCore::Mode::tube });
+    }
+    void process (juce::AudioBuffer<double>& block) noexcept
+    {
+        juce::dsp::AudioBlock<double> base (block);
+        auto high = filters.processSamplesUp (base);
+        for (std::size_t n = 0; n < high.getNumSamples(); ++n)
+        {
+            std::array<double, 2> frame { high.getSample (0, static_cast<int> (n)), 0.0 };
+            core.processFrame (frame, 1);
+            high.setSample (0, static_cast<int> (n), frame[0]);
+        }
+        filters.processSamplesDown (base);
+    }
+    double latency() const noexcept { return filters.getLatencyInSamples(); }
+    VtbTransformerCore core;
+private:
+    juce::dsp::Oversampling<double> filters { 1 };
+};
+void writeTubeAliasing (const juce::File& root)
+{
+    using namespace ShuntResearch;
+    auto out = csv (root, "live_aliasing.csv", "mode,factor,extra_drive_db,peak_dbfs,requested_hz,actual_hz,fundamental_dbfs,harmonic_dbc_audio,nonharmonic_dbc_audio,nonharmonic_dbc_worst_band,difference_to_64x_band_dbr,tube_failures,transformer_failures");
+    constexpr double peakDb = -6.0;
+    for (auto mode : { VtbTransformerCore::Mode::tubeAndTransformer, VtbTransformerCore::Mode::transformer })
+        for (double extra : { 0.0, 12.0, 18.0 })
+            for (double requested : { 55.0, 440.0, 1000.0, 7001.0, 13001.0, 19001.0, 0.0 })
+            {
+                // requested 0 = two-tone: 55 Hz at -6 dBFS plus 13001 Hz at -20 dBFS.
+                const auto twoTone = requested < 1;
+                const auto bin = static_cast<int> (2 * std::round (((twoTone ? 55.0 : requested) * sineSize / rate - 1) / 2) + 1);
+                const auto probeBin = static_cast<int> (2 * std::round ((13001.0 * sineSize / rate - 1) / 2) + 1);
+                const auto amplitude = std::pow (10.0, peakDb / 20);
+                const auto renderAt = [&] (int factor)
+                {
+                    CoreAtFactor processor (factor, extra, mode);
+                    constexpr int warm = 49152;
+                    const auto count = warm + static_cast<int> (sineSize) + 1024;
+                    std::vector<double> raw (static_cast<std::size_t> (count));
+                    juce::AudioBuffer<double> block (1, ModuleResearch::capacity);
+                    for (int start = 0; start < count; start += ModuleResearch::capacity)
+                    {
+                        for (int n = 0; n < ModuleResearch::capacity; ++n)
+                        {
+                            const auto t = static_cast<double> (start + n) / sineSize;
+                            block.setSample (0, n, amplitude * std::sin (2 * pi * bin * t) + (twoTone ? 0.1 * std::sin (2 * pi * probeBin * t) : 0.0));
+                        }
+                        processor.process (block);
+                        for (int n = 0; n < ModuleResearch::capacity && start + n < count; ++n) raw[static_cast<std::size_t> (start + n)] = block.getSample (0, n);
+                    }
+                    auto window = MagneticValidation::alignTrace (raw, warm, processor.latency(), static_cast<int> (sineSize)).samples;
+                    const auto tubeFailures = mode == VtbTransformerCore::Mode::transformer ? 0 : processor.core.getTubeDiagnostics (0).failures;
+                    return std::tuple { window, tubeFailures, processor.core.getDiagnostics (0).failures };
+                };
+                std::array<std::future<std::tuple<std::vector<double>, std::uint64_t, std::uint64_t>>, 5> jobs;
+                const std::array factors { 64, 1, 2, 4, 8 };
+                for (std::size_t i = 0; i < jobs.size(); ++i) jobs[i] = std::async (std::launch::async, renderAt, factors[i]);
+                const auto [reference, referenceTube, referenceIron] = jobs[0].get();
+                for (std::size_t i = 1; i < jobs.size(); ++i)
+                {
+                    const auto [output, tubeFailures, ironFailures] = jobs[i].get();
+                    const auto bands = split (output, output, bin);
+                    double fundamental = 0, harmonicEnergy = 0, nonHarmonic = 0, worst = 0;
+                    for (const auto& b : bands) { fundamental += b.fundamental; harmonicEnergy += b.harmonic; nonHarmonic += b.nonHarmonic; worst = std::max (worst, b.nonHarmonic); }
+                    out << (mode == VtbTransformerCore::Mode::transformer ? "transformer" : "tube+transformer") << ',' << factors[i] << ',' << extra << ',' << peakDb << ',' << requested << ',' << bin * rate / sineSize << ','
+                        << powerDb (fundamental) << ',' << powerDb (harmonicEnergy / fundamental) << ',' << powerDb (nonHarmonic / fundamental) << ',' << powerDb (worst / fundamental) << ','
+                        << bandDifference (output, reference) << ',' << tubeFailures + referenceTube << ',' << ironFailures + referenceIron << '\n';
+                }
+                out.flush();
+                std::cout << "live alias " << static_cast<int> (mode) << ' ' << extra << ' ' << requested << std::endl;
+            }
+}
+
 void writeWav (const juce::File& path, const std::array<std::vector<double>, 2>& audio, double gain)
 {
     juce::AudioBuffer<float> buffer (2, static_cast<int> (audio[0].size()));
@@ -428,11 +523,12 @@ TEST_CASE ("Export tube stage reports", "[tube-report]")
 {
     const auto* taskValue = std::getenv ("LUMIERE_MODULE_TASK");
     const std::string task = taskValue ? taskValue : "";
-    if (task != "tube-fit" && task != "tube-coupling" && task != "tube-coupling-cpu") { SUCCEED ("Explicit tube report opt-in"); return; }
+    if (task != "tube-fit" && task != "tube-coupling" && task != "tube-coupling-cpu" && task != "tube-aliasing") { SUCCEED ("Explicit tube report opt-in"); return; }
     const auto* directory = std::getenv ("LUMIERE_MODULE_REPORT_DIR"); REQUIRE (directory != nullptr);
     const juce::File root (juce::String::fromUTF8 (directory)); REQUIRE (root.createDirectory().wasOk());
     if (task == "tube-fit") writeFit (root);
     else if (task == "tube-coupling-cpu") writeCouplingCpu (root);
+    else if (task == "tube-aliasing") writeTubeAliasing (root);
     else { writeCoupling (root); writeCouplingRenders (root); }
 }
 
@@ -465,7 +561,7 @@ TEST_CASE ("Coupled tube and transformer paths converge and agree at low level",
 {
     const auto hot = runTone (Path::reference, 20, 30);
     CHECK (hot.stage.failures == 0);
-    CHECK (std::all_of (hot.output.begin(), hot.output.end(), [] (double x) { return std::isfinite (x); }));
+    CHECK (std::all_of (hot.output.begin(), hot.output.end(), [] (double x) { return ModuleSpike::isFinite (x); }));
     const auto reference = runTone (Path::reference, 1000, -10);
     for (auto path : { Path::linearInterface, Path::perBlockInterface, Path::uncoupled })
     {

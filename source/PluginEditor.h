@@ -21,13 +21,16 @@ private:
     juce::GenericAudioProcessorEditor parameterEditor;
     GainReductionMeter meter;
     StereoLevelMeter inputMeter { "IN" }, outputMeter { "OUT" };
-    void showStage (bool input);
-    bool voicingVisible() const noexcept { return voicingPanel.isVisible() || inputVoicingPanel.isVisible(); }
+    // Which stage the workbench shows: VTB9046 input, VTB1148 output or the 12BH7 output tube.
+    enum class Stage { input, output, tube };
+    void showStage (Stage);
+    void updateStageVisibility (bool show);
+    bool voicingVisible() const noexcept { return voicingPanel.isVisible() || inputVoicingPanel.isVisible() || tubeVoicingPanel.isVisible(); }
     TransformerVoicingPanel voicingPanel, inputVoicingPanel;
+    TubeVoicingPanel tubeVoicingPanel;
     juce::TextButton voicingToggle { "Hide voicing" };
-    // Which transformer the workbench shows: VTB9046 input or VTB1148 output.
-    juce::TextButton inputStage { "Input xfmr" }, outputStage { "Output xfmr" };
-    bool showingInput = false;
+    juce::TextButton inputStage { "Input xfmr" }, outputStage { "Output xfmr" }, tubeStage { "Output tube" };
+    Stage shownStage = Stage::output;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginEditor)
 };

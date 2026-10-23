@@ -87,6 +87,8 @@ carry impedance in both directions:
   fix it. No coupling (c) is 10–43 dB off everywhere.
 - **Recommendation:** a joint tube + C solve for this pair. It is one scalar
   root per sample and costs about 35% more than (a), unoptimized.
+- **Owner decision:** the joint solve is live, with tube voicing controls
+  ([TubeStage.md](TubeStage.md#live-output-stage-owner-decisions-2026-10-23)).
 
 
 **Question:** is the linear impedance interface close enough to a fully

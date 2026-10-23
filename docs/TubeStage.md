@@ -1,6 +1,8 @@
 # Tube stage: Manley-style output stage (12BH7, 5751)
 
-**Status:** research, Tests only. Nothing here is in the live build yet.
+**Status:** the joint 12BH7 + VTB1148 output stage is **in the live build**
+(2026-10-23), with its own workbench and Output Tube switch. See "Live output
+stage" below. The fits and the coupling test are the research behind it.
 
 ## Owner decisions (2026-10-23)
 
@@ -249,6 +251,11 @@ closer), with the reference THD alongside.
    against a linear load. Most of the time is the triode's `exp`/`log`/`pow`
    inside Newton; that has not been optimized.
 
+   *Superseded:* the live build's solver (below) brings the joint solve to
+   367 ns, cheaper than (a). `coupling_cpu.csv` now holds those numbers. The
+   sweep and renders were made with the earlier solver; both converge to the
+   same roundoff tolerance.
+
 ### Decision gate (plan step 6)
 
 **Recommendation:** use the joint solve for the tube → output-transformer
@@ -263,9 +270,123 @@ as the input transformer driving a grid.
 **Owner listening is still needed** (plan step 5): the reference against (a)
 and (c) on the renders, especially bass and drums at +18 dBu.
 
+## Live output stage (owner decisions, 2026-10-23)
+
+The owner listened to the coupling renders and chose the reference: the joint
+solve goes live, with voicing controls.
+
+```
+... compressor -> Makeup
+  -> output stage, Amount = its drive:
+       12BH7 cathode follower (Output Tube)  ─┐ solved together, one scalar
+       VTB1148 C (Output XFRM)               ─┘ root per sample at 4/2/1
+  -> LF Mono -> Digital OUT -> Mix
+```
+
+**Switching**
+- **Output Tube** (`outputTubeOut`): a new host switch, In by default,
+  appended with version hint 6.
+- What each combination does:
+  - **Both in:** the joint solve.
+  - **Tube out:** today's transformer, bit-exact (C with its ~0 Ω source).
+  - **XFRM out:** the follower drives a resistor equal to the primary winding
+    plus the referred load.
+  - **Both out, or Amount 0:** the stage is bypassed with the existing 10 ms
+    ramp and stops working sample-exactly.
+- **Crossfades.** Switching between combinations, and every tube voicing
+  change, uses the same warmed-bank crossfade as transformer voicing. New
+  circuit values start from fresh state, and the new bank runs alongside the
+  old one before the crossfade.
+- **Level.** Joint and tube-only output is divided by the follower's
+  quiescent midband gain (about 0.94), so 1 kHz level is unchanged when the
+  tube is switched in or out (within 0.1 dB, tested). The bass and saturation
+  differences are the point and are left alone.
+
+**Tube workbench** (Output tube, the third stage next to Input xfmr and
+Output xfmr). It has its own A/B, copy/paste, Default and Match level, and is
+saved as `TUBE_VOICING`. Sessions without it restore the defaults.
+
+| Control | Range | Default | What it does physically |
+|---|---|---|---|
+| Plate current | 3–20 mA per section | 10 mA | Sets the follower's output resistance (≈ 1/gm). Less current: the tube leans harder on the iron, more bass saturation, earlier cut-off on bass peaks. |
+| Coupling cap | 22–1000 µF | 1000 µF | Small values resonate with the primary inductance (an LF bump or tilt) and limit bass current into the core. |
+| Supply (B+) | 200–400 V | 300 V | The cathode sits at half of it, so it sets the swing headroom before the tube runs out of plate voltage. |
+| Sections | 1 or 2 | 2 | One section doubles the output resistance. |
+
+- **Design rule** (`followerDesign`). The cathode is set to half the supply;
+  the cathode resistor gives the chosen current; the grid bias comes from the
+  fitted triode law. The defaults give 150 V at the cathode, 7.5 kΩ and
+  −5.5 V grid–cathode, which is the coupling-test stage.
+- **Ratings are not enforced.** Some combinations exceed them, for example
+  400 V at 20 mA is 4 W per section against a 3.5 W rating. These are voicing
+  choices, not a hardware spec.
+
+**Generalized workbench code**
+- [Voicing.h](../source/Voicing.h): any schema.
+- [VoicingState.h](../source/VoicingState.h): A/B state in one atomic 64-bit
+  word.
+- [VoicingPanel.h](../source/VoicingPanel.h): the panel.
+- The transformer workbench is unchanged in encoding and behavior.
+- The tube schema is [TubeVoicing.h](../source/TubeVoicing.h).
+
+**Solver** ([CathodeFollower.h](../source/modules/CathodeFollower.h), moved
+out of Tests and shared with the coupling fixture):
+- **Starting guess.** Each sample starts from a linear extrapolation of the
+  last two solutions: 3.7 iterations on average instead of 7.7.
+- **Shared exponential.** One `exp` serves both the triode's softplus and its
+  sigmoid.
+- **Safe under `-Ofast`.** Bracket ends are flags, never infinities, and the
+  finite check is bit-level, because Release builds assume finite math.
+- **On a failed solve** the stage holds its last output instead of dropping
+  to 0. None failed in any measurement.
+
+**MEASUREMENT — aliasing** ([live_aliasing.csv](measurements/tube_stage/live_aliasing.csv),
+task `tube-aliasing`):
+- Method as the transformer's Step 3d: tones from 55 Hz to 19 kHz and the
+  two-tone case at −6 dBFS, steep oversampling, against a 64× render.
+- Worst band difference to 64×, dB:
+
+| Factor at 48 kHz | Extra drive | Tube + transformer | Transformer alone |
+|---|---:|---:|---:|
+| 4× (live) | 0 / +12 / +18 dB | −90 / −94 / −94 | −103 / −106 / −106 |
+| 2× | 0 / +12 / +18 dB | −77 / −82 / −82 | −95 / −99 / −99 |
+| 1× | 0 / +12 / +18 dB | −63 / −61 / −55 | −82 / −87 / −87 |
+
+- **Verdict.** The tube adds aliasing, but at the live internal rate (about
+  192 kHz at every host rate) it stays 90 dB or more below the signal.
+  4/2/1 stays, and ADAA is not needed.
+- **Not aliasing.** At 55 Hz with +18 dB drive there is non-harmonic content
+  at −38 dBc at every factor. When the follower cuts off on bass peaks, the
+  coupling capacitor charges and the bias drifts slowly, so the output is not
+  periodic in the window. That is real tube behavior (a blocking-style bias
+  shift), not an artifact.
+
+**MEASUREMENT — whole-plugin CPU** ([live_cpu.csv](measurements/tube_stage/live_cpu.csv),
+task `chain-cpu-tube`). Median % of one core, stereo, Release, threshold
+−24 dB, 60/73 Hz test:
+
+| Rate | Amount nominal, tube out | Tube in | Amount 100%, tube out | Tube in |
+|---:|---:|---:|---:|---:|
+| 44.1 kHz | 12.6% | 22.1% | 14.4% | 25.8% |
+| 48 kHz | 12.6% | 22.7% | 14.7% | 26.9% |
+| 96 kHz | 12.8% | 22.3% | 14.1% | 26.5% |
+| 192 kHz | 12.8% | 21.9% | 13.9% | 26.1% |
+
+The first unoptimized version cost 39–50% with the tube in.
+
+**Tests** ([OutputTubeTests.cpp](../tests/OutputTubeTests.cpp), `[tube]`):
+- default design point;
+- level kept at 1 kHz with the tube in, out, and alone;
+- bass distortion raised by the tube;
+- every control reaching the audio;
+- extremes finite and converging at +18 dB drive;
+- switching and voicing changes without a step (core and plugin);
+- parameter order and version hint;
+- state round-trip and old-session defaults;
+- the editor's third stage.
+
 ## Open
 
-- **Owner listening** on [coupling_audio/](measurements/tube_stage/coupling_audio/).
 - **The size of the source-impedance effect.** It depends on C's low-level
   hysteresis, which was calibrated only from a ~0 Ω source (Woods). Real
   tube-driven VTB1148 data does not exist; the owner tunes by ear.
@@ -275,10 +396,12 @@ and (c) on the renders, especially bass and drums at +18 dBu.
 - **Not modeled:** grid current (no published curves), power-supply sag,
   heater-cathode leakage, and the 5751 voltage-amplifier stage before the
   follower. The 5751 is fitted, but not yet used in a stage.
-- **Live integration.**
-  - A joint tube + C solve inside `VtbTransformerCore` at 4×, behind a bypass.
-  - A cheaper triode evaluation.
-  - Aliasing measurement, with ADAA only if needed.
+- **Owner listening** on the live build: the four tube controls, and Output
+  Tube in and out.
+- **CPU.** The tube adds about 10 points. A table-based triode would cut it
+  further if needed.
+- **A tube measurement tab** for the workbench (THD vs level, like the
+  transformers'), not built.
 
 ## Reproduce
 
@@ -287,8 +410,10 @@ cmake --build Builds --config Release --target Tests
 LUMIERE_MODULE_REPORT_DIR="$PWD/docs/measurements/tube_stage" LUMIERE_MODULE_TASK=tube-fit Builds/Release/Tests '[tube-report]'
 LUMIERE_MODULE_REPORT_DIR="$PWD/docs/measurements/tube_stage" LUMIERE_MODULE_TASK=tube-coupling Builds/Release/Tests '[tube-report]'
 LUMIERE_MODULE_REPORT_DIR="$PWD/docs/measurements/tube_stage" LUMIERE_MODULE_TASK=tube-coupling-cpu Builds/Release/Tests '[tube-report]'
+LUMIERE_MODULE_REPORT_DIR="$PWD/docs/measurements/tube_stage" LUMIERE_MODULE_TASK=tube-aliasing Builds/Release/Tests '[tube-report]'
+LUMIERE_MODULE_REPORT_DIR="$PWD/docs/measurements/tube_stage" LUMIERE_MODULE_TASK=chain-cpu-tube Builds/Release/Tests '[shunt-report]'
 ```
 
-The coupling task takes a few minutes. Verified 2026-10-23: the three Debug
-plugin targets and Tests (Debug and Release) build with no warnings, and both
-suites pass 124/124.
+The coupling task takes a few minutes. Verified 2026-10-23, after the live
+output stage: the three Debug plugin targets and Tests (Debug and Release)
+build with no warnings, and both suites pass 132/132.

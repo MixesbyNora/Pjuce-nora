@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <cmath>
 
 namespace ModuleSpike
@@ -22,8 +23,10 @@ inline TriodeCurrent triodeCurrent (const TriodeParameters& p, double va, double
     if (! (va > 0)) return {};
     const auto s = std::sqrt (p.kvb + va * va);
     const auto z = p.kp * (1 / p.mu + vg / s);
-    const auto softplus = z > 30 ? z : std::log1p (std::exp (z));
-    const auto sigmoid = 1 / (1 + std::exp (-z));
+    // One exponential serves both the softplus and its derivative (the sigmoid).
+    const auto e = std::exp (std::min (z, 30.0));
+    const auto softplus = z > 30 ? z : std::log1p (e);
+    const auto sigmoid = z > 30 ? 1.0 : e / (1 + e);
     const auto e1 = va / p.kp * softplus;
     if (! (e1 > 0)) return {};
     const auto power = std::pow (e1, p.ex);

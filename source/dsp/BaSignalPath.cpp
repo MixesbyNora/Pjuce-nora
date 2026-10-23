@@ -18,9 +18,10 @@ void BaSignalPath::prepare (double sampleRate, int maximumBlockSize,
     inputTransformer.prepare (internalRate, ModuleSpike::vtb9046LineInputC(), 0.0,
         values.inputTransformerVoicing, values.inputVoicingLevelMatch);
     outputTransformer.prepare (internalRate, ModuleSpike::vtb1148OutputC(),
-        VtbOutputTransformer::driveDbFor (values.transformerAmountPercent), values.transformerVoicing, values.voicingLevelMatch);
+        VtbOutputTransformer::driveDbFor (values.transformerAmountPercent), values.transformerVoicing,
+        values.voicingLevelMatch || values.tubeVoicingLevelMatch, outputStage (values));
     outputActive.reset (sampleRate, TransformerSettings::bypassRampSeconds);
-    outputActive.setCurrentAndTargetValue (values.transformerAmountPercent > 0.0f && ! values.transformerOut ? 1.0f : 0.0f);
+    outputActive.setCurrentAndTargetValue (outputEngaged (values) ? 1.0f : 0.0f);
     outputWasProcessing = false;
     inputActive.reset (sampleRate, TransformerSettings::bypassRampSeconds);
     inputActive.setCurrentAndTargetValue (values.inputTransformerOut ? 0.0f : 1.0f);
@@ -98,7 +99,7 @@ float BaSignalPath::processAnalog (juce::AudioBuffer<float>& wet, int channels) 
                 frame[static_cast<std::size_t> (channel)] = compressorBlock.getSample (channel, n);
             if (! engaged || amount <= 0.0f)
             {
-                // Output transformer bypassed (Amount 0 or Out): its work stops sample-exactly.
+                // Output stage bypassed (Amount 0, or tube and transformer both out): its work stops sample-exactly.
                 outputTransformer.skip (1);
                 if (outputWasProcessing) outputTransformer.reset();
                 outputWasProcessing = false;
@@ -126,6 +127,15 @@ float BaSignalPath::processAnalog (juce::AudioBuffer<float>& wet, int channels) 
     return peakDb;
 }
 
+VtbTransformerCore::Tube BaSignalPath::outputStage (const BaParameters::Values& values) noexcept
+{
+    return { values.tubeVoicing, ! values.outputTubeOut, ! values.transformerOut };
+}
+bool BaSignalPath::outputEngaged (const BaParameters::Values& values) noexcept
+{
+    // Amount drives the whole output stage; it is bypassed when both parts are out.
+    return values.transformerAmountPercent > 0.0f && (! values.transformerOut || ! values.outputTubeOut);
+}
 float BaSignalPath::crossfade (float dryValue, float wet, float amount) noexcept
 {
     if (amount <= 0.0f)
@@ -141,8 +151,9 @@ float BaSignalPath::process (juce::AudioBuffer<float>& buffer, int channels,
 {
     compressor.setParameters (compressorValues);
     outputTransformer.setExtraDriveDb (VtbOutputTransformer::driveDbFor (values.transformerAmountPercent));
-    outputTransformer.setVoicing (values.transformerVoicing, values.voicingLevelMatch);
-    outputActive.setTargetValue (values.transformerAmountPercent > 0.0f && ! values.transformerOut ? 1.0f : 0.0f);
+    outputTransformer.setVoicing (values.transformerVoicing, values.voicingLevelMatch || values.tubeVoicingLevelMatch);
+    outputTransformer.setTube (outputStage (values));
+    outputActive.setTargetValue (outputEngaged (values) ? 1.0f : 0.0f);
     inputTransformer.setVoicing (values.inputTransformerVoicing, values.inputVoicingLevelMatch);
     inputActive.setTargetValue (values.inputTransformerOut ? 0.0f : 1.0f);
     inputGain.setTargetValue (juce::Decibels::decibelsToGain (values.inGainDb));

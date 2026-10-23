@@ -159,7 +159,8 @@ TEST_CASE ("Transformer zero amount and Out preserve samples bit for bit includi
         stage.process (audio, 2);
         CHECK (identical (audio, delayed (original, stage.getLatencySamples()), 480));
     }
-    // All existing BA features are active; full Out must still equal zero amount.
+    // All existing BA features are active; the output stage fully Out (tube and
+    // transformer) must still equal zero amount.
     PluginProcessor zero, out;
     for (auto* processor : { &zero, &out })
     {
@@ -173,6 +174,7 @@ TEST_CASE ("Transformer zero amount and Out preserve samples bit for bit includi
         set (*processor, "mix", 37.0f);
     }
     set (out, "xfrmOut", 1.0f);
+    set (out, "outputTubeOut", 1.0f);
     set (out, "xfrmAmount", 100.0f);
     for (auto* processor : { &zero, &out })
         processor->prepareToPlay (48000.0, 256);

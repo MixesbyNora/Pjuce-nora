@@ -4,7 +4,9 @@ PluginEditor::PluginEditor (PluginProcessor& processorToUse)
     : AudioProcessorEditor (processorToUse), processorRef (processorToUse), parameterEditor (processorToUse),
       voicingPanel (processorToUse.getTransformerVoicing(), [&processorToUse] { return processorToUse.exportTransformerVoicing(); }),
       inputVoicingPanel (processorToUse.getInputTransformerVoicing(), [&processorToUse] { return processorToUse.exportTransformerVoicing (true); },
-          "Input Transformer Voicing", "inputTransformerVoicingPanel", ModuleSpike::vtb9046LineInputC(), "VTB9046 line input")
+          "Input Transformer Voicing", "inputTransformerVoicingPanel", ModuleSpike::vtb9046LineInputC(), "VTB9046 line input"),
+      tubeVoicingPanel (processorToUse.getTubeVoicing(), [&processorToUse] { return processorToUse.exportTubeVoicing(); },
+          "Output Tube Voicing", "tubeVoicingPanel")
 {
     parameterEditor.setResizable (false, false);
     addAndMakeVisible (parameterEditor);
@@ -13,27 +15,30 @@ PluginEditor::PluginEditor (PluginProcessor& processorToUse)
     addAndMakeVisible (outputMeter);
     addAndMakeVisible (voicingPanel);
     addChildComponent (inputVoicingPanel);
+    addChildComponent (tubeVoicingPanel);
     addAndMakeVisible (voicingToggle);
     addAndMakeVisible (inputStage);
     addAndMakeVisible (outputStage);
+    addAndMakeVisible (tubeStage);
     inputStage.setComponentID ("voicingStageInput");
     outputStage.setComponentID ("voicingStageOutput");
-    for (auto* button : { &inputStage, &outputStage })
+    tubeStage.setComponentID ("voicingStageTube");
+    for (auto* button : { &inputStage, &outputStage, &tubeStage })
     {
         button->setClickingTogglesState (false);
         button->setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xff287f9b));
     }
-    inputStage.onClick = [this] { showStage (true); };
-    outputStage.onClick = [this] { showStage (false); };
+    inputStage.onClick = [this] { showStage (Stage::input); };
+    outputStage.onClick = [this] { showStage (Stage::output); };
+    tubeStage.onClick = [this] { showStage (Stage::tube); };
     outputStage.setToggleState (true, juce::dontSendNotification);
     voicingToggle.setComponentID ("voicingToggle");
     voicingToggle.onClick = [this]
     {
         const auto show = ! voicingVisible();
-        voicingPanel.setVisible (show && ! showingInput);
-        inputVoicingPanel.setVisible (show && showingInput);
-        inputStage.setVisible (show);
-        outputStage.setVisible (show);
+        updateStageVisibility (show);
+        for (auto* button : { &inputStage, &outputStage, &tubeStage })
+            button->setVisible (show);
         voicingToggle.setButtonText (show ? "Hide voicing" : "Show voicing");
         setSize (show ? 960 : 640, 936);
     };
@@ -48,15 +53,22 @@ PluginEditor::~PluginEditor()
     stopTimer();
 }
 
-void PluginEditor::showStage (bool input)
+void PluginEditor::updateStageVisibility (bool show)
 {
-    showingInput = input;
-    inputStage.setToggleState (input, juce::dontSendNotification);
-    outputStage.setToggleState (! input, juce::dontSendNotification);
+    voicingPanel.setVisible (show && shownStage == Stage::output);
+    inputVoicingPanel.setVisible (show && shownStage == Stage::input);
+    tubeVoicingPanel.setVisible (show && shownStage == Stage::tube);
+}
+
+void PluginEditor::showStage (Stage stage)
+{
+    shownStage = stage;
+    inputStage.setToggleState (stage == Stage::input, juce::dontSendNotification);
+    outputStage.setToggleState (stage == Stage::output, juce::dontSendNotification);
+    tubeStage.setToggleState (stage == Stage::tube, juce::dontSendNotification);
     if (voicingVisible())
     {
-        voicingPanel.setVisible (! input);
-        inputVoicingPanel.setVisible (input);
+        updateStageVisibility (true);
         resized();
     }
 }
@@ -82,11 +94,14 @@ void PluginEditor::resized()
         auto panel = area.removeFromRight (300);
         panel.removeFromTop (32);
         auto stages = panel.removeFromTop (24);
-        inputStage.setBounds (stages.removeFromLeft (stages.getWidth() / 2).reduced (2, 0));
-        outputStage.setBounds (stages.reduced (2, 0));
+        const auto third = stages.getWidth() / 3;
+        inputStage.setBounds (stages.removeFromLeft (third).reduced (2, 0));
+        outputStage.setBounds (stages.removeFromLeft (third).reduced (2, 0));
+        tubeStage.setBounds (stages.reduced (2, 0));
         panel.removeFromTop (6);
         voicingPanel.setBounds (panel);
         inputVoicingPanel.setBounds (panel);
+        tubeVoicingPanel.setBounds (panel);
         area.removeFromRight (20);
     }
     voicingToggle.setBounds (getWidth() - 316, 18, voicingVisible() ? 300 : 148, 24);
@@ -100,6 +115,7 @@ void PluginEditor::timerCallback()
 {
     voicingPanel.refresh();
     inputVoicingPanel.refresh();
+    tubeVoicingPanel.refresh();
     meter.setGainReductionDb (processorRef.getGainReductionDb());
     const auto peaks = processorRef.readLevelPeaks();
     inputMeter.setLevelsDb (juce::Decibels::gainToDecibels (peaks.inL, -60.0f),

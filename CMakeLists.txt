@@ -156,13 +156,16 @@ set(SourceFiles
     source/GainLinkController.h
     source/GainLinkController.cpp
     source/CompressorParameters.h
+    source/Voicing.h
+    source/VoicingState.h
+    source/VoicingPanel.h
     source/TransformerVoicing.h
+    source/TubeVoicing.h
     source/TransformerMeasurement.h
     source/TransformerMeasurement.cpp
     source/TransformerMeasurementView.h
     source/TransformerMeasurementView.cpp
     source/TransformerVoicingState.h
-    source/TransformerVoicingState.cpp
     source/TransformerVoicingPanel.h
     source/TransformerVoicingPanel.cpp
     source/GainReductionMeter.h
@@ -181,6 +184,7 @@ set(SourceFiles
     source/modules/ModuleContract.h
     source/modules/TransformerModule.h
     source/modules/TriodeModel.h
+    source/modules/CathodeFollower.h
     source/dsp/Biquad.h
     source/dsp/LowFrequencyMono.h
     source/dsp/LowFrequencyMono.cpp

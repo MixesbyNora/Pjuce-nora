@@ -27,7 +27,8 @@ PluginProcessor::PluginProcessor()
        baMonitor (parameters.getRawParameterValue (BaParameters::monitorId)),
        xfrmOut (parameters.getRawParameterValue (BaParameters::xfrmOut.id)),
        xfrmAmount (parameters.getRawParameterValue (BaParameters::xfrmAmount.id)),
-       inputXfrmOut (parameters.getRawParameterValue (BaParameters::inputXfrmOut.id))
+       inputXfrmOut (parameters.getRawParameterValue (BaParameters::inputXfrmOut.id)),
+       outputTubeOut (parameters.getRawParameterValue (BaParameters::outputTubeOut.id))
 {
     gainLink = std::make_unique<GainLinkController> (parameters);
 }
@@ -103,6 +104,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::createParam
     const auto& inputOut = BaParameters::inputXfrmOut;
     layout.add (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { inputOut.id, 5 }, inputOut.name, inputOut.initial, inOutAttributes));
+    const auto& tubeOut = BaParameters::outputTubeOut;
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { tubeOut.id, 6 }, tubeOut.name, tubeOut.initial, inOutAttributes));
     return layout;
 }
 
@@ -110,6 +114,7 @@ BaParameters::Values PluginProcessor::readBaParameters() const noexcept
 {
     const auto voicing = transformerVoicing.readAudio();
     const auto inputVoicing = inputTransformerVoicing.readAudio();
+    const auto tube = tubeVoicing.readAudio();
     return { baIn->load (std::memory_order_relaxed), baOut->load (std::memory_order_relaxed),
         baLfm->load (std::memory_order_relaxed), baMix->load (std::memory_order_relaxed),
         baBypass->load (std::memory_order_relaxed) >= 0.5f,
@@ -117,7 +122,8 @@ BaParameters::Values PluginProcessor::readBaParameters() const noexcept
         xfrmOut->load (std::memory_order_relaxed) >= 0.5f,
         xfrmAmount->load (std::memory_order_relaxed), voicing.voicing, voicing.levelMatch,
         inputVoicing.voicing, inputVoicing.levelMatch,
-        inputXfrmOut->load (std::memory_order_relaxed) >= 0.5f };
+        inputXfrmOut->load (std::memory_order_relaxed) >= 0.5f,
+        tube.voicing, tube.levelMatch, outputTubeOut->load (std::memory_order_relaxed) >= 0.5f };
 }
 
 juce::AudioProcessorParameter* PluginProcessor::getBypassParameter() const
@@ -285,8 +291,19 @@ juce::AudioProcessorEditor* PluginProcessor::createEditor()
 
 juce::String PluginProcessor::exportTransformerVoicing (bool inputStage) const
 {
-    auto json = juce::JSON::parse ((inputStage ? inputTransformerVoicing : transformerVoicing).toJson());
-    json.getDynamicObject()->setProperty ("transformer", inputStage ? "VTB9046 line input" : "VTB1148 output");
+    return exportWorkbench ((inputStage ? inputTransformerVoicing : transformerVoicing).toJson(),
+        "transformer", inputStage ? "VTB9046 line input" : "VTB1148 output");
+}
+
+juce::String PluginProcessor::exportTubeVoicing() const
+{
+    return exportWorkbench (tubeVoicing.toJson(), "tube", "12BH7 cathode follower");
+}
+
+juce::String PluginProcessor::exportWorkbench (juce::String text, const char* field, const char* stage) const
+{
+    auto json = juce::JSON::parse (text);
+    json.getDynamicObject()->setProperty (field, stage);
     auto context = std::make_unique<juce::DynamicObject>();
     for (auto* p : getParameters())
         if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
@@ -304,6 +321,8 @@ void PluginProcessor::getStateInformation (juce::MemoryBlock& destData)
         { { "json", transformerVoicing.toJson() } }), -1, nullptr);
     state.addChild (juce::ValueTree ("INPUT_TRANSFORMER_VOICING",
         { { "json", inputTransformerVoicing.toJson() } }), -1, nullptr);
+    state.addChild (juce::ValueTree ("TUBE_VOICING",
+        { { "json", tubeVoicing.toJson() } }), -1, nullptr);
     if (auto xml = state.createXml())
         copyXmlToBinary (*xml, destData);
 }
@@ -324,6 +343,11 @@ void PluginProcessor::setStateInformation (const void* data, int sizeInBytes)
             if (! inputVoicing.isValid() || ! inputTransformerVoicing.restoreJson (inputVoicing.getProperty ("json").toString()))
                 inputTransformerVoicing.resetAll();
             state.removeChild (inputVoicing, nullptr);
+            // Sessions before the output tube existed restore its defaults.
+            const auto tube = state.getChildWithName ("TUBE_VOICING");
+            if (! tube.isValid() || ! tubeVoicing.restoreJson (tube.getProperty ("json").toString()))
+                tubeVoicing.resetAll();
+            state.removeChild (tube, nullptr);
             // The retired xfrmModel choice (2026-10-22 builds only) has no parameter now.
             state.removeChild (state.getChildWithProperty ("id", "xfrmModel"), nullptr);
             gainLink->beginStateRestore();

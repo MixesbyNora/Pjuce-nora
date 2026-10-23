@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "TransformerVoicing.h"
+#include "TubeVoicing.h"
 
 namespace BaParameters
 {
@@ -30,6 +31,8 @@ inline constexpr BoolSpecification ioLink { "ioLink", "IN/OUT Link", false };
 // IDs stay stable for automation; names are what hosts show.
 inline constexpr BoolSpecification xfrmOut { "xfrmOut", "Output XFRM", false };
 inline constexpr BoolSpecification inputXfrmOut { "inputXfrmOut", "Input XFRM", false };
+// The 12BH7 follower driving the output transformer (docs/TubeStage.md).
+inline constexpr BoolSpecification outputTubeOut { "outputTubeOut", "Output Tube", false };
 inline constexpr FloatSpecification xfrmAmount { "xfrmAmount", "Xfrm Amount", "%", 0.0f, 100.0f, 0.1f, 0.0f };
 inline constexpr FloatSpecification lfm { "lfm", "LFM", "Hz", 0.0f, 250.0f, 0.1f, 0.0f, 70.0f, 20.0f };
 inline constexpr FloatSpecification mix { "mix", "Mix", "%", 0.0f, 100.0f, 0.1f, 100.0f };
@@ -58,6 +61,10 @@ struct Values
     TransformerVoicing::Values inputTransformerVoicing;
     bool inputVoicingLevelMatch = false;
     bool inputTransformerOut = inputXfrmOut.initial;
+    // Output tube workbench voicing, and its bypass.
+    TubeVoicing::Values tubeVoicing;
+    bool tubeVoicingLevelMatch = false;
+    bool outputTubeOut = BaParameters::outputTubeOut.initial;
 };
 
 void appendLayout (juce::AudioProcessorValueTreeState::ParameterLayout& layout);

@@ -288,7 +288,8 @@ TEST_CASE ("Input XFRM bypass is appended and removes the input iron; Output XFR
     CHECK (parameter (processor, "inputXfrmOut")->getText (0.0f, 32) == "In");
     CHECK (parameter (processor, "inputXfrmOut")->getText (1.0f, 32) == "Out");
     CHECK_FALSE (input->get());
-    CHECK (processor.getParameters().indexOf (input) == processor.getParameters().size() - 1);
+    // Appended before the Output Tube switch (version hint 6), which is last.
+    CHECK (processor.getParameters().indexOf (input) == processor.getParameters().size() - 2);
     CHECK (input->getVersionHint() > parameter (processor, "xfrmAmount")->getVersionHint());
     // Driven 30 Hz with the output iron out: only the input iron adds H3.
     const auto thirdWith = [] (bool inputOut)

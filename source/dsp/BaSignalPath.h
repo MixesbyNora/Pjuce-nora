@@ -22,9 +22,12 @@ public:
 
 private:
     static float crossfade (float dry, float wet, float amount) noexcept;
+    static VtbTransformerCore::Tube outputStage (const BaParameters::Values&) noexcept;
+    static bool outputEngaged (const BaParameters::Values&) noexcept;
     // Digital IN, then one shared oversampled region (4/2/1): input transformer
-    // (VTB9046, always in) -> Analog Input + compressor -> output transformer
-    // (VTB1148, Amount/Out), then LF Mono and Digital OUT at the base rate.
+    // (VTB9046, Input XFRM) -> Analog Input + compressor -> output stage: 12BH7
+    // follower (Output Tube) and VTB1148 (Output XFRM), solved jointly, with
+    // Amount as its drive. Then LF Mono and Digital OUT at the base rate.
     float processAnalog (juce::AudioBuffer<float>& wet, int channels) noexcept;
     StereoCompressor compressor;
     VtbTransformerCore inputTransformer, outputTransformer;
