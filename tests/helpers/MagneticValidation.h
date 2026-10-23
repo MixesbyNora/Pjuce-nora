@@ -1,10 +1,15 @@
 #pragma once
 
-#include "MagneticOversampling.h"
+#include <juce_dsp/juce_dsp.h>
+#include <complex>
+#include <vector>
 
+// Offline validation stimuli, alignment and spectral metrics. The Magnetic
+// engine's reference renders that used to live here are in archive/magnetic-engine.
 namespace MagneticValidation
 {
-inline constexpr int windowSize = MagneticAnalysis::fftSize;
+inline constexpr int fftOrder = 14;
+inline constexpr int windowSize = 1 << fftOrder;
 inline constexpr int alignmentRadius = 128;
 inline constexpr double referenceGoalDb = -100.0;
 inline constexpr double residualScreenDb = -80.0;
@@ -39,26 +44,7 @@ struct Metrics
     double bandPeakErrorDb = 0.0, bandMaximumError = 0.0;
     double identityResidualDb = 0.0;
 };
-struct Result
-{
-    explicit Result (Stimulus value) : stimulus (value) {}
-    Stimulus stimulus;
-    int referenceFactor = 64;
-    double referenceDifferenceDb = 0.0, referenceMaximumError = 0.0;
-    double referenceIdentityDb = 0.0;
-    double referenceBandMaximumError = 0.0;
-    bool referenceFullConverged = false;
-    int attempts = 0;
-    std::array<std::array<double, 5>, 5> convergence {};
-    bool converged = false;
-    Trace reference, candidate, baseline;
-    Metrics candidateMetrics, baselineMetrics;
-};
-
 // Only offline/test allocations. No new live processing, parameters or UI.
-Trace render (const Stimulus&, int factor, bool analyticReference, bool identity = false);
-Trace renderCandidate (const Stimulus&, int factor, MagneticOversampling::Evaluation, bool identity = false);
-Result compare (const Stimulus&);
 std::vector<std::complex<double>> spectrum (const std::vector<double>&);
 std::vector<double> audioBand (const std::vector<double>&, double sampleRate);
 double alignmentErrorDb (double fractionalDelay, double cyclesPerSample);

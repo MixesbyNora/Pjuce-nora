@@ -6,7 +6,6 @@ namespace MagneticValidation
 namespace
 {
 constexpr auto pi = juce::MathConstants<double>::pi;
-constexpr int blockSize = MagneticOversampling::blockSize;
 
 double db (double amplitude) { return 20.0 * std::log10 (std::max (amplitude, 1.0e-15)); }
 double peakOf (const std::vector<double>& values)
@@ -73,66 +72,6 @@ Trace align (const std::vector<double>& raw, int start, double latency, int leng
     }
     return result;
 }
-
-// Analytic H at the internal rate, original core, real FIR decimation only.
-// Input interpolation is deliberately independent of the candidate's FIR chain.
-class Reference
-{
-public:
-    explicit Reference (int multiplier) : filters (1), factor (multiplier)
-    {
-        filters.clearOversamplingStages();
-        for (int stage = 1; stage < factor; stage *= 2)
-        {
-            const auto width = stage == 1 ? MagneticOversampling::firstTransition : MagneticOversampling::laterTransition;
-            filters.addOversamplingStage (juce::dsp::Oversampling<double>::filterHalfBandFIREquiripple,
-                width, MagneticOversampling::stopbandDb, width, MagneticOversampling::stopbandDb);
-        }
-        filters.setUsingIntegerLatency (false);
-        filters.initProcessing (blockSize);
-        // Measure the decimator's own impulse centroid; do not assume half of
-        // round-trip delay or confuse interpolation and decimation timestamps.
-        juce::AudioBuffer<double> block (1, blockSize);
-        auto sum = 0.0, moment = 0.0;
-        for (int start = 0; start < 1024; start += blockSize)
-        {
-            block.clear();
-            juce::dsp::AudioBlock<double> base (block);
-            auto high = filters.processSamplesUp (base);
-            high.clear();
-            if (start == 0)
-                high.setSample (0, 0, static_cast<double> (factor));
-            filters.processSamplesDown (base);
-            for (int i = 0; i < blockSize; ++i)
-            {
-                sum += block.getSample (0, i);
-                moment += (start + i) * block.getSample (0, i);
-            }
-        }
-        latency = moment / sum;
-        filters.reset();
-    }
-    void resetCore() { core.reset(); }
-    void process (juce::AudioBuffer<double>& block, const Stimulus& input, int start, bool identity)
-    {
-        block.clear();
-        juce::dsp::AudioBlock<double> base (block);
-        auto high = filters.processSamplesUp (base);
-        auto* samples = high.getChannelPointer (0);
-        for (std::size_t i = 0; i < high.getNumSamples(); ++i)
-        {
-            const auto field = input.at (start + static_cast<double> (i) / factor);
-            samples[i] = identity ? field : core.processField (field);
-        }
-        filters.processSamplesDown (base);
-    }
-    double latency = 0.0;
-
-private:
-    juce::dsp::Oversampling<double> filters;
-    MagneticPrototype::PlayPreisachCore core;
-    int factor;
-};
 
 double bandPower (const std::vector<std::complex<double>>& bins, double rate)
 {
@@ -235,7 +174,7 @@ std::vector<std::complex<double>> spectrum (const std::vector<double>& input)
     std::vector<float> data (windowSize * 2, 0.0f);
     for (int i = 0; i < windowSize; ++i)
         data[static_cast<std::size_t> (i)] = static_cast<float> (input[static_cast<std::size_t> (i)]);
-    juce::dsp::FFT fft (MagneticAnalysis::fftOrder);
+    juce::dsp::FFT fft (fftOrder);
     fft.performRealOnlyForwardTransform (data.data());
     std::vector<std::complex<double>> result (windowSize / 2 + 1);
     for (std::size_t i = 0; i < result.size(); ++i)
@@ -247,7 +186,7 @@ std::vector<double> audioBand (const std::vector<double>& input, double rate)
     std::vector<float> data (windowSize * 2, 0.0f);
     for (int i = 0; i < windowSize; ++i)
         data[static_cast<std::size_t> (i)] = static_cast<float> (input[static_cast<std::size_t> (i)]);
-    juce::dsp::FFT fft (MagneticAnalysis::fftOrder);
+    juce::dsp::FFT fft (fftOrder);
     fft.performRealOnlyForwardTransform (data.data());
     const auto last = std::min (windowSize / 2 - 1, static_cast<int> (20000.0 * windowSize / rate));
     for (int i = last + 1; i < windowSize - last; ++i)
@@ -259,49 +198,6 @@ std::vector<double> audioBand (const std::vector<double>& input, double rate)
     std::vector<double> result (windowSize);
     std::copy_n (data.data(), windowSize, result.data());
     return result;
-}
-namespace
-{
-Trace renderImpl (const Stimulus& input, int factor, bool analyticReference, bool identity, MagneticOversampling::Evaluation method)
-{
-    juce::ScopedNoDenormals noDenormals;
-    const auto warm = input.periodic() ? windowSize : 1024;
-    const auto analysisStart = windowSize + warm;
-    const auto count = analysisStart + windowSize + 512;
-    std::vector<double> raw (static_cast<std::size_t> (count));
-    juce::AudioBuffer<double> block (1, blockSize);
-    if (analyticReference)
-    {
-        Reference processor (factor);
-        for (int start = 0; start < count; start += blockSize)
-        {
-            if (start == windowSize)
-                processor.resetCore();
-            processor.process (block, input, start - analysisStart, identity || start < windowSize);
-            std::copy_n (block.getReadPointer (0), blockSize, raw.data() + start);
-        }
-        return align (raw, analysisStart, processor.latency);
-    }
-    MagneticOversampling::Processor processor (factor, 1, blockSize, {}, method);
-    for (int start = 0; start < count; start += blockSize)
-    {
-        if (start == windowSize)
-            processor.resetCores();
-        for (int i = 0; i < blockSize; ++i)
-            block.setSample (0, i, input.at (start + i - analysisStart));
-        processor.process (block, identity || start < windowSize);
-        std::copy_n (block.getReadPointer (0), blockSize, raw.data() + start);
-    }
-    return align (raw, analysisStart, processor.latency());
-}
-}
-Trace render (const Stimulus& input, int factor, bool analyticReference, bool identity)
-{
-    return renderImpl (input, factor, analyticReference, identity, factor == 8 ? MagneticOversampling::Evaluation::turningPoint : MagneticOversampling::Evaluation::point);
-}
-Trace renderCandidate (const Stimulus& input, int factor, MagneticOversampling::Evaluation method, bool identity)
-{
-    return renderImpl (input, factor, false, identity, method);
 }
 Metrics measure (const Trace& output, const Trace& reference, const Stimulus& input)
 {
@@ -348,43 +244,6 @@ Metrics measure (const Trace& output, const Trace& reference, const Stimulus& in
             drift = std::max (drift, std::abs (output.samples[i] - outputMean));
         result.tailDriftDb = db (drift / referencePeak);
     }
-    return result;
-}
-Result compare (const Stimulus& input)
-{
-    Result result (input);
-    auto previous = render (input, 32, true);
-    for (int factor : { 64, 128, 256, 512, 1024 })
-    {
-        auto reference = render (input, factor, true);
-        const auto check = measure (previous, reference, input);
-        result.referenceDifferenceDb = check.bandResidualDb;
-        result.referenceMaximumError = check.maximumError;
-        result.referenceFactor = factor;
-        result.referenceBandMaximumError = check.bandMaximumError;
-        result.convergence[static_cast<std::size_t> (result.attempts++)] = { static_cast<double> (factor), check.bandResidualDb, check.maximumError, check.tailErrorDb, check.bandMaximumError };
-        result.converged = check.bandResidualDb <= referenceGoalDb && check.bandMaximumError <= 1.0e-4
-            && (! input.silentTail() || check.tailErrorDb <= referenceGoalDb);
-        result.referenceFullConverged = result.converged && check.maximumError <= 1.0e-4;
-        if (result.converged || factor == 1024)
-        {
-            result.reference = std::move (reference);
-            break;
-        }
-        previous = std::move (reference);
-    }
-    result.candidate = render (input, 8, false);
-    result.baseline = render (input, 16, false);
-    result.candidateMetrics = measure (result.candidate, result.reference, input);
-    result.baselineMetrics = measure (result.baseline, result.reference, input);
-    const auto identity = render (input, result.referenceFactor, true, true);
-    Trace direct;
-    direct.samples.resize (windowSize);
-    for (int i = 0; i < windowSize; ++i)
-        direct.samples[static_cast<std::size_t> (i)] = input.at (i);
-    result.referenceIdentityDb = bandDifference (identity, direct, input.rate);
-    result.candidateMetrics.identityResidualDb = bandDifference (render (input, 8, false, true), identity, input.rate);
-    result.baselineMetrics.identityResidualDb = bandDifference (render (input, 16, false, true), identity, input.rate);
     return result;
 }
 double alignmentErrorDb (double fraction, double frequency)

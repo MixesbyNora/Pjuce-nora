@@ -1,6 +1,6 @@
 #include "TransformerMeasurement.h"
 #include "TransformerVoicingState.h"
-#include "dsp/TransformerSaturation.h"
+#include "dsp/VtbOutputTransformer.h"
 #include <complex>
 
 namespace TransformerMeasurement
@@ -15,7 +15,7 @@ std::optional<Metrics> measurePoint (TransformerVoicing::Values voice, double fr
     float inputDbfs, float amountPercent, const Cancel& cancel)
 {
     juce::ScopedNoDenormals noDenormals;
-    TransformerSaturation transformer;
+    VtbOutputTransformer transformer;
     transformer.prepare (sampleRate, amountPercent, false, voice, false);
     juce::AudioBuffer<float> block (1, 256);
     constexpr std::array orders { 1, 2, 3, 5, 7 };

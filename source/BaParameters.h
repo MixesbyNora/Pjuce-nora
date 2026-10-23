@@ -29,12 +29,6 @@ inline constexpr FloatSpecification outGain { "outGain", "OUT", "dB", -24.0f, 24
 inline constexpr BoolSpecification ioLink { "ioLink", "IN/OUT Link", false };
 inline constexpr BoolSpecification xfrmOut { "xfrmOut", "Xfrm Out", false };
 inline constexpr FloatSpecification xfrmAmount { "xfrmAmount", "Xfrm Amount", "%", 0.0f, 100.0f, 0.1f, 0.0f };
-inline constexpr const char* xfrmModelId = "xfrmModel";
-inline constexpr const char* xfrmModelName = "Xfrm Model";
-inline constexpr std::array xfrmModelChoices { "Magnetic", "VTB1148" };
-inline constexpr int xfrmModelMagnetic = 0, xfrmModelVtb1148 = 1;
-// New instances start on VTB1148; saved sessions without this parameter restore Magnetic.
-inline constexpr int xfrmModelInitial = xfrmModelVtb1148;
 inline constexpr FloatSpecification lfm { "lfm", "LFM", "Hz", 0.0f, 250.0f, 0.1f, 0.0f, 70.0f, 20.0f };
 inline constexpr FloatSpecification mix { "mix", "Mix", "%", 0.0f, 100.0f, 0.1f, 100.0f };
 inline constexpr const char* monitorId = "monitor";
@@ -58,7 +52,6 @@ struct Values
     float transformerAmountPercent = xfrmAmount.initial;
     TransformerVoicing::Values transformerVoicing;
     bool voicingLevelMatch = false;
-    int transformerModel = xfrmModelInitial;
 };
 
 void appendLayout (juce::AudioProcessorValueTreeState::ParameterLayout& layout);

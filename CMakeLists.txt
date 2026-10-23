@@ -174,16 +174,6 @@ set(SourceFiles
     source/dsp/DbGainEnvelope.h
     source/dsp/TransformerSettings.h
     source/dsp/MagneticOversampling.h
-    source/experimental/MagneticCoreSettings.h
-    source/experimental/PlayPreisachCore.h
-    source/experimental/PlayPreisachCore.cpp
-    source/experimental/ConstitutiveLookup.h
-    source/experimental/ConstitutiveLookup.cpp
-    source/experimental/TransformerAudioSettings.h
-    source/experimental/TransformerAudioCircuit.h
-    source/experimental/TransformerAudioCircuit.cpp
-    source/dsp/TransformerSaturation.h
-    source/dsp/TransformerSaturation.cpp
     source/dsp/VtbOutputTransformer.h
     source/dsp/VtbOutputTransformer.cpp
     source/modules/ModuleContract.h
@@ -264,7 +254,6 @@ pamplejuce_add_tests()
 # SharedCode when the owner moved variant C into the live build; the rest of
 # the contract research stays Tests-only.
 
-# The magnetic circuit is shared by plugin, Standalone and offline measurements.
 
 # A separate target for Benchmarks (keeps the Tests target fast)
 pamplejuce_add_benchmarks()

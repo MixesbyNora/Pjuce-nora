@@ -1,5 +1,5 @@
 #include <PluginProcessor.h>
-#include <dsp/TransformerSaturation.h>
+#include <dsp/VtbOutputTransformer.h>
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <bit>
@@ -82,13 +82,13 @@ double harmonic (const juce::AudioBuffer<float>& audio, double frequency, double
 }
 }
 
-TEST_CASE ("Magnetic transformer is deterministic across block partitions and automation", "[transformer][magnetic]")
+TEST_CASE ("VTB1148 transformer is deterministic across block partitions and automation", "[transformer][vtb]")
 {
     auto a = sine (48000.0, 73.0, -3.0, 8192), b = a;
-    TransformerSaturation whole, split;
+    VtbOutputTransformer whole, split;
     whole.prepare (48000.0, 100.0f, false);
     split.prepare (48000.0, 100.0f, false);
-    CHECK (whole.getLatencySamples() == 144);
+    CHECK (whole.getLatencySamples() == 124); // 4x half-band FIRs at 48 kHz.
     for (int start = 0; start < a.getNumSamples(); start += 128)
     {
         for (auto* stage : { &whole, &split })
@@ -108,7 +108,7 @@ TEST_CASE ("Magnetic transformer is deterministic across block partitions and au
         }
     }
     CHECK (identical (a, b));
-    CHECK (whole.getCircuit().getDiagnostics().solverFailures == 0);
+    CHECK (whole.getDiagnostics().failures == 0);
 }
 
 TEST_CASE ("Transformer parameters append stable IDs with In Out text and percent parsing", "[transformer][parameters]")
@@ -141,7 +141,7 @@ TEST_CASE ("Transformer zero amount and Out preserve samples bit for bit includi
     const auto original = sine (48000.0, 73.0, -3.0, 8192);
     for (const auto& [amount, out] : std::array { std::pair { 0.0f, false }, std::pair { 100.0f, true } })
     {
-        TransformerSaturation stage;
+        VtbOutputTransformer stage;
         stage.prepare (48000.0, amount, out);
         auto audio = original;
         stage.process (audio, 2);
@@ -149,7 +149,7 @@ TEST_CASE ("Transformer zero amount and Out preserve samples bit for bit includi
     }
     for (bool out : { false, true })
     {
-        TransformerSaturation stage;
+        VtbOutputTransformer stage;
         stage.prepare (48000.0, 100.0f, false);
         auto audio = original;
         stage.process (audio, 2);
@@ -184,7 +184,7 @@ TEST_CASE ("Transformer zero amount and Out preserve samples bit for bit includi
     CHECK (identical (a, b));
 }
 
-TEST_CASE ("Magnetic transformer preserves small-signal gain above its low-frequency corner", "[transformer][unity]")
+TEST_CASE ("VTB1148 transformer preserves small-signal gain above its low-frequency corner", "[transformer][unity]")
 {
     for (double sampleRate : { 44100.0, 48000.0, 96000.0, 192000.0 })
         for (double frequency : { 50.0, 1000.0, 8000.0 })
@@ -194,7 +194,7 @@ TEST_CASE ("Magnetic transformer preserves small-signal gain above its low-frequ
             const auto warmup = count / 4;
             const auto input = sine (sampleRate, frequency, -60.0, count + warmup);
             auto output = input;
-            TransformerSaturation stage;
+            VtbOutputTransformer stage;
             stage.prepare (sampleRate, 100.0f, false);
             stage.process (output, 2);
             const auto gain = output.getRMSLevel (0, warmup, count) / input.getRMSLevel (0, warmup, count);
@@ -202,32 +202,31 @@ TEST_CASE ("Magnetic transformer preserves small-signal gain above its low-frequ
         }
 }
 
-TEST_CASE ("Transformer produces symmetric odd harmonics with stronger low-frequency saturation", "[transformer][harmonics]")
+TEST_CASE ("VTB1148 transformer distorts more at low frequencies with odd and even harmonics", "[transformer][harmonics]")
 {
+    // Published VTB1148 behavior (Woods 2019): harmonics fall with frequency and
+    // include even orders; the calibration puts H2 roughly 20 dB under H3.
     auto highThirdDb = 0.0;
     for (double frequency : { 1000.0, 60.0 })
     {
         CAPTURE (frequency);
-        auto audio = sine (48000.0, frequency, -24.0, 60000);
-        TransformerSaturation stage;
+        auto audio = sine (48000.0, frequency, -6.0, 60000);
+        VtbOutputTransformer stage;
         stage.prepare (48000.0, 100.0f, false);
         stage.process (audio, 2);
         const auto fundamental = harmonic (audio, frequency, 48000.0, 12000, 48000);
         const auto second = harmonic (audio, frequency * 2.0, 48000.0, 12000, 48000);
         const auto third = harmonic (audio, frequency * 3.0, 48000.0, 12000, 48000);
         const auto thirdDb = juce::Decibels::gainToDecibels (third / fundamental, -300.0);
-        const auto secondDb = juce::Decibels::gainToDecibels (second / third, -300.0);
-        INFO ("H3 dBc = " << thirdDb << "; H2 relative to H3 = " << secondDb);
-        CHECK (secondDb < -40.0);
+        const auto secondDb = juce::Decibels::gainToDecibels (second / fundamental, -300.0);
+        INFO ("H3 dBc = " << thirdDb << "; H2 dBc = " << secondDb);
         if (frequency > 500.0)
-        {
             highThirdDb = thirdDb;
-
-        }
         else
         {
-            CHECK (thirdDb > -60.0);
             CHECK (thirdDb > highThirdDb + 10.0);
+            CHECK (secondDb > -100.0);
+            CHECK (secondDb < thirdDb);
         }
     }
 }
@@ -238,7 +237,7 @@ TEST_CASE ("Transformer amount sweeps and bypass re-engagement stay free of cont
     for (double sampleRate : { 44100.0, 48000.0, 96000.0, 192000.0 })
     {
         CAPTURE (sampleRate);
-        TransformerSaturation stage;
+        VtbOutputTransformer stage;
         stage.prepare (sampleRate, 0.0f, false);
         juce::AudioBuffer<float> frame (2, 1);
         auto previousInput = 0.0f;
@@ -279,7 +278,7 @@ TEST_CASE ("Transformer and processor remain finite through loud DC noise block 
             for (int size : { 1, 7, 64, 256, 1024, 4096 })
             {
                 CAPTURE (sampleRate, channels, size);
-                TransformerSaturation stage;
+                VtbOutputTransformer stage;
                 stage.prepare (sampleRate, 100.0f, false);
                 PluginProcessor processor;
                 if (channels == 1)
@@ -317,7 +316,7 @@ TEST_CASE ("Transformer and processor remain finite through loud DC noise block 
 TEST_CASE ("Transformer leaves detection and meter positions intact and Delta still follows Mix", "[transformer][integration]")
 {
     const auto dry = sine (48000.0, 73.0, -12.0, 8192);
-    const auto latencyDry = delayed (dry, 144);
+    const auto latencyDry = delayed (dry, 124);
     const auto render = [&dry] (float amount, int monitor, float mix, float outGain = 0.0f)
     {
         PluginProcessor processor;

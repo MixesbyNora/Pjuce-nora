@@ -8,7 +8,7 @@ std::uint64_t TransformerVoicingState::encode (Snapshot snapshot) noexcept
         | (static_cast<std::uint64_t> (snapshot.useB) << offset)
         | (static_cast<std::uint64_t> (snapshot.reference) << (offset + 1))
         | (static_cast<std::uint64_t> (snapshot.levelMatch) << (offset + 2))
-        | (static_cast<std::uint64_t> (snapshot.legacyShelvesIgnored) << (offset + 3));
+        | (static_cast<std::uint64_t> (snapshot.legacyVoicingIgnored) << (offset + 3));
 }
 
 TransformerVoicingState::Snapshot TransformerVoicingState::decode (std::uint64_t word) noexcept
@@ -79,7 +79,7 @@ juce::String TransformerVoicingState::toJson() const
     root->setProperty ("selected", snapshot.useB ? "B" : "A");
     root->setProperty ("reference", snapshot.reference);
     root->setProperty ("levelMatch", snapshot.levelMatch);
-    root->setProperty ("legacyShelvesIgnored", snapshot.legacyShelvesIgnored);
+    root->setProperty ("legacyVoicingIgnored", snapshot.legacyVoicingIgnored);
     return juce::JSON::toString (juce::var (root.release()), true);
 }
 
@@ -87,21 +87,26 @@ bool TransformerVoicingState::restoreJson (const juce::String& json)
 {
     const auto root = juce::JSON::parse (json);
     if (! root.isObject()) return false;
-    const auto current = static_cast<int> (root["version"]) == TransformerVoicing::version && root["model"].toString() == TransformerVoicing::model;
-    const auto legacy = (static_cast<int> (root["version"]) == 1 && root["model"].toString() == TransformerVoicing::legacyModel)
-        || (static_cast<int> (root["version"]) == 2 && root["model"].toString() == TransformerVoicing::legacyMagneticModel);
-    const auto workbenchV3 = static_cast<int> (root["version"]) == 3 && root["model"].toString() == TransformerVoicing::legacyWorkbenchModel;
-    if (! current && ! legacy && ! workbenchV3)
+    const auto modelName = root["model"].toString();
+    if (std::any_of (TransformerVoicing::retiredModels.begin(), TransformerVoicing::retiredModels.end(),
+            [&modelName] (const char* retired) { return modelName == retired; }))
+    {
+        // The Magnetic engine is retired; its controls have no VTB1148 meaning.
+        Snapshot snapshot;
+        snapshot.legacyVoicingIgnored = true;
+        state.store (encode (snapshot), std::memory_order_relaxed);
+        return true;
+    }
+    if (static_cast<int> (root["version"]) != TransformerVoicing::version || modelName != TransformerVoicing::model)
         return false;
-    if ((current || workbenchV3) && ! root["legacyShelvesIgnored"].isVoid() && ! root["legacyShelvesIgnored"].isBool())
+    if (! root["legacyVoicingIgnored"].isVoid() && ! root["legacyVoicingIgnored"].isBool())
         return false;
-    const auto readValues = [current] (const juce::var& object, TransformerVoicing::Values& values)
+    const auto readValues = [] (const juce::var& object, TransformerVoicing::Values& values)
     {
         if (! object.isObject())
             return false;
         for (std::size_t i = 0; i < TransformerVoicing::descriptors.size(); ++i)
         {
-            if (! current && i != TransformerVoicing::driveCalibration) continue;
             const auto value = object[TransformerVoicing::descriptors[i].id];
             if (! value.isDouble() && ! value.isInt() && ! value.isInt64())
                 return false;
@@ -118,7 +123,7 @@ bool TransformerVoicingState::restoreJson (const juce::String& json)
     snapshot.useB = root["selected"].toString() == "B";
     snapshot.reference = static_cast<bool> (root["reference"]);
     snapshot.levelMatch = static_cast<bool> (root["levelMatch"]);
-    snapshot.legacyShelvesIgnored = legacy || static_cast<bool> (root["legacyShelvesIgnored"]);
+    snapshot.legacyVoicingIgnored = static_cast<bool> (root["legacyVoicingIgnored"]);
     state.store (encode (snapshot), std::memory_order_relaxed);
     return true;
 }

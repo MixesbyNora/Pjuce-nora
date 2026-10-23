@@ -1,5 +1,4 @@
 #include "ResearchHarness.h"
-#include <dsp/TransformerSaturation.h>
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
 #include <fstream>
@@ -79,19 +78,7 @@ void cpuReport (const juce::File& root)
                         const auto time = timing (rate, channels, peak, [&] (auto& audio) { p.clearBlockDiagnostics(); p.process (audio); }, [&] { return p.diagnostics().maximumIterations; });
                         row (name (v), name (topology), "transformer", rate, channels, workload, factor, p.latency(), time, p.diagnostics().failures);
                     }
-                TransformerSaturation shipped;
-                TransformerVoicing::Values voice; voice[TransformerVoicing::driveCalibration] = static_cast<float> (parameters.driveDb);
-                shipped.prepare (rate, 100, false, voice);
-                juce::AudioBuffer<float> audioFloat (channels, capacity);
-                const auto time = timing (rate, channels, peak, [&] (auto& audio)
-                {
-                    for (int c = 0; c < channels; ++c) for (int n = 0; n < capacity; ++n) audioFloat.setSample (c, n, static_cast<float> (audio.getSample (c, n)));
-                    shipped.process (audioFloat, channels);
-                    for (int c = 0; c < channels; ++c) for (int n = 0; n < capacity; ++n) audio.setSample (c, n, audioFloat.getSample (c, n));
-                }, [&] { return shipped.getCircuit().getDiagnostics().maximumIterations; });
-                std::uint64_t failures = 0;
-                for (int c = 0; c < channels; ++c) failures += shipped.getCircuit (c).getDiagnostics().solverFailures;
-                row ("shipped", "shunt", "transformer", rate, channels, workload, shipped.getOversamplingFactor(), shipped.getLatencySamples(), time, failures);
+                // The retired Magnetic ("shipped") stage was timed here; see archive/magnetic-engine.
                 Processor off (rate, 8, channels, Variant::smooth, Topology::shunt); off.off = true;
                 row ("Off", "none", "none", rate, channels, workload, 8, off.latency(), timing (rate, channels, peak, [&] (auto& a) { off.process (a); }, [] { return 0; }), 0);
                 row ("empty", "none", "none", rate, channels, workload, 1, 0, timing (rate, channels, peak, [] (auto&) {}, [] { return 0; }), 0);

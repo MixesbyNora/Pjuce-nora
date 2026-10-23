@@ -1,7 +1,6 @@
 #include "ShuntAnalysis.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <catch2/catch_test_macros.hpp>
-#include <dsp/TransformerSaturation.h>
 #include <chrono>
 #include <fstream>
 #include <future>
@@ -728,20 +727,7 @@ void cpuReport (const juce::File& root)
                 const auto t = timeBlocks (sampleRate, 2, 0.7, [&] (auto& audio) { process.clearBlockDiagnostics(); process.process (audio); }, [&] { return process.diagnostics().maximumIterations; });
                 row ("B", sampleRate, 2, label, extra, 0.7, 8, process.latency(), t, process.diagnostics().failures);
             }
-            // Shipped at the spike's default workload (Amount 100, default voicing), its own adaptive factor.
-            TransformerSaturation shipped;
-            TransformerVoicing::Values voice; voice[TransformerVoicing::driveCalibration] = static_cast<float> (extra);
-            shipped.prepare (sampleRate, 100, false, voice);
-            juce::AudioBuffer<float> audioFloat (2, capacity);
-            const auto t = timeBlocks (sampleRate, 2, 0.7, [&] (auto& audio)
-            {
-                for (int ch = 0; ch < 2; ++ch) for (int n = 0; n < capacity; ++n) audioFloat.setSample (ch, n, static_cast<float> (audio.getSample (ch, n)));
-                shipped.process (audioFloat, 2);
-                for (int ch = 0; ch < 2; ++ch) for (int n = 0; n < capacity; ++n) audio.setSample (ch, n, audioFloat.getSample (ch, n));
-            }, [&] { return shipped.getCircuit().getDiagnostics().maximumIterations; });
-            std::uint64_t failures = 0;
-            for (int ch = 0; ch < 2; ++ch) failures += shipped.getCircuit (ch).getDiagnostics().solverFailures;
-            row ("shipped", sampleRate, 2, label, extra, 0.7, shipped.getOversamplingFactor(), shipped.getLatencySamples(), t, failures);
+            // The retired Magnetic ("shipped") stage was timed here; its rows remain in step3_cpu.csv.
         }
     REQUIRE (out.good());
 }

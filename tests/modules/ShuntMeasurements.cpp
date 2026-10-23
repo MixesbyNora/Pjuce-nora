@@ -1,5 +1,4 @@
 #include "ShuntAnalysis.h"
-#include <dsp/TransformerSaturation.h>
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <catch2/catch_test_macros.hpp>
 #include <fstream>
@@ -27,7 +26,6 @@ std::ofstream csv (const juce::File& root, const char* file, const char* header)
 Rendered renderLong (int model, int factor, double driveDb, const Input& input, int length, int warm = 48000)
 {
     std::unique_ptr<Processor> prototype;
-    std::unique_ptr<TransformerSaturation> shipped;
     double latency = 0;
     if (model < 2)
     {
@@ -35,32 +33,16 @@ Rendered renderLong (int model, int factor, double driveDb, const Input& input, 
         prototype = std::make_unique<Processor> (rate, factor, 2, model == 0 ? Variant::smooth : Variant::play3, Topology::shunt, parameters);
         latency = prototype->latency();
     }
-    else if (model == 2)
-    {
-        shipped = std::make_unique<TransformerSaturation>();
-        // Amount 100 is +12 dB. Calibration -12/-6 makes the net applied
-        // drive 0/+6 dB, identical to the prototype's drive, without changing
-        // any shipped magnetic defaults or using its level matcher.
-        TransformerVoicing::Values voice; voice[TransformerVoicing::driveCalibration] = static_cast<float> (driveDb - 12);
-        shipped->prepare (rate, 100, false, voice, false);
-        latency = shipped->getLatencySamples(); factor = shipped->getOversamplingFactor();
-    }
+    // model 2 was the retired Magnetic ("shipped") stage; see archive/magnetic-engine.
     const auto count = ((warm + length + 1024 + capacity - 1) / capacity) * capacity;
     std::array<std::vector<double>, 2> raw;
     for (auto& channel : raw) channel.resize (static_cast<std::size_t> (count));
     juce::AudioBuffer<double> block (2, capacity);
-    juce::AudioBuffer<float> floatBlock (2, capacity);
     for (int start = 0; start < count; start += capacity)
     {
         for (int ch = 0; ch < 2; ++ch)
             for (int n = 0; n < capacity; ++n) block.setSample (ch, n, input (ch, start + n - warm));
         if (prototype) prototype->process (block);
-        else if (shipped)
-        {
-            for (int ch = 0; ch < 2; ++ch) for (int n = 0; n < capacity; ++n) floatBlock.setSample (ch, n, static_cast<float> (block.getSample (ch, n)));
-            shipped->process (floatBlock, 2);
-            for (int ch = 0; ch < 2; ++ch) for (int n = 0; n < capacity; ++n) block.setSample (ch, n, floatBlock.getSample (ch, n));
-        }
         for (int ch = 0; ch < 2; ++ch) std::copy_n (block.getReadPointer (ch), capacity, raw[static_cast<std::size_t> (ch)].data() + start);
     }
     Rendered result; result.latency = latency; result.factor = model == 3 ? 0 : factor;
@@ -72,12 +54,6 @@ Rendered renderLong (int model, int factor, double driveDb, const Input& input, 
         result.limited = prototype->transformer.safety.limited;
         result.invalid = prototype->transformer.safety.invalid;
     }
-    if (shipped)
-        for (int ch = 0; ch < 2; ++ch)
-        {
-            const auto& d = shipped->getCircuit (ch).getDiagnostics();
-            result.failures += d.solverFailures; result.limited += d.limitedInputs; result.invalid += d.invalidInputs;
-        }
     CHECK (result.failures == 0); CHECK (result.invalid == 0);
     for (const auto& channel : result.audio) for (auto x : channel) if (! isFinite (x)) { FAIL ("Nonfinite shunt render"); }
     return result;
@@ -89,7 +65,7 @@ void sineReport (const juce::File& root)
     auto harmonics = csv (root, "harmonics.csv", "kind,model,drive_db,actual_hz,factor,order,frequency_hz,amplitude_dbfs");
     // Odd coherent bins ensure low-order folded components do not all land on
     // harmonic bins (a literal 1 kHz tone at 48 kHz would hide that ambiguity).
-    for (int model = 0; model < 3; ++model)
+    for (int model = 0; model < 2; ++model)
         for (double drive : { 0.0, 6.0 })
             for (double requested : { 55.0, 110.0, 440.0, 1000.0, 7001.0, 13001.0, 19001.0 })
             {
@@ -272,6 +248,7 @@ void renderReport (const juce::File& root)
             std::vector<AudioFile> files;
             for (int model = 0; model < 4; ++model)
             {
+                if (model == 2) continue; // Retired Magnetic stage.
                 Rendered reference;
                 if (model < 2)
                 {

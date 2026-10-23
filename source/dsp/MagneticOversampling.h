@@ -1,6 +1,5 @@
 #pragma once
 
-#include "../experimental/TransformerAudioSettings.h"
 #include <juce_dsp/juce_dsp.h>
 
 namespace MagneticAudio

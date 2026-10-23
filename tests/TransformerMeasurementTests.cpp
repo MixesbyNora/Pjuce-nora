@@ -62,19 +62,19 @@ TEST_CASE ("Offline transformer measurements retain unity and mark out-of-band h
         }
 }
 
-TEST_CASE ("Magnetic descriptors reach offline measurements and captured CSV metadata", "[measurement][magnetic-voicing]")
+TEST_CASE ("VTB1148 descriptors reach offline measurements and captured CSV metadata", "[measurement][vtb-voicing]")
 {
-    const TransformerVoicing::Values alternate { 0.0f, 16.0f, 1.0f, 30.0f };
-    // At this level/drive no play radius is crossed with memory=1. The new
-    // corner therefore has an independently calculable linear response.
-    const auto baseline = TransformerMeasurement::measurePoint ({}, 20.0, -60.0f, 25.0f);
-    const auto changed = TransformerMeasurement::measurePoint (alternate, 20.0, -60.0f, 25.0f);
+    // Even harmonics scales the hysteresis asymmetry; H2 follows it about 1:1 in dB.
+    const TransformerVoicing::Values alternate { 0.0f, 12.0f, 0.0f, 100.0f };
+    const auto nominal = 400.0f / 7.0f;
+    const auto baseline = TransformerMeasurement::measurePoint ({}, 20.0, -24.0f, nominal);
+    const auto changed = TransformerMeasurement::measurePoint (alternate, 20.0, -24.0f, nominal);
     REQUIRE (baseline);
     REQUIRE (changed);
-    CHECK (isFiniteMeasurement (changed->fundamentalGainDb));
-    CHECK (std::abs (changed->fundamentalGainDb - baseline->fundamentalGainDb) > 0.1);
-    const auto expectedDb = 20.0 * std::log10 (20.0 / std::sqrt (20.0 * 20.0 + 30.0 * 30.0));
-    CHECK (changed->fundamentalGainDb == Catch::Approx (expectedDb).margin (0.02));
+    REQUIRE (baseline->available[0]);
+    CHECK (isFiniteMeasurement (changed->harmonicDbc[0]));
+    CHECK (changed->harmonicDbc[0] - baseline->harmonicDbc[0] == Catch::Approx (12.0).margin (3.0));
+    CHECK (changed->fundamentalGainDb == Catch::Approx (baseline->fundamentalGainDb).margin (0.05));
     TransformerMeasurement::Result captured;
     captured.request.a = {};
     captured.request.b = alternate;
@@ -82,15 +82,13 @@ TEST_CASE ("Magnetic descriptors reach offline measurements and captured CSV met
     const auto csv = TransformerMeasurement::toCsv (captured);
     for (const auto& d : TransformerVoicing::descriptors) CHECK (csv.contains (d.id));
     CHECK (csv.contains (TransformerVoicing::model));
-    CHECK_FALSE (csv.contains ("emphasisDb="));
-    CHECK_FALSE (csv.contains ("cornerHz="));
 }
 
 TEST_CASE ("Streaming measurement matches an independent full-buffer Fourier analysis", "[measurement]")
 {
     constexpr double frequency = 1000.0;
     constexpr float level = -12.0f;
-    const TransformerVoicing::Values voice { -6.1f };
+    const TransformerVoicing::Values voice { -6.25f };
     const auto measured = TransformerMeasurement::measurePoint (voice, frequency, level, 100.0f);
     REQUIRE (measured);
     juce::AudioBuffer<float> audio (1, 60000);
@@ -98,7 +96,7 @@ TEST_CASE ("Streaming measurement matches an independent full-buffer Fourier ana
     for (int i = 0; i < audio.getNumSamples(); ++i)
         audio.setSample (0, i, static_cast<float> (amplitude * std::sin (2.0 * juce::MathConstants<double>::pi * frequency * i / 48000.0)));
     const auto inputRms = audio.getRMSLevel (0, 12000, 48000);
-    TransformerSaturation transformer;
+    VtbOutputTransformer transformer;
     transformer.prepare (48000.0, 100.0f, false, voice);
     transformer.process (audio, 1);
     std::array<double, 5> magnitudes {};
@@ -135,7 +133,10 @@ TEST_CASE ("Measurement view captures favorite A B without altering processor au
 {
     PluginProcessor processor, control;
     const auto favorite = favoriteFile().loadFileAsString();
+    // A retired Magnetic favorite loads VTB1148 defaults; B is then voiced here.
     REQUIRE (processor.getTransformerVoicing().restoreJson (favorite));
+    processor.getTransformerVoicing().selectB (true);
+    processor.getTransformerVoicing().setCurrent ({ 0.0f, 0.0f, 0.0f, 50.0f });
     const auto context = juce::JSON::parse (favorite)["processorParameters"];
     REQUIRE (context.isObject());
     for (const auto& property : context.getDynamicObject()->getProperties())
@@ -193,9 +194,9 @@ TEST_CASE ("Measurement view captures favorite A B without altering processor au
     view->refresh();
     const auto* result = view->getResult();
     REQUIRE (result);
-    CHECK (result->request.a[TransformerVoicing::driveCalibration] == 0.0f);
-    CHECK (result->request.b[TransformerVoicing::driveCalibration] == Catch::Approx (-6.1f));
-    CHECK (processor.getTransformerVoicing().read().legacyShelvesIgnored);
+    CHECK (result->request.a[TransformerVoicing::memory] == 100.0f);
+    CHECK (result->request.b[TransformerVoicing::memory] == Catch::Approx (50.0f));
+    CHECK (processor.getTransformerVoicing().read().legacyVoicingIgnored);
     const auto& point = result->at (4, 3, 2);
     CHECK (point.frequencyHz == 1000.0);
     CHECK (point.inputDbfs == Catch::Approx (-6.0f));
@@ -210,7 +211,7 @@ TEST_CASE ("Measurement view captures favorite A B without altering processor au
                 REQUIRE (isFiniteMeasurement (value));
         }
     const auto csv = TransformerMeasurement::toCsv (*result);
-    CHECK (csv.contains ("B: driveCalibrationDb=-6.1"));
+    CHECK (csv.contains ("B: onsetDb=0.00, evenHarmonicsDb=0.00, grainDb=0.00, memoryPercent=50"));
     CHECK (csv.contains ("B,48000,8000.000000,-6.000000,100.000000,"));
     CHECK (csv.contains (",NA,NA,NA"));
     if (const auto* output = std::getenv ("LUMIERE_MEASUREMENT_REPORT"))
@@ -237,7 +238,7 @@ TEST_CASE ("Measurement view captures favorite A B without altering processor au
     CHECK_FALSE (view->isMeasuring());
     view->refresh();
     REQUIRE (view->getResult());
-    CHECK (view->getResult()->request.b[TransformerVoicing::driveCalibration] == Catch::Approx (-6.1f));
+    CHECK (view->getResult()->request.b[TransformerVoicing::memory] == Catch::Approx (50.0f));
     run->onClick(); // Closing the editor cancels/joins the in-flight worker.
     editor.reset();
 }

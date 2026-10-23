@@ -70,7 +70,7 @@ TEST_CASE ("Private voicing snapshots export recall reset and reject incompatibl
     CHECK_FALSE (restored.restoreJson ("{}"));
     CHECK_FALSE (restored.restoreJson (saved.replace (TransformerVoicing::model, "future-model")));
     auto incomplete = juce::JSON::parse (saved);
-    incomplete["A"].getDynamicObject()->setProperty ("driveCalibrationDb", juce::var());
+    incomplete["A"].getDynamicObject()->setProperty ("onsetDb", juce::var());
     CHECK_FALSE (restored.restoreJson (juce::JSON::toString (incomplete)));
     CHECK (restored.toJson() == saved);
     restored.resetCurrent();
@@ -117,7 +117,7 @@ TEST_CASE ("Plugin state retains private voicing without adding or reordering ho
     PluginProcessor restored;
     restored.setStateInformation (block.getData(), static_cast<int> (block.getSize()));
     CHECK (restored.getTransformerVoicing().toJson() == processor.getTransformerVoicing().toJson());
-    REQUIRE (restored.getParameters().size() == 17);
+    REQUIRE (restored.getParameters().size() == 16);
     for (int i = 0; i < processor.getParameters().size(); ++i)
     {
         const auto* original = dynamic_cast<juce::RangedAudioParameter*> (processor.getParameters()[i]);
@@ -143,10 +143,10 @@ TEST_CASE ("Voicing panel controls real processor state and collapses without di
     std::unique_ptr<juce::AudioProcessorEditor> editor (processor.createEditor());
     auto* panel = dynamic_cast<TransformerVoicingPanel*> (editor->findChildWithID ("transformerVoicingPanel"));
     REQUIRE (panel != nullptr);
-    auto* slider = dynamic_cast<juce::Slider*> (panel->findChildWithID ("voicing_driveCalibrationDb"));
+    auto* slider = dynamic_cast<juce::Slider*> (panel->findChildWithID ("voicing_onsetDb"));
     REQUIRE (slider != nullptr);
     slider->setValue (6.5, juce::sendNotificationSync);
-    CHECK (processor.getTransformerVoicing().readAudio().voicing[TransformerVoicing::driveCalibration] == Catch::Approx (6.5f));
+    CHECK (processor.getTransformerVoicing().readAudio().voicing[TransformerVoicing::onset] == Catch::Approx (6.5f));
     auto* selectA = dynamic_cast<juce::Button*> (panel->findChildWithID ("voicingA"));
     REQUIRE (selectA != nullptr);
     selectA->onClick();
@@ -194,8 +194,6 @@ TEST_CASE ("Voicing changes reach the transformer while detection meters and byp
         set (*processor, "xfrmAmount", 100.0f);
         set (*processor, "threshold", -30.0f);
         set (*processor, "makeup", 12.0f);
-        // The workbench voices the Magnetic engine; VTB1148 is the default model.
-        set (*processor, "xfrmModel", static_cast<float> (BaParameters::xfrmModelMagnetic));
     }
     voiced.getTransformerVoicing().setCurrent ({ 6.0f });
     for (auto* processor : { &reference, &voiced })
@@ -226,7 +224,7 @@ TEST_CASE ("Voicing changes and level-match toggles are smooth finite and bounde
         for (bool useMatch : { false, true })
         {
             CAPTURE (rate, useMatch);
-            TransformerSaturation stage;
+            VtbOutputTransformer stage;
             stage.prepare (rate, 100.0f, false);
             juce::AudioBuffer<float> frame (2, 1);
             float controlStep = 0.0f, previousOutput = 0.0f, previousInput = 0.0f;
@@ -253,7 +251,7 @@ TEST_CASE ("Voicing changes and level-match toggles are smooth finite and bounde
             // On DC every change is a control/filter transient, rather than a
             // steeper harmonic waveform. Cover complete fades and queued edits,
             // including the samples where an old transition finishes.
-            TransformerSaturation dc;
+            VtbOutputTransformer dc;
             dc.prepare (rate, 100.0f, false);
             juce::AudioBuffer<float> settled (2, static_cast<int> (rate));
             for (int channel = 0; channel < 2; ++channel)
@@ -287,7 +285,7 @@ TEST_CASE ("Level matching converges for audition and skips exact transformer by
 {
     const auto original = tone (48000.0, 1000.0, -12.0f, 144000);
     auto matched = original;
-    TransformerSaturation stage;
+    VtbOutputTransformer stage;
     stage.prepare (48000.0, 100.0f, false, {}, true);
     stage.process (matched, 2);
     const auto gain = matched.getRMSLevel (0, 96000, 48000) / original.getRMSLevel (0, 96000, 48000);
@@ -317,7 +315,7 @@ TEST_CASE ("Export repeatable transformer gain and harmonic report", "[voicing-r
     std::ofstream report (outputPath);
     REQUIRE (report.good());
     report << "# " << settings.toJson() << '\n';
-    report << "# Current magnetic model; level matching disabled. Not VTB1148 measurement data.\n";
+    report << "# VTB1148 (variant C) output stage; level matching disabled. Model output, not hardware measurement.\n";
     report << "frequency_hz,input_dbfs,amount_percent,fundamental_gain_db,rms_gain_db,H2_dBc,H3_dBc,H5_dBc,H7_dBc\n";
     report << std::fixed << std::setprecision (6);
     for (double frequency : { 20.0, 50.0, 60.0, 200.0, 1000.0, 5000.0, 8000.0 })
@@ -376,40 +374,32 @@ TEST_CASE ("Workbench descriptors define quantization defaults ranges and serial
     CHECK (std::bit_cast<std::uint32_t> (state.readAudio().voicing[0]) == std::bit_cast<std::uint32_t> (0.0f));
 }
 
-TEST_CASE ("Legacy workbench files and project state ignore removed shelves with a visible notice", "[voicing][state][editor]")
+TEST_CASE ("Retired Magnetic workbench files load VTB1148 defaults with a visible notice", "[voicing][state][editor]")
 {
     const auto favorite = juce::File (__FILE__).getParentDirectory().getParentDirectory()
         .getChildFile ("docs/voicings/tanh-favorite-v1.json").loadFileAsString();
     REQUIRE (favorite.isNotEmpty());
-    for (int version : { 1, 2 })
+    for (int version = 1; version <= 4; ++version)
     {
         CAPTURE (version);
         auto legacy = juce::JSON::parse (favorite);
         legacy.getDynamicObject()->setProperty ("version", version);
-        legacy.getDynamicObject()->setProperty ("model", version == 1 ? TransformerVoicing::legacyModel : TransformerVoicing::legacyMagneticModel);
-        legacy.getDynamicObject()->setProperty ("selected", "A");
-        legacy.getDynamicObject()->setProperty ("reference", true);
-        legacy.getDynamicObject()->setProperty ("levelMatch", true);
-        // Obsolete fields are ignored, even if no longer numeric.
-        legacy["A"].getDynamicObject()->setProperty ("emphasisDb", "obsolete");
-        legacy["B"].getDynamicObject()->setProperty ("cornerHz", juce::var());
+        legacy.getDynamicObject()->setProperty ("model", TransformerVoicing::retiredModels[static_cast<std::size_t> (version - 1)]);
         PluginProcessor processor;
+        processor.getTransformerVoicing().setCurrent ({ 3.0f });
         REQUIRE (processor.getTransformerVoicing().restoreJson (juce::JSON::toString (legacy)));
         const auto migrated = processor.getTransformerVoicing().read();
-        CHECK_FALSE (migrated.useB);
-        CHECK (migrated.reference);
-        CHECK (migrated.levelMatch);
-        CHECK (migrated.legacyShelvesIgnored);
-        CHECK (migrated.a[0] == 0.0f);
-        CHECK (migrated.b[0] == Catch::Approx (-6.1f));
+        CHECK (migrated.legacyVoicingIgnored);
+        CHECK (TransformerVoicing::equal (migrated.a, {}));
+        CHECK (TransformerVoicing::equal (migrated.b, {}));
+        CHECK_FALSE (migrated.reference);
+        CHECK_FALSE (migrated.levelMatch);
         std::unique_ptr<juce::AudioProcessorEditor> editor (processor.createEditor());
         auto* panel = editor->findChildWithID ("transformerVoicingPanel");
         REQUIRE (panel);
         auto* status = dynamic_cast<juce::Label*> (panel->findChildWithID ("voicingStatus"));
         REQUIRE (status);
-        CHECK (status->getText().contains ("ignored"));
-        CHECK_FALSE (panel->findChildWithID ("voicingEmphasis"));
-        CHECK_FALSE (panel->findChildWithID ("voicingFrequency"));
+        CHECK (status->getText().contains ("not applied"));
         for (const auto& descriptor : TransformerVoicing::descriptors)
         {
             auto* slider = dynamic_cast<juce::Slider*> (panel->findChildWithID ("voicing_" + juce::String (descriptor.id)));
@@ -418,6 +408,7 @@ TEST_CASE ("Legacy workbench files and project state ignore removed shelves with
             CHECK (sameDouble (slider->getMaximum(), descriptor.maximum));
             CHECK (sameDouble (slider->getInterval(), descriptor.step));
         }
+        // Project state carrying a retired workbench restores the same way.
         juce::MemoryBlock saved;
         processor.getStateInformation (saved);
         auto xml = juce::AudioProcessor::getXmlFromBinary (saved.getData(), static_cast<int> (saved.getSize()));
@@ -428,17 +419,12 @@ TEST_CASE ("Legacy workbench files and project state ignore removed shelves with
         PluginProcessor restored;
         restored.setStateInformation (saved.getData(), static_cast<int> (saved.getSize()));
         CHECK (restored.getTransformerVoicing().toJson() == processor.getTransformerVoicing().toJson());
+        // An unknown future workbench is rejected and leaves the current state.
         const auto unchanged = restored.getTransformerVoicing().toJson();
         auto future = juce::JSON::parse (unchanged);
         future.getDynamicObject()->setProperty ("version", TransformerVoicing::version + 1);
         CHECK_FALSE (restored.getTransformerVoicing().restoreJson (juce::JSON::toString (future)));
         CHECK (restored.getTransformerVoicing().toJson() == unchanged);
-        tree.getChildWithName ("TRANSFORMER_VOICING").setProperty ("json", juce::JSON::toString (future), nullptr);
-        juce::AudioProcessor::copyXmlToBinary (*tree.createXml(), saved);
-        restored.setStateInformation (saved.getData(), static_cast<int> (saved.getSize()));
-        CHECK (restored.getTransformerVoicing().toJson() == unchanged);
-        CHECK_FALSE (unchanged.contains ("emphasisDb"));
-        CHECK_FALSE (unchanged.contains ("cornerHz"));
     }
 }
 
@@ -457,7 +443,7 @@ TEST_CASE ("Workbench publication keeps both slots and flags in one coherent sna
         value->getDynamicObject()->setProperty ("selected", useFirst ? "A" : "B");
         value->getDynamicObject()->setProperty ("reference", useFirst);
         value->getDynamicObject()->setProperty ("levelMatch", ! useFirst);
-        value->getDynamicObject()->setProperty ("legacyShelvesIgnored", useFirst);
+        value->getDynamicObject()->setProperty ("legacyVoicingIgnored", useFirst);
     }
     const auto a = juce::JSON::toString (first), b = juce::JSON::toString (second);
     REQUIRE (state.restoreJson (a));
@@ -476,9 +462,9 @@ TEST_CASE ("Workbench publication keeps both slots and flags in one coherent sna
     {
         const auto snapshot = state.read();
         const auto isFirst = TransformerVoicing::equal (snapshot.a, firstSnapshot.a) && TransformerVoicing::equal (snapshot.b, firstSnapshot.b) && ! snapshot.useB
-            && snapshot.reference && ! snapshot.levelMatch && snapshot.legacyShelvesIgnored;
+            && snapshot.reference && ! snapshot.levelMatch && snapshot.legacyVoicingIgnored;
         const auto isSecond = TransformerVoicing::equal (snapshot.a, secondSnapshot.a) && TransformerVoicing::equal (snapshot.b, secondSnapshot.b) && snapshot.useB
-            && ! snapshot.reference && snapshot.levelMatch && ! snapshot.legacyShelvesIgnored;
+            && ! snapshot.reference && snapshot.levelMatch && ! snapshot.legacyVoicingIgnored;
         valid &= isFirst || isSecond;
     } while (! done.load());
     writer.join();

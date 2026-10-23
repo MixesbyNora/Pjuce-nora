@@ -933,3 +933,62 @@ applies only to that engine.
 - Owner listening in a DAW, and real recordings.
 - Host behavior when automating the model choice.
 - CPU in the plugin, as opposed to the Step 3c stage timing.
+
+# Magnetic engine retired; VTB1148 workbench controls
+
+**DECISIONS (owner, 2026-10-22, after DAW listening):**
+- VTB1148 sounds much better than the Magnetic engine. The owner says it reacts
+  much like a Golden Age Project Pre-73 Premier (500-series) set to line.
+- **Retire Magnetic** from the live build and the pipeline, keeping a backup.
+- **Add fine-tuning controls.**
+- **Remove the "Xfrm Model" parameter.**
+- **Report VTB1148's native latency.**
+
+**Backup:**
+- The git tag `magnetic-engine-final` (commit c9c43a2) restores the plugin with
+  both engines.
+- The source, tests and helpers are kept, uncompiled, in
+  [archive/magnetic-engine](../archive/magnetic-engine/README.md).
+
+**Live build changes:**
+- [VtbOutputTransformer](../source/dsp/VtbOutputTransformer.h) is the only
+  transformer stage. It now carries the workbench features the Magnetic stage
+  had: A/B voicing banks with a warm-up and crossfade, level match, and bypass
+  ramps.
+- **Latency is now native:** 124 / 99 / 0 samples at 44.1–48 / 88.2–96 /
+  176.4–192 kHz. It was 144 / 137 / 124.
+- **`xfrmModel` is removed.** Sessions saved by the 2026-10-22 builds drop it on
+  load. Host parameter count goes back to 16, in the original order.
+- **Workbench schema v5** (`lumiere-vtb1148-workbench-v1`). Every control is
+  relative to the calibration, so the defaults reproduce `vtb1148OutputC()` bit
+  for bit:
+
+  | Control | Range | What it moves |
+  |---|---|---|
+  | Saturation onset | ±12 dB (0.25) | saturation and knee together; + = later, cleaner |
+  | Even harmonics | ±24 dB (0.25) | hysteresis asymmetry; H2 follows about 1:1 in dB |
+  | Low-level grain | ±12 dB (0.25) | play-operator width: the quiet-level hysteresis distortion |
+  | Hysteresis memory | 0–114% (1) | hysteretic share of the core, relative to the calibrated 0.881 (114% = 1.0) |
+
+  Negative onset values go earlier than the published data supports (Step 3b).
+  - All four controls fit the existing lock-free 64-bit A/B snapshot.
+  - Retired Magnetic workbench files (versions 1–4) still load. They give
+    VTB1148 defaults, and the panel shows a notice that the Magnetic voicing
+    was not applied.
+- **Research harness:** the old "shipped" Magnetic rows were removed from the
+  CPU and render tasks. Their earlier exports remain in the CSVs.
+  `tests/helpers/MagneticValidation` keeps only its generic stimuli, alignment
+  and metrics.
+
+**Tests:**
+- Default voicing equals the calibration exactly.
+- Each control moves only its intended term and stays inside the module's
+  parameter ranges.
+- The even-harmonics control raises H2 by +12 dB (±3) in the offline
+  measurement.
+- Native latency at six rates.
+- Bit-exact bypass.
+- A voicing change crossfades without a step and audibly changes the output.
+- Retired workbench files and the dropped `xfrmModel` state load correctly.
+- The transformer harmonics test now expects even harmonics, and stronger
+  distortion at low frequencies, as published.

@@ -26,8 +26,7 @@ PluginProcessor::PluginProcessor()
        baMix (parameters.getRawParameterValue (BaParameters::mix.id)),
        baMonitor (parameters.getRawParameterValue (BaParameters::monitorId)),
        xfrmOut (parameters.getRawParameterValue (BaParameters::xfrmOut.id)),
-       xfrmAmount (parameters.getRawParameterValue (BaParameters::xfrmAmount.id)),
-       xfrmModel (parameters.getRawParameterValue (BaParameters::xfrmModelId))
+       xfrmAmount (parameters.getRawParameterValue (BaParameters::xfrmAmount.id))
 {
     gainLink = std::make_unique<GainLinkController> (parameters);
 }
@@ -100,11 +99,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::createParam
         juce::AudioParameterFloatAttributes().withLabel (amount.unit)
             .withStringFromValueFunction ([] (float value, int) { return juce::String (value, 1); })
             .withValueFromStringFunction ([] (const juce::String& text) { return text.getFloatValue(); })));
-    juce::StringArray models;
-    for (const auto* model : BaParameters::xfrmModelChoices)
-        models.add (model);
-    layout.add (std::make_unique<juce::AudioParameterChoice> (
-        juce::ParameterID { BaParameters::xfrmModelId, 4 }, BaParameters::xfrmModelName, models, BaParameters::xfrmModelInitial));
     return layout;
 }
 
@@ -116,8 +110,7 @@ BaParameters::Values PluginProcessor::readBaParameters() const noexcept
         baBypass->load (std::memory_order_relaxed) >= 0.5f,
         juce::roundToInt (baMonitor->load (std::memory_order_relaxed)),
         xfrmOut->load (std::memory_order_relaxed) >= 0.5f,
-        xfrmAmount->load (std::memory_order_relaxed), voicing.voicing, voicing.levelMatch,
-        juce::roundToInt (xfrmModel->load (std::memory_order_relaxed)) };
+        xfrmAmount->load (std::memory_order_relaxed), voicing.voicing, voicing.levelMatch };
 }
 
 juce::AudioProcessorParameter* PluginProcessor::getBypassParameter() const
@@ -313,15 +306,11 @@ void PluginProcessor::setStateInformation (const void* data, int sizeInBytes)
         {
             auto state = juce::ValueTree::fromXml (*xml);
             const auto voicing = state.getChildWithName ("TRANSFORMER_VOICING");
-            if (! voicing.isValid())
+            if (! voicing.isValid() || ! transformerVoicing.restoreJson (voicing.getProperty ("json").toString()))
                 transformerVoicing.resetAll();
-            else
-                transformerVoicing.restoreJson (voicing.getProperty ("json").toString());
             state.removeChild (voicing, nullptr);
-            // Sessions saved before the model choice existed used the Magnetic engine.
-            if (! state.getChildWithProperty ("id", BaParameters::xfrmModelId).isValid())
-                state.appendChild (juce::ValueTree ("PARAM", { { "id", BaParameters::xfrmModelId },
-                    { "value", static_cast<float> (BaParameters::xfrmModelMagnetic) } }), nullptr);
+            // The retired xfrmModel choice (2026-10-22 builds only) has no parameter now.
+            state.removeChild (state.getChildWithProperty ("id", "xfrmModel"), nullptr);
             gainLink->beginStateRestore();
             parameters.replaceState (state);
             gainLink->endStateRestore();

@@ -99,7 +99,7 @@ void TransformerVoicingPanel::refresh()
     status.setText (pasteError.isNotEmpty() ? pasteError
         : juce::String ("Workbench v") + juce::String (TransformerVoicing::version) + " | " + (snapshot.reference ? "Default" : snapshot.useB ? "Editing B" : "Editing A")
             + "\nSettings and both snapshots are saved with the project."
-            + (snapshot.legacyShelvesIgnored ? "\nLegacy LF emphasis and shelf frequency ignored: shelves removed." : ""), juce::dontSendNotification);
+            + (snapshot.legacyVoicingIgnored ? "\nMagnetic voicing from an older session was not applied: VTB1148 defaults." : ""), juce::dontSendNotification);
 }
 
 void TransformerVoicingPanel::showMeasurements (bool show)

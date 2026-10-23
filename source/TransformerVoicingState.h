@@ -13,7 +13,7 @@ public:
         bool useB = true;
         bool reference = false;
         bool levelMatch = false;
-        bool legacyShelvesIgnored = false;
+        bool legacyVoicingIgnored = false; // A retired Magnetic workbench was loaded.
     };
     struct AudioValues
     {

@@ -45,7 +45,7 @@ juce::AudioBuffer<float> signal (int channels, int samples, float amplitude = 0.
     return buffer;
 }
 
-juce::AudioBuffer<float> delayed (juce::AudioBuffer<float> input, int samples = 144)
+juce::AudioBuffer<float> delayed (juce::AudioBuffer<float> input, int samples = 124)
 {
     for (int channel = 0; channel < input.getNumChannels(); ++channel)
     {
@@ -95,7 +95,7 @@ void dispatchLink()
 TEST_CASE ("BA parameter types ranges defaults skew text and host bypass are exposed", "[ba][parameters]")
 {
     PluginProcessor processor;
-    REQUIRE (processor.getParameters().size() == 17);
+    REQUIRE (processor.getParameters().size() == 16);
     CHECK (processor.getBypassParameter() == parameter (processor, "bypass"));
     CHECK (dynamic_cast<juce::AudioParameterBool*> (parameter (processor, "bypass")) != nullptr);
     CHECK (dynamic_cast<juce::AudioParameterBool*> (parameter (processor, "ioLink")) != nullptr);
@@ -359,7 +359,7 @@ TEST_CASE ("Processor Delta respects Mix and nulls against the untouched input",
         for (int i = 0; i < dry.getNumSamples(); ++i)
         {
             fullError = juce::jmax (fullError, std::abs (fullDelta.getSample (channel, i)
-                - (wet.getSample (channel, i) - (i < 144 ? 0.0f : dry.getSample (channel, i - 144)))));
+                - (wet.getSample (channel, i) - (i < 124 ? 0.0f : dry.getSample (channel, i - 124)))));
             halfError = juce::jmax (halfError, std::abs (halfDelta.getSample (channel, i)
                 - 0.5f * fullDelta.getSample (channel, i)));
         }
