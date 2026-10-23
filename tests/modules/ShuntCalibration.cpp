@@ -1,6 +1,8 @@
 #include "ShuntAnalysis.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <catch2/catch_test_macros.hpp>
+#include <dsp/TransformerSaturation.h>
+#include <chrono>
 #include <fstream>
 #include <future>
 #include <iomanip>
@@ -661,6 +663,90 @@ void onsetLadderReport (const juce::File& root)
 }
 }
 
+namespace
+{
+// Same method as the module spike's cpu.csv (Measurements.cpp): Release,
+// preallocated buffers, input generated outside the timed call, 32 warm-up
+// blocks, then 1024 timed blocks of 256 frames; median, P99.9 and worst.
+struct Timing { double median = 0, p999 = 0, worst = 0, checksum = 0; int iterations = 0; };
+template <typename Process, typename Diagnostic>
+Timing timeBlocks (double sampleRate, int channels, double peak, Process&& process, Diagnostic&& diagnostic)
+{
+    constexpr int blocks = 1024;
+    juce::AudioBuffer<double> audio (channels, capacity), input (channels, 4096);
+    for (int c = 0; c < channels; ++c)
+        for (int n = 0; n < input.getNumSamples(); ++n)
+            input.setSample (c, n, peak * (0.95 * std::sin (2 * pi * (c == 0 ? 60 : 73) * n / sampleRate) + 0.05 * std::sin (2 * pi * 2000 * n / sampleRate)));
+    std::array<double, blocks> durations {};
+    Timing result;
+    for (int block = -32; block < blocks; ++block)
+    {
+        for (int c = 0; c < channels; ++c) audio.copyFrom (c, 0, input, c, ((block + 32) * capacity) % 4096, capacity);
+        const auto start = std::chrono::steady_clock::now();
+        process (audio);
+        const auto elapsed = std::chrono::duration<double, std::nano> (std::chrono::steady_clock::now() - start).count();
+        if (block >= 0) durations[static_cast<std::size_t> (block)] = elapsed;
+        result.checksum += audio.getSample (0, 127);
+        result.iterations = std::max (result.iterations, diagnostic());
+    }
+    std::sort (durations.begin(), durations.end());
+    result.median = durations[blocks / 2]; result.p999 = durations[static_cast<std::size_t> (std::ceil (0.999 * blocks) - 1)]; result.worst = durations.back();
+    return result;
+}
+// C at the chosen calibration versus B (Step 2) and the shipped stage. Run alone,
+// outside concurrent builds or tests.
+void cpuReport (const juce::File& root)
+{
+    auto out = csv (root, "step3_cpu.csv", "model,rate_hz,channels,workload,extra_drive_db,peak,factor,internal_rate_hz,latency_samples,median_block_ns,p999_block_ns,worst_block_ns,median_realtime_percent,p999_realtime_percent,maximum_iterations,solver_failures,checksum");
+    auto row = [&] (const std::string& model, double sampleRate, int channels, const char* workload, double extra, double peak, int factor, double latency, Timing t, std::uint64_t failures)
+    {
+        const auto percent = [&] (double ns) { return ns * sampleRate / (capacity * 1.0e7); };
+        out << model << ',' << sampleRate << ',' << channels << ',' << workload << ',' << extra << ',' << peak << ',' << factor << ',' << sampleRate * factor << ',' << latency << ','
+            << t.median << ',' << t.p999 << ',' << t.worst << ',' << percent (t.median) << ',' << percent (t.p999) << ',' << t.iterations << ',' << failures << ',' << t.checksum << '\n';
+        out.flush();
+        CHECK (isFinite (t.checksum)); CHECK (failures == 0);
+        std::cout << "cpu " << model << ' ' << sampleRate << ' ' << workload << " x" << factor << ' ' << percent (t.median) << '%' << std::endl;
+    };
+    TransformerParameters b = thesisCircuit();
+    b.driveDb = 9.8368043; b.saturation = 1.446579206; b.knee = 0.06138119471; b.memory = 0.9888762544; // step2_parameters.csv
+    for (double sampleRate : { 44100.0, 48000.0, 96000.0, 192000.0 })
+        for (int workload = 0; workload < 2; ++workload)
+        {
+            // Nominal: 60/73 Hz at peak 0.7 (about +15 dBu peak). Hot: same at +18 dB drive.
+            const auto extra = workload == 0 ? 0.0 : 18.0;
+            const auto label = workload == 0 ? "nominal" : "hot";
+            for (int factor : { 4, 8, 16 })
+            {
+                auto p = vtb1148OutputC(); p.driveDb += extra;
+                Processor c (sampleRate, factor, 2, Variant::play3Outer, Topology::shunt, p);
+                const auto t = timeBlocks (sampleRate, 2, 0.7, [&] (auto& audio) { c.clearBlockDiagnostics(); c.process (audio); }, [&] { return c.diagnostics().maximumIterations; });
+                row ("C", sampleRate, 2, label, extra, 0.7, factor, c.latency(), t, c.diagnostics().failures);
+            }
+            {
+                auto p = b; p.driveDb += extra;
+                Processor process (sampleRate, 8, 2, Variant::play3, Topology::shunt, p);
+                const auto t = timeBlocks (sampleRate, 2, 0.7, [&] (auto& audio) { process.clearBlockDiagnostics(); process.process (audio); }, [&] { return process.diagnostics().maximumIterations; });
+                row ("B", sampleRate, 2, label, extra, 0.7, 8, process.latency(), t, process.diagnostics().failures);
+            }
+            // Shipped at the spike's default workload (Amount 100, default voicing), its own adaptive factor.
+            TransformerSaturation shipped;
+            TransformerVoicing::Values voice; voice[TransformerVoicing::driveCalibration] = static_cast<float> (extra);
+            shipped.prepare (sampleRate, 100, false, voice);
+            juce::AudioBuffer<float> audioFloat (2, capacity);
+            const auto t = timeBlocks (sampleRate, 2, 0.7, [&] (auto& audio)
+            {
+                for (int ch = 0; ch < 2; ++ch) for (int n = 0; n < capacity; ++n) audioFloat.setSample (ch, n, static_cast<float> (audio.getSample (ch, n)));
+                shipped.process (audioFloat, 2);
+                for (int ch = 0; ch < 2; ++ch) for (int n = 0; n < capacity; ++n) audio.setSample (ch, n, audioFloat.getSample (ch, n));
+            }, [&] { return shipped.getCircuit().getDiagnostics().maximumIterations; });
+            std::uint64_t failures = 0;
+            for (int ch = 0; ch < 2; ++ch) failures += shipped.getCircuit (ch).getDiagnostics().solverFailures;
+            row ("shipped", sampleRate, 2, label, extra, 0.7, shipped.getOversamplingFactor(), shipped.getLatencySamples(), t, failures);
+        }
+    REQUIRE (out.good());
+}
+}
+
 TEST_CASE ("Integer-period harmonic measurement recovers a known transfer", "[shunt-calibration]")
 {
     // A near-linear module at moderate level: unity small-signal gain, no failures,
@@ -702,10 +788,11 @@ TEST_CASE ("Export VTB1148 shunt calibration", "[shunt-report]")
 {
     const auto* taskValue = std::getenv ("LUMIERE_MODULE_TASK");
     const std::string task = taskValue ? taskValue : "";
-    if (task != "shunt-step2" && task != "shunt-step3" && task != "shunt-step3-ladder") { SUCCEED ("Explicit shunt calibration opt-in"); return; }
+    if (task != "shunt-step2" && task != "shunt-step3" && task != "shunt-step3-ladder" && task != "shunt-step3-cpu") { SUCCEED ("Explicit shunt calibration opt-in"); return; }
     const auto* directory = std::getenv ("LUMIERE_MODULE_REPORT_DIR"); REQUIRE (directory != nullptr);
     const juce::File root (juce::String::fromUTF8 (directory)); REQUIRE (root.createDirectory().wasOk());
     if (task == "shunt-step2") calibrationReport (root);
     else if (task == "shunt-step3") step3Report (root);
-    else onsetLadderReport (root);
+    else if (task == "shunt-step3-ladder") onsetLadderReport (root);
+    else cpuReport (root);
 }

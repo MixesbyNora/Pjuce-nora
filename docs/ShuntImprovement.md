@@ -670,3 +670,58 @@ error over the 32 published targets. A `[shunt-calibration]` test pins both valu
   (34.6 kΩ referred), or the datasheet 600 Ω (208 Ω referred, about −0.5 dB
   insertion loss).
 - H5 remains +12 dB high at 20 Hz/−38 dBu.
+
+## Step 3c — CPU cost of the chosen C
+
+[step3_cpu.csv](measurements/shunt_improvement/step3_cpu.csv). Method:
+- Same as the module spike: Release build, stereo, 256-frame blocks.
+- 32 warm-up blocks, then 1024 timed blocks.
+- Input is 60/73 Hz plus 2 kHz at peak 0.7 (about +15 dBu peak).
+- "Hot" adds +18 dB of drive. For the shipped stage, its drive calibration is
+  raised by the same amount.
+- Run twice; the runs agree within 0.5%.
+- These are observed block costs on this Mac, not worst-case guarantees.
+
+**MEASUREMENT — median % of one core, 48 kHz stereo:**
+
+| Stage | Factor | Internal rate | Nominal | Hot | P99.9 nominal |
+|---|---:|---:|---:|---:|---:|
+| C | 4× | 192 kHz | 9.5% | 9.4% | 10.2% |
+| C | 8× | 384 kHz | 17.3% | 18.2% | 18.9% |
+| C | 16× | 768 kHz | 34.2% | 37.0% | 37.3% |
+| B (Step 2) | 8× | 384 kHz | 18.5% | 11.9% | 23.9% |
+| shipped | 16× | 768 kHz | 26.4% | 17.2% | 31.7% |
+
+**Findings:**
+
+1. **C is not cheaper per internal sample.** At the shipped stage's internal
+   rate (768 kHz), C costs about 1.3× as much (34.2% vs 26.4%).
+   - C's cost scales linearly with the oversampling factor.
+   - Its low iteration count (4–6) is a *maximum* per block. At equal rate, B
+     (maximum 46) costs about the same as C, so average iterations must be
+     similar.
+   - C's per-iteration cost (one `std::tanh`, three play operators, a virtual
+     call) is above the shipped stage's lookup-table evaluation.
+2. **The oversampling factor is the main lever.** At 4×, C costs 9.5%, about a
+   third of the shipped stage. But C's aliasing has not been measured at 4×
+   or 8×. Step 1 measured only A and B. So 4× is not yet justified.
+3. **Higher sample rates need an adaptive factor.** At 192 kHz, C at a fixed 8×
+   costs 69% nominal; at 4× (768 kHz internal) it costs 36%, against the
+   shipped stage's 21.7%. The shipped stage lowers its factor as the sample rate
+   rises, and C would need the same.
+4. **Unexplained.** At 96 and 192 kHz, C (and the shipped stage) cost less when
+   driven hot than at nominal level. At 192 kHz, 8×, C is 35% hot vs 69%
+   nominal. At 48 kHz the two are equal for C. Not investigated.
+
+**Implication for Step 4:**
+- First, establish the lowest oversampling factor C needs at each rate, using
+  the Step 1 aliasing method.
+- Then port the shipped cost reductions: tanh lookup, no virtual call, reuse of
+  unchanged operator values.
+- Both need the owner's CPU and latency budgets to say "good enough".
+
+Reproduce, run alone:
+
+```bash
+LUMIERE_MODULE_REPORT_DIR="$PWD/docs/measurements/shunt_improvement" LUMIERE_MODULE_TASK=shunt-step3-cpu Builds/Release/Tests "Export VTB1148 shunt calibration"
+```
