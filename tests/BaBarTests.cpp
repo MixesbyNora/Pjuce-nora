@@ -122,7 +122,7 @@ void dispatchLink()
 TEST_CASE ("BA parameter types ranges defaults skew text and host bypass are exposed", "[ba][parameters]")
 {
     PluginProcessor processor;
-    REQUIRE (processor.getParameters().size() == 18);
+    REQUIRE (processor.getParameters().size() == 19);
     CHECK (processor.getBypassParameter() == parameter (processor, "bypass"));
     CHECK (dynamic_cast<juce::AudioParameterBool*> (parameter (processor, "bypass")) != nullptr);
     CHECK (dynamic_cast<juce::AudioParameterBool*> (parameter (processor, "ioLink")) != nullptr);
@@ -149,9 +149,12 @@ TEST_CASE ("BA parameter types ranges defaults skew text and host bypass are exp
 
 TEST_CASE ("BA defaults leave the analog chain near unity and the compressor in control", "[ba][defaults]")
 {
-    // Digital IN -> input transformer -> compressor -> output transformer (Amount 0)
-    // -> Digital OUT. At BA defaults and a mid-band tone, only the input
-    // transformer's small coloration and the FIR delay separate output from input.
+    // Digital IN -> input transformer -> compressor -> output stage -> Digital OUT.
+    // The output stage is in at defaults (Amounts are drive only); with its two
+    // switches Out and a mid-band tone, only the input transformer's small
+    // coloration and the FIR delay separate output from input.
+    BaParameters::Values outputOut;
+    outputOut.transformerOut = outputOut.outputTubeOut = true;
     for (int channels : { 1, 2 })
     {
         for (bool compressionActive : { false, true })
@@ -161,11 +164,11 @@ TEST_CASE ("BA defaults leave the analog chain near unity and the compressor in 
             if (compressionActive)
                 settings.thresholdDb = -30.0f;
             BaSignalPath path;
-            path.prepare (48000.0, 17, settings, {});
+            path.prepare (48000.0, 17, settings, outputOut);
             CHECK (path.getLatencySamples() == 48);
             const auto input = tone (channels, 9600);
             auto actual = input;
-            const auto reduction = path.process (actual, channels, settings, {});
+            const auto reduction = path.process (actual, channels, settings, outputOut);
             if (compressionActive)
             {
                 // A peak detector on a -18 dBFS tone settles near 4.9 dB here (9 dB for DC).
@@ -390,6 +393,11 @@ TEST_CASE ("Processor Delta respects Mix and stays small for a neutral chain", "
         set (processor, "mix", mixPercent);
         set (processor, "bypass", bypassed ? 1.0f : 0.0f);
         set (processor, "threshold", neutralChain ? 0.0f : -30.0f);
+        if (neutralChain)
+        {
+            set (processor, "xfrmOut", 1.0f); // Output stage out: only the input iron remains.
+            set (processor, "outputTubeOut", 1.0f);
+        }
         if (! neutralChain)
         {
             set (processor, "inGain", 6.0f);
@@ -447,10 +455,13 @@ TEST_CASE ("Processor Delta respects Mix and stays small for a neutral chain", "
 TEST_CASE ("Processor Delta retains monitor bypass and Mix crossfades", "[ba][monitor][delta][smoothing]")
 {
     // A twin processor with LR monitor, no bypass and full Mix supplies the wet
-    // signal sample by sample; the analog chain is identical in both.
+    // signal sample by sample; the analog chain is identical in both. The output
+    // stage is out so the DC test signal stays near the dry level.
     PluginProcessor processor, reference;
     for (auto* p : { &processor, &reference })
     {
+        set (*p, "xfrmOut", 1.0f);
+        set (*p, "outputTubeOut", 1.0f);
         set (*p, "threshold", 0.0f);
         set (*p, "outGain", 6.0f);
         p->prepareToPlay (48000.0, 256);

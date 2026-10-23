@@ -123,7 +123,8 @@ TEST_CASE ("Transformer parameters append stable IDs with In Out text and percen
     CHECK (out->getText (1.0f, 32) == "Out");
     CHECK (out->getValueForText ("In") == 0.0f);
     CHECK (out->getValueForText ("Out") == 1.0f);
-    CHECK (amount->getValue() == 0.0f);
+    // Defaults to the calibrated 0 dB drive, 400/7 % on the 0.1 grid.
+    CHECK (amount->convertFrom0to1 (amount->getValue()) == Catch::Approx (57.1f).margin (0.01f));
     CHECK (amount->getNormalisableRange().start == 0.0f);
     CHECK (amount->getNormalisableRange().end == 100.0f);
     CHECK (amount->getNormalisableRange().interval == Catch::Approx (0.1f));
@@ -136,34 +137,37 @@ TEST_CASE ("Transformer parameters append stable IDs with In Out text and percen
     CHECK (out->getVersionHint() > parameter (processor, "fbff")->getVersionHint());
 }
 
-TEST_CASE ("Transformer zero amount and Out preserve samples bit for bit including after fades", "[transformer][bypass]")
+TEST_CASE ("Transformer Out preserves samples bit for bit at any Amount, including after fades", "[transformer][bypass]")
 {
+    // Owner decision: Amount is drive only; the Out switches are the bypass.
     const auto original = sine (48000.0, 73.0, -3.0, 8192);
-    for (const auto& [amount, out] : std::array { std::pair { 0.0f, false }, std::pair { 100.0f, true } })
+    for (const auto amount : { 0.0f, 100.0f })
     {
         VtbOutputTransformer stage;
-        stage.prepare (48000.0, amount, out);
+        stage.prepare (48000.0, amount, true);
         auto audio = original;
         stage.process (audio, 2);
         CHECK (identical (audio, delayed (original, stage.getLatencySamples())));
     }
-    for (bool out : { false, true })
+    for (const auto amount : { 0.0f, 100.0f })
     {
         VtbOutputTransformer stage;
         stage.prepare (48000.0, 100.0f, false);
         auto audio = original;
         stage.process (audio, 2);
         CHECK_FALSE (identical (audio, original));
-        stage.setParameters (out ? 100.0f : 0.0f, out);
+        stage.setParameters (amount, true);
         audio = original;
         stage.process (audio, 2);
         CHECK (identical (audio, delayed (original, stage.getLatencySamples()), 480));
     }
-    // All existing BA features are active; the output stage fully Out (tube and
-    // transformer) must still equal zero amount.
+    // All existing BA features are active; with the output stage fully Out (tube
+    // and transformer) the Amounts make no difference.
     PluginProcessor zero, out;
     for (auto* processor : { &zero, &out })
     {
+        set (*processor, "xfrmOut", 1.0f);
+        set (*processor, "outputTubeOut", 1.0f);
         set (*processor, "inGain", 3.0f);
         set (*processor, "outGain", -3.0f);
         set (*processor, "threshold", -30.0f);
@@ -173,9 +177,10 @@ TEST_CASE ("Transformer zero amount and Out preserve samples bit for bit includi
         set (*processor, "lfm", 88.0f);
         set (*processor, "mix", 37.0f);
     }
-    set (out, "xfrmOut", 1.0f);
-    set (out, "outputTubeOut", 1.0f);
+    set (zero, "xfrmAmount", 0.0f);
+    set (zero, "tubeAmount", 0.0f);
     set (out, "xfrmAmount", 100.0f);
+    set (out, "tubeAmount", 100.0f);
     for (auto* processor : { &zero, &out })
         processor->prepareToPlay (48000.0, 256);
     auto a = original;

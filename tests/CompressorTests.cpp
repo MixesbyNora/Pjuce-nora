@@ -73,7 +73,7 @@ bool bufferIsFinite (const juce::AudioBuffer<float>& buffer)
 TEST_CASE ("Compressor and BA bar expose stable parameters and persist state", "[compressor][state]")
 {
     PluginProcessor processor;
-    REQUIRE (processor.getParameters().size() == 18);
+    REQUIRE (processor.getParameters().size() == 19);
     CHECK (findParameter (processor, "gain") == nullptr);
 
     struct Expected

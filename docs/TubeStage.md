@@ -277,9 +277,9 @@ solve goes live, with voicing controls.
 
 ```
 ... compressor -> Makeup
-  -> output stage, Amount = its drive:
-       12BH7 cathode follower (Output Tube)  ─┐ solved together, one scalar
-       VTB1148 C (Output XFRM)               ─┘ root per sample at 4/2/1
+  -> output stage:
+       12BH7 cathode follower (Output Tube, Tube Amount)  ─┐ solved together, one
+       VTB1148 C (Output XFRM, Xfrm Amount)               ─┘ scalar root per sample
   -> LF Mono -> Digital OUT -> Mix
 ```
 
@@ -291,8 +291,23 @@ solve goes live, with voicing controls.
   - **Tube out:** today's transformer, bit-exact (C with its ~0 Ω source).
   - **XFRM out:** the follower drives a resistor equal to the primary winding
     plus the referred load.
-  - **Both out, or Amount 0:** the stage is bypassed with the existing 10 ms
-    ramp and stops working sample-exactly.
+  - **Both out:** the stage is bypassed with the existing 10 ms ramp and
+    stops working sample-exactly.
+- **Amounts are drive only** (owner decision, 2026-10-23). Neither Amount
+  bypasses; 0% is the minimum drive (−24 dB) and the In/Out switches are the
+  only bypass. Both default to the calibrated 0 dB (57.1%, −0.02 dB on the
+  0.1% grid). Previously Xfrm Amount defaulted to 0% and 0% bypassed, so a
+  new instance now has the output stage in.
+- **Tube Amount** (`tubeAmount`, version hint 7). The tube's own drive, mapped
+  like Xfrm Amount (−24 to +18 dB) and level-compensated the same way.
+  - **Xfrm Amount** sets the iron's level; **Tube Amount** sets the tube's.
+  - In the joint solve this is an ideal level shift between them. The tube
+    sees Tube/Xfrm times the iron's signal, cathode swing and magnetizing
+    current, while the iron still sees the follower's own output resistance.
+  - So Tube Amount changes only how hard the tube works: its own clipping,
+    and how soon it cuts off on the iron's bass current. The tube's grip on
+    the iron stays with Plate current.
+  - At equal Amounts the circuit is the plain, physical one.
 - **Crossfades.** Switching between combinations, and every tube voicing
   change, uses the same warmed-bank crossfade as transformer voicing. New
   circuit values start from fresh state, and the new bank runs alongside the
@@ -416,4 +431,5 @@ LUMIERE_MODULE_REPORT_DIR="$PWD/docs/measurements/tube_stage" LUMIERE_MODULE_TAS
 
 The coupling task takes a few minutes. Verified 2026-10-23, after the live
 output stage: the three Debug plugin targets and Tests (Debug and Release)
-build with no warnings, and both suites pass 132/132.
+build with no warnings, and both suites pass 134/134 (after Tube Amount
+and the removal of the Amount bypass).

@@ -33,7 +33,11 @@ inline constexpr BoolSpecification xfrmOut { "xfrmOut", "Output XFRM", false };
 inline constexpr BoolSpecification inputXfrmOut { "inputXfrmOut", "Input XFRM", false };
 // The 12BH7 follower driving the output transformer (docs/TubeStage.md).
 inline constexpr BoolSpecification outputTubeOut { "outputTubeOut", "Output Tube", false };
-inline constexpr FloatSpecification xfrmAmount { "xfrmAmount", "Xfrm Amount", "%", 0.0f, 100.0f, 0.1f, 0.0f };
+// The tube's own drive, mapped like Xfrm Amount.
+inline constexpr FloatSpecification tubeAmount { "tubeAmount", "Tube Amount", "%", 0.0f, 100.0f, 0.1f, 400.0f / 7.0f };
+// Amounts are drive only (-24 to +18 dB; 400/7 % is the calibrated 0 dB, the
+// default). Owner decision: the In/Out switches are the only bypass.
+inline constexpr FloatSpecification xfrmAmount { "xfrmAmount", "Xfrm Amount", "%", 0.0f, 100.0f, 0.1f, 400.0f / 7.0f };
 inline constexpr FloatSpecification lfm { "lfm", "LFM", "Hz", 0.0f, 250.0f, 0.1f, 0.0f, 70.0f, 20.0f };
 inline constexpr FloatSpecification mix { "mix", "Mix", "%", 0.0f, 100.0f, 0.1f, 100.0f };
 inline constexpr const char* monitorId = "monitor";
@@ -65,6 +69,7 @@ struct Values
     TubeVoicing::Values tubeVoicing;
     bool tubeVoicingLevelMatch = false;
     bool outputTubeOut = BaParameters::outputTubeOut.initial;
+    float tubeAmountPercent = tubeAmount.initial;
 };
 
 void appendLayout (juce::AudioProcessorValueTreeState::ParameterLayout& layout);

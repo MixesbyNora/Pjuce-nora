@@ -141,9 +141,13 @@ public:
         return 0.5 * (lo + hi);
     }
     // Grid signal in volts (added to the bias); returns the load voltage.
-    double process (double signal) noexcept
+    // `drive` runs the tube at that multiple of the load's signal level, as if an
+    // ideal level shifter sat between them: the tube sees drive x the grid signal,
+    // cathode swing and load current, while the load still sees the follower's own
+    // output resistance. 1 is the plain circuit.
+    double process (double signal, double drive = 1.0) noexcept
     {
-        const auto grid = design.bias + signal;
+        const auto grid = design.bias + drive * signal;
         const auto step = dt / (2 * design.couplingFarads);
         // Start from a linear extrapolation of the last two solutions (about half
         // the iterations of starting from the last one). Bracket ends are flagged,
@@ -159,14 +163,15 @@ public:
             vc = capacitor + step * (t.ip + primaryCurrent);
             vk = t.vp + vc;
             const auto dVk = t.dVp + step * t.dIp;
-            const auto tube = triodeCurrent (design.tube, design.supply - vk, grid - vk);
+            const auto tubeCathode = quiescent + drive * (vk - quiescent); // The tube's side of the level shift.
+            const auto tube = triodeCurrent (design.tube, design.supply - tubeCathode, grid - tubeCathode);
             plateAmps = design.sections * tube.ia;
-            residual = plateAmps - vk / design.cathodeOhms - t.ip;
+            residual = plateAmps - tubeCathode / design.cathodeOhms - drive * t.ip;
             const auto conductance = design.sections * (tube.dVa + tube.dVg) + 1 / design.cathodeOhms;
-            const auto derivative = -conductance * dVk - t.dIp;
+            const auto derivative = drive * (-conductance * dVk - t.dIp);
             // Roundoff bound from the term sizes, including the cathode voltage's own rounding.
             constexpr auto epsilon = std::numeric_limits<double>::epsilon();
-            const auto goal = 1.0e-18 + 256 * epsilon * (design.sections * tube.ia + std::abs (vk) / design.cathodeOhms + std::abs (t.ip) + conductance * std::abs (vk));
+            const auto goal = 1.0e-18 + 256 * epsilon * (design.sections * tube.ia + std::abs (tubeCathode) / design.cathodeOhms + drive * std::abs (t.ip) + conductance * std::abs (tubeCathode));
             if (std::abs (residual) <= goal) break;
             // Residual falls as the unknown rises.
             if (residual > 0) { lo = x; haveLo = true; } else { hi = x; haveHi = true; }

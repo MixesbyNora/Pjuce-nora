@@ -21,6 +21,9 @@ struct VtbOutputStage
 {
     TubeVoicing::Values voicing;
     bool tubeIn = false, transformerIn = true; // Neither: the caller bypasses; the mode stays.
+    // Tube Amount: the tube's own drive, like the transformer's extra drive. The
+    // iron's level stays set by the transformer drive (docs/TubeStage.md).
+    double tubeExtraDriveDb = 0.0;
 };
 class VtbTransformerCore
 {
@@ -33,7 +36,7 @@ public:
     void setVoicing (TransformerVoicing::Values voicing, bool levelMatch = false) noexcept;
     void setTube (Tube tube) noexcept;
     // Advance time without processing (bypassed samples keep controls in step).
-    void skip (int internalSamples) noexcept { driveGain.skip (internalSamples); }
+    void skip (int internalSamples) noexcept { driveGain.skip (internalSamples); tubeDriveGain.skip (internalSamples); }
     // Clears circuit history and level match; voicing and drive targets are kept.
     void reset() noexcept;
     void processFrame (std::array<double, 2>& frame, int channels) noexcept;
@@ -72,14 +75,14 @@ private:
         double unitVolts = 1.0, tubeGain = 1.0;
     };
     void configureBank (Bank&, Config) noexcept;
-    static double render (Bank&, std::size_t channel, double x, double drive) noexcept;
+    static double render (Bank&, std::size_t channel, double x, double drive, double tubeScale) noexcept;
     std::array<Bank, 2> banks;
     ModuleSpike::TransformerParameters base;
     ModuleSpike::InputSafety safety;
     std::size_t currentBank = 0;
     Config requested;
     double rate = 192000.0;
-    juce::SmoothedValue<double, juce::ValueSmoothingTypes::Multiplicative> driveGain;
+    juce::SmoothedValue<double, juce::ValueSmoothingTypes::Multiplicative> driveGain, tubeDriveGain;
     juce::SmoothedValue<float> voicingFade;
     double inputPower = 0.0, outputPower = 0.0, matchGain = 1.0;
     double powerCoefficient = 0.0, gainCoefficient = 0.0, maximumMatchGain = 1.0;

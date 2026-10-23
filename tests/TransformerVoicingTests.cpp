@@ -117,7 +117,7 @@ TEST_CASE ("Plugin state retains private voicing without adding or reordering ho
     PluginProcessor restored;
     restored.setStateInformation (block.getData(), static_cast<int> (block.getSize()));
     CHECK (restored.getTransformerVoicing().toJson() == processor.getTransformerVoicing().toJson());
-    REQUIRE (restored.getParameters().size() == 18);
+    REQUIRE (restored.getParameters().size() == 19);
     for (int i = 0; i < processor.getParameters().size(); ++i)
     {
         const auto* original = dynamic_cast<juce::RangedAudioParameter*> (processor.getParameters()[i]);
@@ -220,8 +220,12 @@ TEST_CASE ("Voicing changes reach the transformer while detection meters and byp
     const auto levels = voiced.readLevelPeaks();
     CHECK (levels.inL == Catch::Approx (dry.getMagnitude (0, 0, 8192)));
     CHECK (levels.outL == Catch::Approx (b.getMagnitude (0, 0, 8192)));
-    set (voiced, "xfrmAmount", 0.0f);
-    set (reference, "xfrmAmount", 0.0f);
+    // Output stage out (both switches): the voicing no longer reaches the audio.
+    for (auto* processor : { &reference, &voiced })
+    {
+        set (*processor, "xfrmOut", 1.0f);
+        set (*processor, "outputTubeOut", 1.0f);
+    }
     voiced.getTransformerVoicing().setLevelMatch (true);
     a = dry; b = dry;
     reference.processBlock (a, midi);

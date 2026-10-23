@@ -119,12 +119,12 @@ TEST_CASE ("Reported latency is the VTB1148 stage's own FIR delay at every rate"
     }
 }
 
-TEST_CASE ("VTB1148 stage at zero Amount or Out is the exactly delayed input", "[vtb][bypass]")
+TEST_CASE ("VTB1148 stage Out is the exactly delayed input at any Amount", "[vtb][bypass]")
 {
-    for (bool out : { false, true })
+    for (const auto amount : { 0.0f, 100.0f })
     {
         VtbOutputTransformer stage;
-        stage.prepare (48000.0, out ? 100.0f : 0.0f, out);
+        stage.prepare (48000.0, amount, true);
         const auto latency = stage.getLatencySamples();
         const auto dry = sine (48000.0, 61.0, -6.0, 4096);
         auto audio = dry;
@@ -221,13 +221,14 @@ juce::AudioBuffer<float> renderProcessor (PluginProcessor& processor, double hz,
 
 TEST_CASE ("Input transformer is always in circuit and Digital IN drives it", "[vtb][input]")
 {
-    // Output transformer out (Amount 0), compressor at threshold 0: only the input
+    // Output stage out (both switches), compressor at threshold 0: only the input
     // transformer can add the 3rd harmonic of a 30 Hz tone.
     const auto thirdAt = [] (float inGainDb)
     {
         PluginProcessor processor;
         set (processor, "threshold", 0.0f);
-        set (processor, "xfrmAmount", 0.0f);
+        set (processor, "xfrmOut", 1.0f);
+        set (processor, "outputTubeOut", 1.0f);
         set (processor, "inGain", inGainDb);
         // Window of whole 30 Hz periods after one second of settling.
         const auto audio = renderProcessor (processor, 30.0, -12.0, 48000 + 4800);
@@ -248,6 +249,8 @@ TEST_CASE ("Input transformer voicing reaches the audio and round-trips through 
     {
         PluginProcessor processor;
         set (processor, "threshold", 0.0f);
+        set (processor, "xfrmOut", 1.0f); // Output stage out: the input iron alone.
+        set (processor, "outputTubeOut", 1.0f);
         set (processor, "inGain", 12.0f);
         if (voiced) processor.getInputTransformerVoicing().setCurrent ({ -12.0f, 24.0f });
         return renderProcessor (processor, 30.0, -12.0, 48000 + 4800);
@@ -288,15 +291,16 @@ TEST_CASE ("Input XFRM bypass is appended and removes the input iron; Output XFR
     CHECK (parameter (processor, "inputXfrmOut")->getText (0.0f, 32) == "In");
     CHECK (parameter (processor, "inputXfrmOut")->getText (1.0f, 32) == "Out");
     CHECK_FALSE (input->get());
-    // Appended before the Output Tube switch (version hint 6), which is last.
-    CHECK (processor.getParameters().indexOf (input) == processor.getParameters().size() - 2);
+    // Appended before Output Tube (hint 6) and Tube Amount (hint 7).
+    CHECK (processor.getParameters().indexOf (input) == processor.getParameters().size() - 3);
     CHECK (input->getVersionHint() > parameter (processor, "xfrmAmount")->getVersionHint());
     // Driven 30 Hz with the output iron out: only the input iron adds H3.
     const auto thirdWith = [] (bool inputOut)
     {
         PluginProcessor p;
         set (p, "threshold", 0.0f);
-        set (p, "xfrmAmount", 0.0f);
+        set (p, "xfrmOut", 1.0f);
+        set (p, "outputTubeOut", 1.0f);
         set (p, "inGain", 12.0f);
         set (p, "input", -12.0f); // Analog Input down: keep the compressor out of its knee.
         set (p, "inputXfrmOut", inputOut ? 1.0f : 0.0f);

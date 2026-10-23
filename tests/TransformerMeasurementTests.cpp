@@ -34,13 +34,14 @@ TEST_CASE ("Offline transformer measurements retain unity and mark out-of-band h
     for (double frequency : { 50.0, 1000.0, 8000.0 })
     {
         CAPTURE (frequency);
-        const auto bypass = TransformerMeasurement::measurePoint ({}, frequency, -24.0f, 0.0f);
-        REQUIRE (bypass);
-        CHECK (bypass->fundamentalGainDb == Catch::Approx (0.0).margin (1.0e-6));
-        CHECK (bypass->rmsGainDb == Catch::Approx (0.0).margin (1.0e-6));
+        // Amount 0 is the minimum drive (-24 dB), not a bypass (owner decision).
+        const auto minimum = TransformerMeasurement::measurePoint ({}, frequency, -24.0f, 0.0f);
+        REQUIRE (minimum);
+        CHECK (minimum->fundamentalGainDb == Catch::Approx (0.0).margin (0.1));
+        CHECK (minimum->rmsGainDb == Catch::Approx (0.0).margin (0.1));
         for (std::size_t h = 0; h < 4; ++h)
-            if (bypass->available[h])
-                CHECK (bypass->harmonicDbc[h] < -130.0);
+            if (minimum->available[h])
+                CHECK (minimum->harmonicDbc[h] < -40.0);
         const auto quiet = TransformerMeasurement::measurePoint ({}, frequency, -60.0f, 100.0f);
         REQUIRE (quiet);
         CHECK (quiet->fundamentalGainDb == Catch::Approx (0.0).margin (0.1));

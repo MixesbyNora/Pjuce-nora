@@ -99,7 +99,7 @@ float BaSignalPath::processAnalog (juce::AudioBuffer<float>& wet, int channels) 
                 frame[static_cast<std::size_t> (channel)] = compressorBlock.getSample (channel, n);
             if (! engaged || amount <= 0.0f)
             {
-                // Output stage bypassed (Amount 0, or tube and transformer both out): its work stops sample-exactly.
+                // Output stage bypassed (Output Tube and Output XFRM both out): its work stops sample-exactly.
                 outputTransformer.skip (1);
                 if (outputWasProcessing) outputTransformer.reset();
                 outputWasProcessing = false;
@@ -129,12 +129,15 @@ float BaSignalPath::processAnalog (juce::AudioBuffer<float>& wet, int channels) 
 
 VtbTransformerCore::Tube BaSignalPath::outputStage (const BaParameters::Values& values) noexcept
 {
-    return { values.tubeVoicing, ! values.outputTubeOut, ! values.transformerOut };
+    // Owner decision: only the switches bypass; each Amount is drive alone.
+    return { values.tubeVoicing, ! values.outputTubeOut, ! values.transformerOut,
+        VtbOutputTransformer::driveDbFor (values.tubeAmountPercent) };
 }
 bool BaSignalPath::outputEngaged (const BaParameters::Values& values) noexcept
 {
-    // Amount drives the whole output stage; it is bypassed when both parts are out.
-    return values.transformerAmountPercent > 0.0f && (! values.transformerOut || ! values.outputTubeOut);
+    // The output stage is bypassed when both parts are out.
+    const auto stage = outputStage (values);
+    return stage.tubeIn || stage.transformerIn;
 }
 float BaSignalPath::crossfade (float dryValue, float wet, float amount) noexcept
 {

@@ -1,6 +1,6 @@
 #include <PluginProcessor.h>
 #include <TransformerVoicingPanel.h>
-#include <dsp/VtbTransformerCore.h>
+#include <dsp/VtbOutputTransformer.h>
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <complex>
@@ -150,7 +150,7 @@ TEST_CASE ("Tube voicing and switching crossfade through the warmed bank without
     CHECK (largest < 1.5f * inputStep);
 }
 
-TEST_CASE ("Output Tube is appended last and the tube workbench round-trips through state", "[tube][parameters][state]")
+TEST_CASE ("Output Tube and Tube Amount are appended and the tube workbench round-trips through state", "[tube][parameters][state]")
 {
     PluginProcessor processor;
     auto* tube = dynamic_cast<juce::AudioParameterBool*> (parameter (processor, "outputTubeOut"));
@@ -158,8 +158,16 @@ TEST_CASE ("Output Tube is appended last and the tube workbench round-trips thro
     CHECK (tube->getName (32) == "Output Tube");
     CHECK (parameter (processor, "outputTubeOut")->getText (0.0f, 32) == "In");
     CHECK_FALSE (tube->get());
-    CHECK (processor.getParameters().indexOf (tube) == processor.getParameters().size() - 1);
+    CHECK (processor.getParameters().indexOf (tube) == processor.getParameters().size() - 2);
     CHECK (tube->getVersionHint() == 6);
+    auto* amount = parameter (processor, "tubeAmount");
+    REQUIRE (amount != nullptr);
+    CHECK (amount->getName (32) == "Tube Amount");
+    CHECK (processor.getParameters().indexOf (amount) == processor.getParameters().size() - 1);
+    CHECK (amount->getVersionHint() == 7);
+    // Both Amounts default to the calibrated 0 dB drive (57.1% on the 0.1 grid).
+    for (const auto* id : { "tubeAmount", "xfrmAmount" })
+        CHECK (VtbOutputTransformer::driveDbFor (parameter (processor, id)->convertFrom0to1 (parameter (processor, id)->getDefaultValue())) == Catch::Approx (0.0).margin (0.02));
     processor.getTubeVoicing().setCurrent ({ 6.5f, 47.0f, 250.0f, 1.0f });
     juce::MemoryBlock block;
     processor.getStateInformation (block);
@@ -234,5 +242,75 @@ TEST_CASE ("Toggling Output Tube and Output XFRM in the plugin ramps without a s
         largestStep = std::max (largestStep, std::abs (audio.getSample (0, i) - audio.getSample (0, i - 1)));
         inputStep = std::max (inputStep, std::abs (dry.getSample (0, i) - dry.getSample (0, i - 1)));
     }
+    CHECK (largestStep < 1.5f * inputStep);
+}
+
+TEST_CASE ("Tube Amount drives the tube alone and keeps the level", "[tube][amount]")
+{
+    // Tube Amount scales the tube's signal level relative to the iron's; the
+    // output is compensated, so only the tube's nonlinearity changes.
+    const auto render = [] (Mode mode, double hz, double levelDb, double tubeDb)
+    {
+        VtbTransformerCore core;
+        auto stage = stageFor (mode);
+        stage.tubeExtraDriveDb = tubeDb;
+        core.prepare (internalRate, ModuleSpike::vtb1148OutputC(), 0.0, {}, false, stage);
+        const auto amplitude = juce::Decibels::decibelsToGain (levelDb);
+        std::vector<double> out;
+        for (int n = 0; n < static_cast<int> (0.5 * internalRate); ++n)
+        {
+            std::array<double, 2> frame;
+            frame.fill (amplitude * std::sin (2.0 * juce::MathConstants<double>::pi * hz * n / internalRate));
+            core.processFrame (frame, 2);
+            out.push_back (frame[0]);
+        }
+        CHECK (core.getTubeDiagnostics (0).failures == 0);
+        return out;
+    };
+    const auto nominal = render (Mode::tube, 1000.0, -18.0, 0.0);
+    for (double tubeDb : { -24.0, 18.0 })
+        CHECK (std::abs (gainDb (render (Mode::tube, 1000.0, -18.0, tubeDb), nominal, 1000.0)) < 0.1);
+    // Driven hard, the tube alone distorts much more at +18 dB than at 0 dB.
+    const auto thd = [] (const std::vector<double>& x)
+    {
+        double sum = 0;
+        for (int h = 2; h <= 7; ++h) sum += std::pow (harmonic (x, 100.0, h, 20), 2);
+        return 10.0 * std::log10 (sum) - 20.0 * std::log10 (harmonic (x, 100.0, 1, 20));
+    };
+    CHECK (thd (render (Mode::tube, 100.0, 0.0, 18.0)) > thd (render (Mode::tube, 100.0, 0.0, 0.0)) + 10.0);
+    // With the iron in, the iron's drive is unchanged: Tube Amount still changes the result.
+    const auto joint = render (Mode::tubeAndTransformer, 100.0, 0.0, 0.0), hot = render (Mode::tubeAndTransformer, 100.0, 0.0, 18.0);
+    double difference = 0;
+    for (std::size_t n = 0; n < joint.size(); ++n) difference = std::max (difference, std::abs (hot[n] - joint[n]));
+    CHECK (difference > 1.0e-3);
+}
+
+TEST_CASE ("Tube Amount sweeps in the plugin ramp without a step", "[tube][amount][smoothing][processor]")
+{
+    PluginProcessor processor;
+    set (processor, "threshold", 0.0f);
+    processor.prepareToPlay (48000.0, 256);
+    juce::AudioBuffer<float> dry (2, 256 * 64);
+    for (int i = 0; i < dry.getNumSamples(); ++i)
+        for (int channel = 0; channel < 2; ++channel)
+            dry.setSample (channel, i, static_cast<float> (0.5 * std::sin (2.0 * juce::MathConstants<double>::pi * 110.0 * i / 48000.0)));
+    auto audio = dry;
+    juce::MidiBuffer midi;
+    for (int block = 0; block < 64; ++block)
+    {
+        if (block == 20) set (processor, "tubeAmount", 100.0f);
+        if (block == 40) set (processor, "tubeAmount", 0.0f);
+        juce::AudioBuffer<float> view (audio.getArrayOfWritePointers(), 2, block * 256, 256);
+        processor.processBlock (view, midi);
+    }
+    float largestStep = 0.0f, inputStep = 0.0f;
+    bool finite = true;
+    for (int i = 1024; i < audio.getNumSamples(); ++i)
+    {
+        finite &= ModuleSpike::isFinite (audio.getSample (0, i));
+        largestStep = std::max (largestStep, std::abs (audio.getSample (0, i) - audio.getSample (0, i - 1)));
+        inputStep = std::max (inputStep, std::abs (dry.getSample (0, i) - dry.getSample (0, i - 1)));
+    }
+    CHECK (finite);
     CHECK (largestStep < 1.5f * inputStep);
 }

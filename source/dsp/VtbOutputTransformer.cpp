@@ -20,12 +20,12 @@ void VtbOutputTransformer::prepare (double sampleRate, float amountPercent, bool
     core.prepare (rate * factor, calibration, driveDbFor (amountPercent), voicing, levelMatch);
     wasProcessing = false;
     active.reset (rate, TransformerSettings::bypassRampSeconds);
-    active.setCurrentAndTargetValue (amountPercent > 0.0f && ! out ? 1.0f : 0.0f);
+    active.setCurrentAndTargetValue (out ? 0.0f : 1.0f);
 }
 void VtbOutputTransformer::setParameters (float amountPercent, bool out) noexcept
 {
     core.setExtraDriveDb (driveDbFor (amountPercent));
-    active.setTargetValue (amountPercent > 0.0f && ! out ? 1.0f : 0.0f);
+    active.setTargetValue (out ? 0.0f : 1.0f);
 }
 void VtbOutputTransformer::process (juce::AudioBuffer<float>& buffer, int channels) noexcept
 {

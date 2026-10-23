@@ -37,15 +37,16 @@ void VtbTransformerCore::configureBank (Bank& bank, Config config) noexcept
     else
         for (auto& stage : bank.tubeOnly) stage.prepare (rate, design, p);
 }
-double VtbTransformerCore::render (Bank& bank, std::size_t channel, double x, double drive) noexcept
+double VtbTransformerCore::render (Bank& bank, std::size_t channel, double x, double drive, double tubeScale) noexcept
 {
     // x is the driven signal in C's normalized units; volts at the primary are x * unitVolts.
+    // tubeScale is the tube's drive relative to the transformer's (1 when equal).
     switch (bank.config.mode)
     {
         case Mode::tubeAndTransformer:
-            return bank.joint[channel].process (x * bank.unitVolts) / (bank.unitVolts * drive * bank.tubeGain);
+            return bank.joint[channel].process (x * bank.unitVolts, tubeScale) / (bank.unitVolts * drive * bank.tubeGain);
         case Mode::tube:
-            return bank.tubeOnly[channel].process (x * bank.unitVolts) / (bank.unitVolts * drive * bank.tubeGain);
+            return bank.tubeOnly[channel].process (x * bank.unitVolts, tubeScale) / (bank.unitVolts * drive * bank.tubeGain);
         case Mode::transformer:
         default:
             return bank.circuits[channel].process (x) / drive;
@@ -87,6 +88,8 @@ void VtbTransformerCore::prepare (double internalRate, ModuleSpike::TransformerP
     voicingFade.reset (rate, TransformerSettings::voicingFadeSeconds);
     voicingFade.setCurrentAndTargetValue (0.0f);
     driveGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (base.driveDb + extraDriveDb));
+    tubeDriveGain.reset (rate, TransformerSettings::amountRampSeconds);
+    tubeDriveGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (base.driveDb + tube.tubeExtraDriveDb));
 }
 void VtbTransformerCore::setExtraDriveDb (double extraDriveDb) noexcept
 {
@@ -100,12 +103,14 @@ void VtbTransformerCore::setVoicing (TransformerVoicing::Values voicing, bool le
 void VtbTransformerCore::setTube (Tube tube) noexcept
 {
     requested.tube = TubeVoicing::encode (tube.voicing);
+    tubeDriveGain.setTargetValue (juce::Decibels::decibelsToGain (base.driveDb + tube.tubeExtraDriveDb));
     if (tube.tubeIn || tube.transformerIn)
         requested.mode = ! tube.tubeIn ? Mode::transformer : tube.transformerIn ? Mode::tubeAndTransformer : Mode::tube;
 }
 void VtbTransformerCore::processFrame (std::array<double, 2>& frame, int channels) noexcept
 {
     const auto drive = driveGain.getNextValue();
+    const auto tubeScale = tubeDriveGain.getNextValue() / drive;
     // A history reset (bypass, transport) applies a pending voicing directly.
     if (! started && requested != banks[currentBank].config)
         configureBank (banks[currentBank], requested);
@@ -123,10 +128,10 @@ void VtbTransformerCore::processFrame (std::array<double, 2>& frame, int channel
         const auto ch = static_cast<std::size_t> (channel);
         const auto original = frame[ch];
         const auto x = safety.process (original) * drive;
-        auto output = render (banks[currentBank], ch, x, drive);
+        auto output = render (banks[currentBank], ch, x, drive, tubeScale);
         if (isVoicingTransitioning())
         {
-            const auto other = render (banks[1 - currentBank], ch, x, drive);
+            const auto other = render (banks[1 - currentBank], ch, x, drive, tubeScale);
             output += blend * (other - output);
         }
         frameInputPower += original * original;

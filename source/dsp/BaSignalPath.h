@@ -26,8 +26,8 @@ private:
     static bool outputEngaged (const BaParameters::Values&) noexcept;
     // Digital IN, then one shared oversampled region (4/2/1): input transformer
     // (VTB9046, Input XFRM) -> Analog Input + compressor -> output stage: 12BH7
-    // follower (Output Tube) and VTB1148 (Output XFRM), solved jointly, with
-    // Amount as its drive. Then LF Mono and Digital OUT at the base rate.
+    // follower (Output Tube, Tube Amount) and VTB1148 (Output XFRM, Xfrm Amount),
+    // solved jointly. Then LF Mono and Digital OUT at the base rate.
     float processAnalog (juce::AudioBuffer<float>& wet, int channels) noexcept;
     StereoCompressor compressor;
     VtbTransformerCore inputTransformer, outputTransformer;
