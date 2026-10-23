@@ -747,6 +747,66 @@ void cpuReport (const juce::File& root)
 }
 }
 
+namespace
+{
+// Aliasing of the chosen C versus oversampling factor at 48 kHz, Step 1 method:
+// coherent odd-bin sines, energy on exact harmonic bins versus all other bins.
+// Includes HF probes, whose harmonics fold first. Run before deciding on ADAA.
+void aliasingReport (const juce::File& root)
+{
+    auto out = csv (root, "step3_aliasing.csv", "factor,extra_drive_db,peak_dbfs,requested_hz,actual_hz,second_tone_hz,fundamental_dbfs,harmonic_dbc_audio,nonharmonic_dbc_audio,nonharmonic_dbc_worst_band,difference_to_64x_band_dbr,solver_failures");
+    // requested 0 = two-tone: 55 Hz at -6 dBFS plus 13001 Hz at -20 dBFS (bass saturating the core under a treble probe).
+    for (double extra : { 0.0, 12.0, 18.0 })
+        for (double peakDb : { -6.0 })
+            for (double requested : { 55.0, 440.0, 1000.0, 7001.0, 13001.0, 19001.0, 0.0 })
+            {
+                const auto twoTone = requested < 1;
+                const auto bin = static_cast<int> (2 * std::round (((twoTone ? 55.0 : requested) * sineSize / rate - 1) / 2) + 1);
+                const auto probeBin = static_cast<int> (2 * std::round ((13001.0 * sineSize / rate - 1) / 2) + 1);
+                const auto frequency = bin * rate / sineSize;
+                const auto amplitude = std::pow (10.0, peakDb / 20);
+                const auto renderAt = [&] (int factor)
+                {
+                    auto p = vtb1148OutputC(); p.driveDb += extra;
+                    Processor processor (rate, factor, 1, Variant::play3Outer, Topology::shunt, p);
+                    constexpr int warm = 49152; // One second, rounded to blocks.
+                    const auto count = warm + static_cast<int> (sineSize) + 1024;
+                    std::vector<double> raw (static_cast<std::size_t> (count));
+                    juce::AudioBuffer<double> block (1, capacity);
+                    for (int start = 0; start < count; start += capacity)
+                    {
+                        for (int n = 0; n < capacity; ++n)
+                        {
+                            const auto t = static_cast<double> (start + n) / sineSize;
+                            block.setSample (0, n, amplitude * std::sin (2 * pi * bin * t) + (twoTone ? 0.1 * std::sin (2 * pi * probeBin * t) : 0.0));
+                        }
+                        processor.process (block);
+                        for (int n = 0; n < capacity && start + n < count; ++n) raw[static_cast<std::size_t> (start + n)] = block.getSample (0, n);
+                    }
+                    // Fractional FIR delay removed, so factors can be compared sample by sample.
+                    auto window = MagneticValidation::alignTrace (raw, warm, processor.latency(), static_cast<int> (sineSize)).samples;
+                    return std::pair { window, processor.diagnostics().failures };
+                };
+                const auto [reference, referenceFailures] = renderAt (64);
+                for (int factor : { 1, 2, 4, 8, 16 })
+                {
+                    const auto [output, failures] = renderAt (factor);
+                    // For the two-tone case the split uses the 55 Hz grid; 13001 Hz and its
+                    // intermodulation are off-grid, so the 64x difference is the measure there.
+                    const auto bands = split (output, output, bin);
+                    double fundamental = 0, harmonic = 0, nonHarmonic = 0, worst = 0;
+                    for (const auto& b : bands) { fundamental += b.fundamental; harmonic += b.harmonic; nonHarmonic += b.nonHarmonic; worst = std::max (worst, b.nonHarmonic); }
+                    out << factor << ',' << extra << ',' << peakDb << ',' << requested << ',' << frequency << ',' << (twoTone ? probeBin * rate / sineSize : 0.0) << ',' << powerDb (fundamental) << ',' << powerDb (harmonic / fundamental) << ',' << powerDb (nonHarmonic / fundamental) << ','
+                        << powerDb (worst / fundamental) << ',' << bandDifference (output, reference) << ',' << failures + referenceFailures << '\n';
+                    CHECK (failures + referenceFailures == 0);
+                }
+                out.flush();
+                std::cout << "alias " << extra << ' ' << frequency << std::endl;
+            }
+    REQUIRE (out.good());
+}
+}
+
 TEST_CASE ("Integer-period harmonic measurement recovers a known transfer", "[shunt-calibration]")
 {
     // A near-linear module at moderate level: unity small-signal gain, no failures,
@@ -784,15 +844,23 @@ TEST_CASE ("Chosen VTB1148 C calibration keeps its +17 dBu onset and published f
     CHECK (std::abs (rmsError (Variant::play3Outer, p, step3Targets()) - 3.3169) < 0.01);
 }
 
+TEST_CASE ("Chosen C oversampling schedule is 4/2/1", "[shunt-calibration]")
+{
+    CHECK (vtb1148OutputFactor (44100) == 4); CHECK (vtb1148OutputFactor (48000) == 4);
+    CHECK (vtb1148OutputFactor (88200) == 2); CHECK (vtb1148OutputFactor (96000) == 2);
+    CHECK (vtb1148OutputFactor (176400) == 1); CHECK (vtb1148OutputFactor (192000) == 1);
+}
+
 TEST_CASE ("Export VTB1148 shunt calibration", "[shunt-report]")
 {
     const auto* taskValue = std::getenv ("LUMIERE_MODULE_TASK");
     const std::string task = taskValue ? taskValue : "";
-    if (task != "shunt-step2" && task != "shunt-step3" && task != "shunt-step3-ladder" && task != "shunt-step3-cpu") { SUCCEED ("Explicit shunt calibration opt-in"); return; }
+    if (task != "shunt-step2" && task != "shunt-step3" && task != "shunt-step3-ladder" && task != "shunt-step3-cpu" && task != "shunt-step3-aliasing") { SUCCEED ("Explicit shunt calibration opt-in"); return; }
     const auto* directory = std::getenv ("LUMIERE_MODULE_REPORT_DIR"); REQUIRE (directory != nullptr);
     const juce::File root (juce::String::fromUTF8 (directory)); REQUIRE (root.createDirectory().wasOk());
     if (task == "shunt-step2") calibrationReport (root);
     else if (task == "shunt-step3") step3Report (root);
     else if (task == "shunt-step3-ladder") onsetLadderReport (root);
-    else cpuReport (root);
+    else if (task == "shunt-step3-cpu") cpuReport (root);
+    else aliasingReport (root);
 }

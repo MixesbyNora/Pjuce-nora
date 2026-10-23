@@ -725,3 +725,149 @@ Reproduce, run alone:
 ```bash
 LUMIERE_MODULE_REPORT_DIR="$PWD/docs/measurements/shunt_improvement" LUMIERE_MODULE_TASK=shunt-step3-cpu Builds/Release/Tests "Export VTB1148 shunt calibration"
 ```
+
+## Step 3d — ADAA and lower oversampling for C
+
+Owner question: could ADAA (antiderivative antialiasing) plus about half the
+current oversampling factors replace the high factors?
+
+### How much does C actually alias?
+
+[step3_aliasing.csv](measurements/shunt_improvement/step3_aliasing.csv).
+
+**Method:**
+- C at the chosen calibration, 48 kHz, factors 1×–16×, at 0, +12 and +18 dB
+  drive.
+- Coherent sines at −6 dBFS (55 Hz to 19 kHz), split into exact-harmonic and
+  non-harmonic energy as in Step 1.
+- A two-tone case: 55 Hz at −6 dBFS plus 13 kHz at −20 dBFS, so bass saturates
+  the core under a treble probe.
+- Each factor is compared with a 64× render after removing the fractional FIR
+  delay.
+- The 64× difference also includes decimation-filter differences near 20 kHz.
+  That is the floor seen at high factors.
+
+**MEASUREMENT — worst case over all tones and drives:**
+
+| Factor (48 kHz) | Internal rate | Worst non-harmonic (alias) energy | Worst difference to 64× | Two-tone at +18 dB vs 64× |
+|---:|---:|---:|---:|---:|
+| 1× | 48 kHz | −95 dBc | −82 dBr (19 kHz) | −96 dBr |
+| 2× | 96 kHz | −108 dBc | −94 dBr | −107 dBr |
+| 4× | 192 kHz | −120 dBc | −103 dBr | −114 dBr |
+| 8× | 384 kHz | −130 dBc | −109 dBr | −120 dBr |
+| 16× | 768 kHz | −141 dBc | −111 dBr | −128 dBr |
+
+The harmonic levels are the same at every factor; for example, 1 kHz at 0 dB
+drive gives −85.5 dBc at both 1× and 16×. So the lower internal rate does not
+change the model's behavior, only its aliasing.
+
+**Why it is so low:** the VTB1148 calibration is very clean above the low bass.
+At −6 dBFS, harmonics of 1 kHz are at −85 to −92 dBc, and harmonics of 7 kHz at
+about −118 dBc. There is almost nothing above Nyquist to fold back. The strong
+harmonics are at 20–55 Hz, and those stay far below Nyquist.
+
+### ADAA feasibility for C
+
+- **What ADAA needs.** The standard method (Parker et al. 2016) and its
+  extension to stateful circuits (Holters, DAFx-19) both need the nonlinearity
+  to be a *memoryless* function of one scalar, with a closed-form antiderivative.
+- **The implicit solve is not the obstacle.** It can be written as such a
+  function: integrate the forward curve, then use integration by parts.
+- **The hysteresis is.** C's play operators make the curve depend on history,
+  so there is no single antiderivative. It would need branch-by-branch
+  integration, with the switch points located inside each sample interval.
+- **Stateful ADAA also changes the circuit.** The feedback delay goes from 1 to
+  1.5 samples, so the circuit must be redesigned at ⅔ fs. It adds a
+  half-sample delay and a mild low-pass, and it needs about 2× oversampling
+  anyway (Holters 2019; La Pastina & D'Angelo, DAFx-22, on the frequency
+  compensation).
+
+**Conclusion: ADAA is not needed for C at this calibration.** Its benefit would
+be limited to aliasing that is already −95 dBc at 1× and −108 dBc at 2×. The
+cost would be research-level work on hysteresis-aware ADAA plus a circuit
+redesign. ADAA is worth revisiting for stages that clip hard and make strong
+treble harmonics, for example a future tube stage. It would also be worth a
+look if C is ever driven far beyond the published range.
+
+### State-space ADAA and WDF solvers with local anti-aliasing
+
+The owner also asked about these two approaches. Literature only; nothing was
+implemented.
+
+**State-space ADAA**
+- Holters' DAFx-19 method *is* the state-space form: a nonlinear state-space
+  system, with ADAA applied to its nonlinearities.
+- It requires each nonlinearity to be a function of **one scalar** with no
+  memory of its own.
+- La Pastina & D'Angelo (DAFx-22) add frequency compensation for the response
+  change it causes.
+- Köper & Holters (DAFx-23) note that multivariate nonlinearities need
+  numerical integration, which is too costly for real time.
+- C's nonlinearity carries three internal play states, so it is effectively
+  multivariate and history-dependent. It falls outside the published class.
+
+**WDF with local ADAA**
+- Albertini, Bernardini & Sarti (DAFx-20; JAES 69, 2021) apply higher-order ADAA
+  *locally* to the single nonlinear element of a wave digital structure. It is
+  modular: the anti-aliased element is built independently of the rest of the
+  circuit.
+- Their nonlinear elements are memoryless resistive one-ports (diodes, BJT).
+- Our nonlinear element is a *reactive, hysteretic* inductor. A hysteretic
+  output transformer has been placed in a WDF as a learned one-port (EURASIP
+  JASMP 2023), but without ADAA.
+- So WDF plus local ADAA for this core would be a research extension, not an
+  established technique.
+
+**Where these do fit the project:**
+- A WDF structure solves impedance interaction between stages by construction,
+  through its adaptors. That is exactly the open "coupling" question from the
+  module spike (buffered vs divider vs two-way reference).
+- WDF plus local ADAA is a strong candidate architecture for the modular
+  tube/transformer/compression chain, especially for memoryless hard-clipping
+  elements such as tubes and diodes, where aliasing is a real problem.
+
+**For C itself, the conclusion stands.** Aliasing is already −95 dBc at 1× and
+−120 dBc at 4×, so no anti-aliasing method has much to remove here.
+
+### Oversampling options for C
+
+CPU scales with internal rate. 384 kHz costs about 17–18%, 192 kHz about 9.5%,
+and 2× ≈ 5% and 1× ≈ 2.5% are extrapolated linearly from those (not measured).
+FIR latency at 48 kHz: 0 at 1×, 99 at 2×, 124 at 4× and 137 at 8× (module spike
+measurement).
+
+| Schedule (44.1–48 / 96 / 192 kHz) | Internal rate | Worst aliasing | CPU at 48 kHz | Latency at 48 kHz |
+|---|---:|---:|---:|---:|
+| Shipped 16/8/4 | 768 kHz | −141 dBc | 34.2% (C) | 144 (shipped total) |
+| Owner proposal, halved: 8/4/2 | 384 kHz | −130 dBc | 17.3% | 137 |
+| Quarter: 4/2/1 | 192 kHz | −120 dBc | 9.5% | 124 |
+| 2/1/1 | 96 kHz (48k: 2×) | −108 dBc | ≈ 5% | 99 |
+
+**Recommendation:**
+- **4/2/1** (192 kHz internal) is the clear choice on these numbers. It keeps
+  aliasing below −120 dBc, about 30 dB under anything audible here, and costs
+  about a third of the shipped stage.
+- **Halved (8/4/2)** gives 10 dB more margin that isn't needed, at twice the
+  cost.
+- Latency barely changes across these schedules (99–137 samples), because the
+  FIR design dominates. Removing it would take 1× or a lower-latency filter
+  (Step 5).
+
+These are sine and two-tone measurements at the chosen calibration only.
+Higher drive than +18 dB, or a different calibration, needs rechecking.
+
+**DECISION (owner):** C uses **4/2/1** (about 192 kHz internal), recorded as
+`vtb1148OutputFactor()` in
+[TransformerModule.h](../source/modules/TransformerModule.h) and pinned by a test.
+
+**Policy for future tunings (proposed):** each transformer tuning carries its
+own oversampling factor. Before a tuning is accepted, `shunt-step3-aliasing`
+must show it below an agreed aliasing limit across its whole drive range.
+The −120 dBc measured here at 4× is a reference point, not that limit. A
+heavily driven "vintage" tuning may need 8/4/2 or an anti-aliasing method.
+
+Reproduce, run alone:
+
+```bash
+LUMIERE_MODULE_REPORT_DIR="$PWD/docs/measurements/shunt_improvement" LUMIERE_MODULE_TASK=shunt-step3-aliasing Builds/Release/Tests "Export VTB1148 shunt calibration"
+```

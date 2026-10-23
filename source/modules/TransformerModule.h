@@ -41,6 +41,17 @@ inline TransformerParameters vtb1148OutputC() noexcept
     p.loss = 0.016; p.sourceOhms = 0.01; p.loadOhms = 34616.609;
     return p;
 }
+// Owner decision (shunt Step 3d): C at the VTB1148 calibration runs at about
+// 192 kHz internal, i.e. 4x / 2x / 1x at 44.1-48 / 88.2-96 / 176.4-192 kHz.
+// Measured aliasing at 4x and 48 kHz: below -120 dBc up to +18 dB drive. Other
+// tunings or higher drive must be re-measured, not assumed.
+inline int vtb1148OutputFactor (double sampleRate) noexcept
+{
+    auto factor = 4;
+    while (factor > 1 && sampleRate * factor > 200000.0)
+        factor /= 2;
+    return factor;
+}
 // Separate input protection, before drive and before the circuit. Not magnetics.
 struct InputSafety
 {
