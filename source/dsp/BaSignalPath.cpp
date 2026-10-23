@@ -22,6 +22,9 @@ void BaSignalPath::prepare (double sampleRate, int maximumBlockSize,
     outputActive.reset (sampleRate, TransformerSettings::bypassRampSeconds);
     outputActive.setCurrentAndTargetValue (values.transformerAmountPercent > 0.0f && ! values.transformerOut ? 1.0f : 0.0f);
     outputWasProcessing = false;
+    inputActive.reset (sampleRate, TransformerSettings::bypassRampSeconds);
+    inputActive.setCurrentAndTargetValue (values.inputTransformerOut ? 0.0f : 1.0f);
+    inputWasProcessing = false;
     dryDelay.prepare (latency);
     lfm.prepare (sampleRate, values.lfmHz);
     inputGain.reset (sampleRate, BaParameters::gainRampSeconds);
@@ -50,6 +53,7 @@ float BaSignalPath::processAnalog (juce::AudioBuffer<float>& wet, int channels) 
         {
             activity[static_cast<std::size_t> (n)] = outputActive.getNextValue();
             engaged |= activity[static_cast<std::size_t> (n)] > 0.0f;
+            inputActivity[static_cast<std::size_t> (n)] = inputActive.getNextValue();
             for (int channel = 0; channel < channels; ++channel)
                 scratch.setSample (channel, n, wet.getSample (channel, start + n));
         }
@@ -61,7 +65,26 @@ float BaSignalPath::processAnalog (juce::AudioBuffer<float>& wet, int channels) 
         {
             for (int channel = 0; channel < channels; ++channel)
                 frame[static_cast<std::size_t> (channel)] = high.getSample (channel, n);
-            inputTransformer.processFrame (frame, channels);
+            const auto inputAmount = inputActivity[static_cast<std::size_t> (n / factor)];
+            if (inputAmount <= 0.0f)
+            {
+                // Input XFRM Out: the iron stops sample-exactly and restarts clean.
+                inputTransformer.skip (1);
+                if (inputWasProcessing) inputTransformer.reset();
+                inputWasProcessing = false;
+            }
+            else
+            {
+                inputWasProcessing = true;
+                const auto original = frame;
+                inputTransformer.processFrame (frame, channels);
+                if (inputAmount < 1.0f)
+                    for (int channel = 0; channel < channels; ++channel)
+                    {
+                        const auto ch = static_cast<std::size_t> (channel);
+                        frame[ch] = original[ch] + inputAmount * (frame[ch] - original[ch]);
+                    }
+            }
             for (int channel = 0; channel < channels; ++channel)
                 compressorBlock.setSample (channel, n, static_cast<float> (frame[static_cast<std::size_t> (channel)]));
         }
@@ -121,6 +144,7 @@ float BaSignalPath::process (juce::AudioBuffer<float>& buffer, int channels,
     outputTransformer.setVoicing (values.transformerVoicing, values.voicingLevelMatch);
     outputActive.setTargetValue (values.transformerAmountPercent > 0.0f && ! values.transformerOut ? 1.0f : 0.0f);
     inputTransformer.setVoicing (values.inputTransformerVoicing, values.inputVoicingLevelMatch);
+    inputActive.setTargetValue (values.inputTransformerOut ? 0.0f : 1.0f);
     inputGain.setTargetValue (juce::Decibels::decibelsToGain (values.inGainDb));
     outputGain.setTargetValue (juce::Decibels::decibelsToGain (values.outGainDb));
     mix.setTargetValue (values.mixPercent * 0.01f);

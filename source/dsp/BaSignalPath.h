@@ -31,9 +31,9 @@ private:
     juce::dsp::Oversampling<double> filters { 2 };
     juce::AudioBuffer<double> scratch;
     juce::AudioBuffer<float> compressorBlock;
-    juce::SmoothedValue<float> outputActive;
-    std::array<float, MagneticAudio::capacity> activity {};
-    bool outputWasProcessing = false;
+    juce::SmoothedValue<float> outputActive, inputActive;
+    std::array<float, MagneticAudio::capacity> activity {}, inputActivity {};
+    bool outputWasProcessing = false, inputWasProcessing = false;
     int latency = 0, factor = 4;
     LowFrequencyMono lfm;
     juce::AudioBuffer<float> dry;

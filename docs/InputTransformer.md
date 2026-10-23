@@ -123,8 +123,12 @@ Digital IN (BA "IN")
 **Placement and drive**
 - The input transformer sits at the very start of the chain, as on most
   vari-mu compressors.
-- It has **no In/Out and no Amount**. Digital IN sets how hard it is driven,
-  like a hotter source.
+- It has **no Amount**. Digital IN sets how hard it is driven, like a hotter
+  source.
+- **Input XFRM** (`inputXfrmOut`) bypasses it with a 10 ms ramp. It was added
+  2026-10-23 and appended with version hint 5.
+- The existing bypass was renamed **Output XFRM**. Its ID `xfrmOut` is
+  unchanged, so automation still works.
 - **Analog Input** is the compressor's existing Input control, after the input
   transformer and before detection.
 - **Digital OUT** comes after LF Mono and before Mix, so the dry path is never

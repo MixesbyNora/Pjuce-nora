@@ -26,7 +26,8 @@ PluginProcessor::PluginProcessor()
        baMix (parameters.getRawParameterValue (BaParameters::mix.id)),
        baMonitor (parameters.getRawParameterValue (BaParameters::monitorId)),
        xfrmOut (parameters.getRawParameterValue (BaParameters::xfrmOut.id)),
-       xfrmAmount (parameters.getRawParameterValue (BaParameters::xfrmAmount.id))
+       xfrmAmount (parameters.getRawParameterValue (BaParameters::xfrmAmount.id)),
+       inputXfrmOut (parameters.getRawParameterValue (BaParameters::inputXfrmOut.id))
 {
     gainLink = std::make_unique<GainLinkController> (parameters);
 }
@@ -83,15 +84,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::createParam
                 return trimmed.getFloatValue();
             })));
     // New AU version hints and appending preserve existing host ordering.
+    const auto inOutAttributes = juce::AudioParameterBoolAttributes()
+        .withStringFromValueFunction ([] (bool value, int) { return juce::String (value ? "Out" : "In"); })
+        .withValueFromStringFunction ([] (const juce::String& text)
+        {
+            return text.trim().equalsIgnoreCase ("Out") || text.getIntValue() != 0;
+        });
     const auto& out = BaParameters::xfrmOut;
     layout.add (std::make_unique<juce::AudioParameterBool> (
-        juce::ParameterID { out.id, 3 }, out.name, out.initial,
-        juce::AudioParameterBoolAttributes()
-            .withStringFromValueFunction ([] (bool value, int) { return juce::String (value ? "Out" : "In"); })
-            .withValueFromStringFunction ([] (const juce::String& text)
-            {
-                return text.trim().equalsIgnoreCase ("Out") || text.getIntValue() != 0;
-            })));
+        juce::ParameterID { out.id, 3 }, out.name, out.initial, inOutAttributes));
     const auto& amount = BaParameters::xfrmAmount;
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { amount.id, 3 }, amount.name,
@@ -99,6 +100,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::createParam
         juce::AudioParameterFloatAttributes().withLabel (amount.unit)
             .withStringFromValueFunction ([] (float value, int) { return juce::String (value, 1); })
             .withValueFromStringFunction ([] (const juce::String& text) { return text.getFloatValue(); })));
+    const auto& inputOut = BaParameters::inputXfrmOut;
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { inputOut.id, 5 }, inputOut.name, inputOut.initial, inOutAttributes));
     return layout;
 }
 
@@ -112,7 +116,8 @@ BaParameters::Values PluginProcessor::readBaParameters() const noexcept
         juce::roundToInt (baMonitor->load (std::memory_order_relaxed)),
         xfrmOut->load (std::memory_order_relaxed) >= 0.5f,
         xfrmAmount->load (std::memory_order_relaxed), voicing.voicing, voicing.levelMatch,
-        inputVoicing.voicing, inputVoicing.levelMatch };
+        inputVoicing.voicing, inputVoicing.levelMatch,
+        inputXfrmOut->load (std::memory_order_relaxed) >= 0.5f };
 }
 
 juce::AudioProcessorParameter* PluginProcessor::getBypassParameter() const

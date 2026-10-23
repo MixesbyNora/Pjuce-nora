@@ -274,3 +274,66 @@ TEST_CASE ("Input transformer voicing reaches the audio and round-trips through 
     const auto exported = juce::JSON::parse (restored.exportTransformerVoicing (true));
     CHECK (exported["transformer"].toString() == "VTB9046 line input");
 }
+
+TEST_CASE ("Input XFRM bypass is appended and removes the input iron; Output XFRM keeps its ID", "[vtb][input][parameters]")
+{
+    PluginProcessor processor;
+    auto* input = dynamic_cast<juce::AudioParameterBool*> (parameter (processor, "inputXfrmOut"));
+    auto* output = dynamic_cast<juce::AudioParameterBool*> (parameter (processor, "xfrmOut"));
+    REQUIRE (input != nullptr);
+    REQUIRE (output != nullptr);
+    CHECK (input->getName (32) == "Input XFRM");
+    CHECK (output->getName (32) == "Output XFRM");
+    CHECK (parameter (processor, "inputXfrmOut")->getText (0.0f, 32) == "In");
+    CHECK (parameter (processor, "inputXfrmOut")->getText (1.0f, 32) == "Out");
+    CHECK_FALSE (input->get());
+    CHECK (processor.getParameters().indexOf (input) == processor.getParameters().size() - 1);
+    CHECK (input->getVersionHint() > parameter (processor, "xfrmAmount")->getVersionHint());
+    // Driven 30 Hz with the output iron out: only the input iron adds H3.
+    const auto thirdWith = [] (bool inputOut)
+    {
+        PluginProcessor p;
+        set (p, "threshold", 0.0f);
+        set (p, "xfrmAmount", 0.0f);
+        set (p, "inGain", 12.0f);
+        set (p, "input", -12.0f); // Analog Input down: keep the compressor out of its knee.
+        set (p, "inputXfrmOut", inputOut ? 1.0f : 0.0f);
+        return harmonicDb (renderProcessor (p, 30.0, -12.0, 48000 + 4800), 30.0, 3, 48000, 4800);
+    };
+    const auto in = thirdWith (false), out = thirdWith (true);
+    CAPTURE (in, out);
+    CHECK (out < in - 40.0);
+    CHECK (out < -100.0);
+    // Its state round-trips.
+    set (processor, "inputXfrmOut", 1.0f);
+    juce::MemoryBlock block;
+    processor.getStateInformation (block);
+    PluginProcessor restored;
+    restored.setStateInformation (block.getData(), static_cast<int> (block.getSize()));
+    CHECK (dynamic_cast<juce::AudioParameterBool*> (parameter (restored, "inputXfrmOut"))->get());
+}
+
+TEST_CASE ("Toggling Input XFRM mid-stream ramps without a step", "[vtb][input][smoothing]")
+{
+    PluginProcessor processor;
+    set (processor, "threshold", 0.0f);
+    processor.prepareToPlay (48000.0, 256);
+    const auto dry = sine (48000.0, 110.0, -6.0, 256 * 64);
+    auto audio = dry;
+    juce::MidiBuffer midi;
+    for (int block = 0; block < 64; ++block)
+    {
+        if (block == 20) set (processor, "inputXfrmOut", 1.0f);
+        if (block == 40) set (processor, "inputXfrmOut", 0.0f);
+        juce::AudioBuffer<float> view (audio.getArrayOfWritePointers(), 2, block * 256, 256);
+        processor.processBlock (view, midi);
+    }
+    REQUIRE (finite (audio));
+    float largestStep = 0.0f, inputStep = 0.0f;
+    for (int i = 1024; i < audio.getNumSamples(); ++i)
+    {
+        largestStep = std::max (largestStep, std::abs (audio.getSample (0, i) - audio.getSample (0, i - 1)));
+        inputStep = std::max (inputStep, std::abs (dry.getSample (0, i) - dry.getSample (0, i - 1)));
+    }
+    CHECK (largestStep < 1.5f * inputStep);
+}
