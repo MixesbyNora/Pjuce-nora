@@ -16,3 +16,4 @@ private:
     TransformerMeasurementView measurements;
 };
 using TubeVoicingPanel = VoicingPanel<TubeVoicing::Schema>;
+using GainTubeVoicingPanel = VoicingPanel<GainTubeVoicing::Schema>;

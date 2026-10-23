@@ -291,8 +291,8 @@ TEST_CASE ("Input XFRM bypass is appended and removes the input iron; Output XFR
     CHECK (parameter (processor, "inputXfrmOut")->getText (0.0f, 32) == "In");
     CHECK (parameter (processor, "inputXfrmOut")->getText (1.0f, 32) == "Out");
     CHECK_FALSE (input->get());
-    // Appended before Output Tube (hint 6) and Tube Amount (hint 7).
-    CHECK (processor.getParameters().indexOf (input) == processor.getParameters().size() - 3);
+    // Appended before Output Tube (hint 6), Tube Amount (7), Calibration and Gain Tube (8).
+    CHECK (processor.getParameters().indexOf (input) == processor.getParameters().size() - 5);
     CHECK (input->getVersionHint() > parameter (processor, "xfrmAmount")->getVersionHint());
     // Driven 30 Hz with the output iron out: only the input iron adds H3.
     const auto thirdWith = [] (bool inputOut)
@@ -301,6 +301,7 @@ TEST_CASE ("Input XFRM bypass is appended and removes the input iron; Output XFR
         set (p, "threshold", 0.0f);
         set (p, "xfrmOut", 1.0f);
         set (p, "outputTubeOut", 1.0f);
+        set (p, "gainTubeOut", 1.0f); // Only the irons may add H3 here.
         set (p, "inGain", 12.0f);
         set (p, "input", -12.0f); // Analog Input down: keep the compressor out of its knee.
         set (p, "inputXfrmOut", inputOut ? 1.0f : 0.0f);

@@ -22,14 +22,18 @@ private:
     GainReductionMeter meter;
     StereoLevelMeter inputMeter { "IN" }, outputMeter { "OUT" };
     // Which stage the workbench shows: VTB9046 input, VTB1148 output or the 12BH7 output tube.
-    enum class Stage { input, output, tube };
+    enum class Stage { input, output, tube, gainTube };
     void showStage (Stage);
     void updateStageVisibility (bool show);
-    bool voicingVisible() const noexcept { return voicingPanel.isVisible() || inputVoicingPanel.isVisible() || tubeVoicingPanel.isVisible(); }
+    bool voicingVisible() const noexcept
+    {
+        return voicingPanel.isVisible() || inputVoicingPanel.isVisible() || tubeVoicingPanel.isVisible() || gainTubeVoicingPanel.isVisible();
+    }
     TransformerVoicingPanel voicingPanel, inputVoicingPanel;
     TubeVoicingPanel tubeVoicingPanel;
+    GainTubeVoicingPanel gainTubeVoicingPanel;
     juce::TextButton voicingToggle { "Hide voicing" };
-    juce::TextButton inputStage { "Input xfmr" }, outputStage { "Output xfmr" }, tubeStage { "Output tube" };
+    juce::TextButton inputStage { "Input xfmr" }, outputStage { "Output xfmr" }, tubeStage { "Output tube" }, gainTubeStage { "Gain tube" };
     Stage shownStage = Stage::output;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginEditor)

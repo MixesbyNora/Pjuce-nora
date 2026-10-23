@@ -29,7 +29,9 @@ PluginProcessor::PluginProcessor()
        xfrmAmount (parameters.getRawParameterValue (BaParameters::xfrmAmount.id)),
        inputXfrmOut (parameters.getRawParameterValue (BaParameters::inputXfrmOut.id)),
        outputTubeOut (parameters.getRawParameterValue (BaParameters::outputTubeOut.id)),
-       tubeAmount (parameters.getRawParameterValue (BaParameters::tubeAmount.id))
+       tubeAmount (parameters.getRawParameterValue (BaParameters::tubeAmount.id)),
+       calibration (parameters.getRawParameterValue (CompressorParameters::calibration.id)),
+       gainTubeOut (parameters.getRawParameterValue (BaParameters::gainTubeOut.id))
 {
     gainLink = std::make_unique<GainLinkController> (parameters);
 }
@@ -112,6 +114,16 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::createParam
     layout.add (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { tubeOut.id, 6 }, tubeOut.name, tubeOut.initial, inOutAttributes));
     addAmount (BaParameters::tubeAmount, 7);
+    const auto& cal = CompressorParameters::calibration;
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { cal.id, 8 }, cal.name,
+        juce::NormalisableRange<float> { cal.minimum, cal.maximum, cal.step }, cal.defaultValue,
+        juce::AudioParameterFloatAttributes().withLabel (cal.unit)
+            .withStringFromValueFunction ([] (float value, int) { return (value > 0.05f ? "+" : "") + juce::String (std::abs (value) < 0.05f ? 0.0f : value, 1); })
+            .withValueFromStringFunction ([] (const juce::String& text) { return text.getFloatValue(); })));
+    const auto& gainOut = BaParameters::gainTubeOut;
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { gainOut.id, 8 }, gainOut.name, gainOut.initial, inOutAttributes));
     return layout;
 }
 
@@ -129,7 +141,8 @@ BaParameters::Values PluginProcessor::readBaParameters() const noexcept
         inputVoicing.voicing, inputVoicing.levelMatch,
         inputXfrmOut->load (std::memory_order_relaxed) >= 0.5f,
         tube.voicing, tube.levelMatch, outputTubeOut->load (std::memory_order_relaxed) >= 0.5f,
-        tubeAmount->load (std::memory_order_relaxed) };
+        tubeAmount->load (std::memory_order_relaxed), gainTubeVoicing.readAudio().voicing,
+        gainTubeOut->load (std::memory_order_relaxed) >= 0.5f };
 }
 
 juce::AudioProcessorParameter* PluginProcessor::getBypassParameter() const
@@ -145,7 +158,8 @@ CompressorParameters::Values PluginProcessor::readParameters() const noexcept
         release->load (std::memory_order_relaxed),
         makeup->load (std::memory_order_relaxed),
         juce::roundToInt (scFilter->load (std::memory_order_relaxed)),
-        fbff->load (std::memory_order_relaxed) };
+        fbff->load (std::memory_order_relaxed),
+        calibration->load (std::memory_order_relaxed) };
 }
 
 PluginProcessor::~PluginProcessor()
@@ -306,6 +320,11 @@ juce::String PluginProcessor::exportTubeVoicing() const
     return exportWorkbench (tubeVoicing.toJson(), "tube", "12BH7 cathode follower");
 }
 
+juce::String PluginProcessor::exportGainTubeVoicing() const
+{
+    return exportWorkbench (gainTubeVoicing.toJson(), "gainTube", "5670 / 6386 balanced gain cell");
+}
+
 juce::String PluginProcessor::exportWorkbench (juce::String text, const char* field, const char* stage) const
 {
     auto json = juce::JSON::parse (text);
@@ -329,6 +348,8 @@ void PluginProcessor::getStateInformation (juce::MemoryBlock& destData)
         { { "json", inputTransformerVoicing.toJson() } }), -1, nullptr);
     state.addChild (juce::ValueTree ("TUBE_VOICING",
         { { "json", tubeVoicing.toJson() } }), -1, nullptr);
+    state.addChild (juce::ValueTree ("GAIN_TUBE_VOICING",
+        { { "json", gainTubeVoicing.toJson() } }), -1, nullptr);
     if (auto xml = state.createXml())
         copyXmlToBinary (*xml, destData);
 }
@@ -354,6 +375,11 @@ void PluginProcessor::setStateInformation (const void* data, int sizeInBytes)
             if (! tube.isValid() || ! tubeVoicing.restoreJson (tube.getProperty ("json").toString()))
                 tubeVoicing.resetAll();
             state.removeChild (tube, nullptr);
+            // Sessions before the gain tube existed restore its defaults.
+            const auto gainTube = state.getChildWithName ("GAIN_TUBE_VOICING");
+            if (! gainTube.isValid() || ! gainTubeVoicing.restoreJson (gainTube.getProperty ("json").toString()))
+                gainTubeVoicing.resetAll();
+            state.removeChild (gainTube, nullptr);
             // The retired xfrmModel choice (2026-10-22 builds only) has no parameter now.
             state.removeChild (state.getChildWithProperty ("id", "xfrmModel"), nullptr);
             gainLink->beginStateRestore();

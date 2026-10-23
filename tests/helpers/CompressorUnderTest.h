@@ -28,6 +28,7 @@ public:
         else if (id == "makeup") values.makeupDb = value;
         else if (id == "fbff") values.fbffPercent = value;
         else if (id == "scFilter") values.scFilterMode = juce::roundToInt (value);
+        else if (id == "calibration") values.calibrationDb = value;
         else jassertfalse;
     }
 

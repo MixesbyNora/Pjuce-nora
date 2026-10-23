@@ -14,6 +14,7 @@ void BaSignalPath::prepare (double sampleRate, int maximumBlockSize,
     compressorBlock.setSize (2, MagneticAudio::capacity * factor);
     // The compressor runs at the internal rate; its time constants and sidechain
     // filters follow the rate it is prepared with.
+    compressor.setGainElement (gainElement (values));
     compressor.prepare (internalRate, compressorValues);
     inputTransformer.prepare (internalRate, ModuleSpike::vtb9046LineInputC(), 0.0,
         values.inputTransformerVoicing, values.inputVoicingLevelMatch);
@@ -133,6 +134,13 @@ VtbTransformerCore::Tube BaSignalPath::outputStage (const BaParameters::Values& 
     return { values.tubeVoicing, ! values.outputTubeOut, ! values.transformerOut,
         VtbOutputTransformer::driveDbFor (values.tubeAmountPercent) };
 }
+StereoCompressor::GainElement BaSignalPath::gainElement (const BaParameters::Values& values) noexcept
+{
+    const auto& v = values.gainTubeVoicing;
+    return { ! values.gainTubeOut,
+        { GainTubeVoicing::dspValue (v, GainTubeVoicing::tube) > 0.5 ? GainTube::Tube::ge6386 : GainTube::Tube::ge5670,
+          GainTubeVoicing::dspValue (v, GainTubeVoicing::gridLevel), GainTubeVoicing::dspValue (v, GainTubeVoicing::imbalance) * 0.01 } };
+}
 bool BaSignalPath::outputEngaged (const BaParameters::Values& values) noexcept
 {
     // The output stage is bypassed when both parts are out.
@@ -153,6 +161,7 @@ float BaSignalPath::process (juce::AudioBuffer<float>& buffer, int channels,
     LevelMeterPeaks* meters) noexcept
 {
     compressor.setParameters (compressorValues);
+    compressor.setGainElement (gainElement (values));
     outputTransformer.setExtraDriveDb (VtbOutputTransformer::driveDbFor (values.transformerAmountPercent));
     outputTransformer.setVoicing (values.transformerVoicing, values.voicingLevelMatch || values.tubeVoicingLevelMatch);
     outputTransformer.setTube (outputStage (values));

@@ -25,6 +25,8 @@ inline constexpr Specification makeup { "makeup", "Makeup", "dB", 0.0f, 24.0f, 0
 inline constexpr std::array specifications { input, threshold, attack, release, makeup };
 // Appended to the host layout separately to preserve all existing parameter indices.
 inline constexpr Specification fbff { "fbff", "FB/FF", "", 0.0f, 100.0f, 100.0f, 0.1f };
+// Level into the detector only (docs/GainTube.md); appended with version hint 8.
+inline constexpr Specification calibration { "calibration", "Calibration", "dB", -24.0f, 24.0f, 0.0f, 0.1f };
 inline constexpr double fbffSmoothingSeconds = 0.02;
 
 // Fixed, always-on program-dependent release; this is not a host parameter.
@@ -45,5 +47,6 @@ struct Values
     float makeupDb = makeup.defaultValue;
     int scFilterMode = 0;
     float fbffPercent = fbff.defaultValue;
+    float calibrationDb = calibration.defaultValue;
 };
 }

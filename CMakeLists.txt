@@ -161,6 +161,7 @@ set(SourceFiles
     source/VoicingPanel.h
     source/TransformerVoicing.h
     source/TubeVoicing.h
+    source/GainTubeVoicing.h
     source/TransformerMeasurement.h
     source/TransformerMeasurement.cpp
     source/TransformerMeasurementView.h
@@ -188,6 +189,8 @@ set(SourceFiles
     source/dsp/Biquad.h
     source/dsp/LowFrequencyMono.h
     source/dsp/LowFrequencyMono.cpp
+    source/dsp/GainTube.h
+    source/dsp/GainTube.cpp
     source/dsp/BaSignalPath.h
     source/dsp/BaSignalPath.cpp
     source/dsp/SidechainFilterSettings.h

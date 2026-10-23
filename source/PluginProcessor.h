@@ -42,10 +42,12 @@ public:
     TransformerVoicingState& getTransformerVoicing() noexcept { return transformerVoicing; }
     TransformerVoicingState& getInputTransformerVoicing() noexcept { return inputTransformerVoicing; }
     TubeVoicingState& getTubeVoicing() noexcept { return tubeVoicing; }
+    GainTubeVoicingState& getGainTubeVoicing() noexcept { return gainTubeVoicing; }
     // Workbench feedback JSON for the output (default) or input transformer.
     juce::String exportTransformerVoicing (bool inputStage = false) const;
-    // Workbench feedback JSON for the output tube.
+    // Workbench feedback JSON for the output tube and the gain tube.
     juce::String exportTubeVoicing() const;
+    juce::String exportGainTubeVoicing() const;
 
     // Maximum positive attenuation in the most recent block; safe for UI polling.
     float getGainReductionDb() const noexcept
@@ -90,12 +92,15 @@ private:
     const std::atomic<float>* inputXfrmOut = nullptr;
     const std::atomic<float>* outputTubeOut = nullptr;
     const std::atomic<float>* tubeAmount = nullptr;
+    const std::atomic<float>* calibration = nullptr;
+    const std::atomic<float>* gainTubeOut = nullptr;
     BaSignalPath signalPath;
     std::unique_ptr<GainLinkController> gainLink;
     std::atomic<float> currentGainReductionDb { 0.0f };
     LevelMeterPeaks levelPeaks;
     TransformerVoicingState transformerVoicing, inputTransformerVoicing;
     TubeVoicingState tubeVoicing;
+    GainTubeVoicingState gainTubeVoicing;
     juce::String exportWorkbench (juce::String json, const char* field, const char* stage) const;
 
     static_assert (std::atomic<float>::is_always_lock_free);

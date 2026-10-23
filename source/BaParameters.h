@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "TransformerVoicing.h"
 #include "TubeVoicing.h"
+#include "GainTubeVoicing.h"
 
 namespace BaParameters
 {
@@ -35,6 +36,8 @@ inline constexpr BoolSpecification inputXfrmOut { "inputXfrmOut", "Input XFRM", 
 inline constexpr BoolSpecification outputTubeOut { "outputTubeOut", "Output Tube", false };
 // The tube's own drive, mapped like Xfrm Amount.
 inline constexpr FloatSpecification tubeAmount { "tubeAmount", "Tube Amount", "%", 0.0f, 100.0f, 0.1f, 400.0f / 7.0f };
+// The compressor's vari-mu gain element; Out is the exact digital gain (docs/GainTube.md).
+inline constexpr BoolSpecification gainTubeOut { "gainTubeOut", "Gain Tube", false };
 // Amounts are drive only (-24 to +18 dB; 400/7 % is the calibrated 0 dB, the
 // default). Owner decision: the In/Out switches are the only bypass.
 inline constexpr FloatSpecification xfrmAmount { "xfrmAmount", "Xfrm Amount", "%", 0.0f, 100.0f, 0.1f, 400.0f / 7.0f };
@@ -70,6 +73,8 @@ struct Values
     bool tubeVoicingLevelMatch = false;
     bool outputTubeOut = BaParameters::outputTubeOut.initial;
     float tubeAmountPercent = tubeAmount.initial;
+    GainTubeVoicing::Values gainTubeVoicing;
+    bool gainTubeOut = BaParameters::gainTubeOut.initial;
 };
 
 void appendLayout (juce::AudioProcessorValueTreeState::ParameterLayout& layout);

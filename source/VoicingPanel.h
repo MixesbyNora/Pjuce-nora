@@ -11,8 +11,10 @@ class VoicingPanel : public juce::Component
 {
 public:
     using State = VoicingState<Schema>;
-    VoicingPanel (State& stateToUse, std::function<juce::String()> exportSettings, juce::String titleText, juce::String componentId)
-        : state (stateToUse)
+    // levelMatch false hides Match level, for stages whose gain is exact by design.
+    VoicingPanel (State& stateToUse, std::function<juce::String()> exportSettings, juce::String titleText, juce::String componentId,
+        bool levelMatch = true)
+        : state (stateToUse), showsMatch (levelMatch)
     {
         setComponentID (componentId);
         title.setText (titleText, juce::dontSendNotification);
@@ -39,6 +41,16 @@ public:
             slider.setRange (descriptor.minimum, descriptor.maximum, descriptor.step);
             slider.setSkewFactor (descriptor.skew);
             slider.setDoubleClickReturnValue (true, descriptor.defaultValue);
+            if (descriptor.choices != nullptr)
+            {
+                const auto names = juce::StringArray::fromTokens (descriptor.choices, "|", "");
+                slider.setTextValueSuffix ({});
+                slider.textFromValueFunction = [names, minimum = descriptor.minimum] (double value)
+                { return names[juce::roundToInt (value - minimum)]; };
+                slider.valueFromTextFunction = [names, minimum = descriptor.minimum] (const juce::String& text)
+                { return minimum + juce::jmax (0, names.indexOf (text.trim(), true)); };
+                slider.updateText();
+            }
             slider.onValueChange = [this]
             {
                 pasteError.clear();
@@ -80,7 +92,8 @@ public:
             refresh();
         };
         addAndMakeVisible (reference);
-        addAndMakeVisible (match);
+        addChildComponent (match);
+        match.setVisible (showsMatch);
         hint.setText ("Adjust one control, compare A/B, then copy settings with listening notes.\n\nLet edits and Match level settle before comparing. Disable matching for measurements.", juce::dontSendNotification);
         hint.setFont (juce::FontOptions (13.0f));
         hint.setJustificationType (juce::Justification::topLeft);
@@ -144,7 +157,7 @@ public:
             area.removeFromTop (6);
         }
         reference.setBounds (area.removeFromTop (28));
-        match.setBounds (area.removeFromTop (28));
+        if (showsMatch) match.setBounds (area.removeFromTop (28));
         area.removeFromTop (8);
         reset.setBounds (area.removeFromTop (28));
         area.removeFromTop (8);
@@ -176,13 +189,15 @@ private:
             label.setVisible (! show);
         for (auto& slider : sliders)
             slider.setVisible (! show);
-        for (auto* component : std::array<juce::Component*, 10> { &a, &b, &copySlot, &reset, &copy, &paste, &reference, &match, &hint, &status })
+        for (auto* component : std::array<juce::Component*, 9> { &a, &b, &copySlot, &reset, &copy, &paste, &reference, &hint, &status })
             component->setVisible (! show);
+        match.setVisible (showsMatch && ! show);
         if (measurementView != nullptr) measurementView->setVisible (show);
         voicingTab.setToggleState (! show, juce::dontSendNotification);
         measurementTab.setToggleState (show, juce::dontSendNotification);
     }
     State& state;
+    bool showsMatch = true;
     juce::Component* measurementView = nullptr;
     std::function<void()> refreshMeasurements;
     std::array<juce::Label, Schema::descriptors.size()> labels;

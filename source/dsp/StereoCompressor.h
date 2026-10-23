@@ -3,6 +3,7 @@
 #include "DbGainEnvelope.h"
 #include "SoftKneeGainComputer.h"
 #include "SidechainFilter.h"
+#include "GainTube.h"
 
 class StereoCompressor
 {
@@ -11,10 +12,38 @@ public:
     void setParameters (const CompressorParameters::Values& values) noexcept;
     // Returns the block's maximum reduction for metering; it does not feed back into DSP.
     float process (juce::AudioBuffer<float>& buffer, int numInputChannels) noexcept;
+    // The vari-mu gain element (docs/GainTube.md). Off (the default) is the exact
+    // digital gain; a change crossfades over 20 ms from the previous element.
+    struct GainElement
+    {
+        bool tube = false;
+        GainTube::Settings settings;
+        bool operator== (const GainElement& other) const noexcept
+        {
+            return tube == other.tube && settings.tube == other.settings.tube
+                && std::abs (settings.gridLevelDb - other.settings.gridLevelDb) < 1.0e-9 && std::abs (settings.imbalance - other.settings.imbalance) < 1.0e-12;
+        }
+    };
+    void setGainElement (GainElement) noexcept;
 
     float getGainReductionDb() const noexcept { return envelope.getGainReductionDb(); }
 
 private:
+    struct Element
+    {
+        GainElement settings;
+        std::array<GainTube::Cell, 2> cells;
+        void configure (GainElement) noexcept;
+        double render (std::size_t channel, double x, double reductionDb, double digitalGain, double makeupGain) const noexcept
+        {
+            return settings.tube ? cells[channel].process (x, reductionDb) * makeupGain : x * digitalGain;
+        }
+    };
+    Element active, next;
+    GainElement requested;
+    juce::SmoothedValue<float> elementFade;
+    bool fading = false;
+    juce::SmoothedValue<float> calibrationDb;
     SoftKneeGainComputer gainComputer;
     DbGainEnvelope envelope;
     SidechainFilter sidechainFilter;

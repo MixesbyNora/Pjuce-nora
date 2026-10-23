@@ -116,7 +116,8 @@ Digital IN (BA "IN")
   -> [ shared oversampled region, 4/2/1: one up/down; latency 78/48/11/0 samples
        at 44.1/48/96/192 kHz (relaxed linear-phase design, docs/OversamplingOptions.md) ]
        Input transformer (VTB9046, always in circuit)
-       -> Analog Input (compressor "Input") -> compressor -> Makeup
+       -> Analog Input (compressor "Input") -> compressor (gain tube, Calibration:
+          docs/GainTube.md) -> Makeup
        -> Output stage: 12BH7 follower (Output Tube, Tube Amount) + VTB1148
           (Output XFRM, Xfrm Amount), solved jointly (docs/TubeStage.md, added 2026-10-23)
   -> LF Mono -> Digital OUT (BA "OUT") -> Mix / Delta / Monitor / bypass

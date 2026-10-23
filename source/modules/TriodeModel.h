@@ -1,5 +1,6 @@
 #pragma once
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 namespace ModuleSpike
@@ -33,9 +34,40 @@ inline TriodeCurrent triodeCurrent (const TriodeParameters& p, double va, double
     const auto slope = 2 * p.ex * power / e1 / p.kg1;
     return { 2 * power / p.kg1, slope * (softplus / p.kp - sigmoid * vg * va * va / (s * s * s)), slope * va * sigmoid / s };
 }
+// Remote-cutoff (variable-mu) triode, such as the 6386: its variable-pitch grid
+// behaves like sections in parallel with different cutoffs. Each section is a
+// Koren triode and the currents add (docs/GainTube.md).
+struct VariableMuParameters
+{
+    std::array<TriodeParameters, 3> sections {};
+    int count = 1;
+};
+inline TriodeCurrent variableMuCurrent (const VariableMuParameters& p, double va, double vg) noexcept
+{
+    TriodeCurrent sum;
+    for (int i = 0; i < p.count; ++i)
+    {
+        const auto c = triodeCurrent (p.sections[static_cast<std::size_t> (i)], va, vg);
+        sum.ia += c.ia; sum.dVa += c.dVa; sum.dVg += c.dVg;
+    }
+    return sum;
+}
 // Fits to the digitized average plate families (task tube-fit, docs/TubeStage.md).
 // RCA 12BH7-A tentative data, Mar 1955, PDF p4; each triode unit.
 inline TriodeParameters rca12bh7a() noexcept { return { 23.43635165, 1.102590463, 389.1440358, 107.4446752, 5309.767147 }; }
 // GE GL-5751, ETX-245A, Jun 1952, p2; each triode unit.
 inline TriodeParameters ge5751() noexcept { return { 87.40702906, 1.0690516, 749.109422, 409.6063436, 4508.165482 }; }
+// Gain-control tubes (task gain-tube-fit, docs/GainTube.md).
+// GE 5670, ET-T1083A (Aug 1956), p5 plate family; each section.
+inline TriodeParameters ge5670() noexcept { return { 40.21453522, 1.659496752, 833.5216629, 118.6584674, 203.6156978 }; }
+// GE 6386, ET-T1113 (Aug 1954), p4 transfer family plus the p2 anchors; each
+// section. Two sections; the sharp one sits at the fit's mu bound of 60.
+inline VariableMuParameters ge6386() noexcept
+{
+    VariableMuParameters p;
+    p.count = 2;
+    p.sections[0] = { 60.0, 1.627518423, 484.1414682, 47.05430135, 941.993712 };
+    p.sections[1] = { 4.310000073, 1.627518423, 111976.2989, 47.05430135, 941.993712 };
+    return p;
+}
 }

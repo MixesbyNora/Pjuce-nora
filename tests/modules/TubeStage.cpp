@@ -2,6 +2,8 @@
 #include "TubeCouplingCircuit.h"
 #include "TubeCurveData.h"
 #include <dsp/VtbTransformerCore.h>
+#include <dsp/GainTube.h>
+#include <PluginProcessor.h>
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <catch2/catch_test_macros.hpp>
 #include <algorithm>
@@ -167,6 +169,131 @@ void writeFit (const juce::File& root)
         std::cout << std::setprecision (10) << tube.id << " { " << p.mu << ", " << p.ex << ", " << p.kg1 << ", " << p.kp << ", " << p.kvb << " } rms " << rms << " V" << std::endl;
     }
 }
+// ---- Gain-control tubes (docs/GainTube.md): task gain-tube-fit ----
+// Transfer points were read at fixed grid voltage, so their error is in current:
+// relative, floored at 0.25 mA so tail readings do not dominate.
+double transferError (const std::function<double (double, double)>& current, std::span<const Point> points)
+{
+    double sum = 0;
+    for (const auto& p : points)
+        sum += std::pow ((current (p.va, p.vg) * 1000 - p.ma) / (p.ma + 0.25), 2);
+    return std::sqrt (sum / static_cast<double> (points.size()));
+}
+VariableMuParameters variableMuFrom (const std::vector<double>& x, int count)
+{
+    VariableMuParameters p;
+    p.count = count;
+    for (int i = 0; i < count; ++i)
+        p.sections[static_cast<std::size_t> (i)] = { std::exp (x[static_cast<std::size_t> (2 * i)]), std::exp (x[static_cast<std::size_t> (2 * count)]),
+            std::exp (x[static_cast<std::size_t> (2 * i + 1)]), std::exp (x[static_cast<std::size_t> (2 * count + 1)]), std::exp (x[static_cast<std::size_t> (2 * count + 2)]) };
+    return p;
+}
+// Sections share ex, kp and kvb (one cathode and plate); each has its own mu and kg1.
+// Fitted to the transfer family plus the sheet's anchors: Ia and gm at the class A1
+// point, and gm = 100 uS at about -16 V (100 V plate), the remote-cutoff tail.
+double variableMuCost (const VariableMuParameters& p)
+{
+    // Keep every section a plausible triode (mu between 2 and 60); unbounded fits
+    // drift to a section with no plate-voltage dependence at all.
+    for (int i = 0; i < p.count; ++i)
+        if (p.sections[static_cast<std::size_t> (i)].mu < 2 || p.sections[static_cast<std::size_t> (i)].mu > 60) return 1.0e6;
+    const auto current = [&p] (double va, double vg) { return variableMuCurrent (p, va, vg).ia; };
+    const auto curves = transferError (current, TubeCurves::ge6386Transfer);
+    const auto& t = TubeCurves::ge6386Typical[0];
+    const auto atTypical = variableMuCurrent (p, t.va, t.vg);
+    const auto tail = variableMuCurrent (p, TubeCurves::ge6386PlateFor100uS, TubeCurves::ge6386GridFor100uS);
+    const auto anchors = 3 * std::pow (atTypical.ia * 1000 / t.ma - 1, 2) + 3 * std::pow (std::log (atTypical.dVg * 1000 / t.gmMs), 2)
+        + 3 * std::pow (std::log (std::max (tail.dVg, 1.0e-9) / 100.0e-6), 2);
+    return std::sqrt (curves * curves + anchors);
+}
+VariableMuParameters fitVariableMu (int count, std::ofstream& search)
+{
+    const auto cost = [count, &search] (const std::vector<double>& x)
+    {
+        const auto value = variableMuCost (variableMuFrom (x, count));
+        search << "6386," << count;
+        for (auto v : x) search << ',' << std::exp (v);
+        search << ',' << value << '\n';
+        return value;
+    };
+    // Starts: sections spread from the high-mu (sharp) to the low-mu (remote) end.
+    std::vector<std::pair<double, std::vector<double>>> starts;
+    for (double spread : { 2.0, 4.0, 8.0 })
+        for (double kp : { 50.0, 200.0, 600.0 })
+            for (double ex : { 1.2, 1.4 })
+            {
+                std::vector<double> x;
+                for (int i = 0; i < count; ++i)
+                {
+                    const auto mu = 20.0 / std::pow (spread, static_cast<double> (i) / std::max (1, count - 1));
+                    x.push_back (std::log (mu));
+                    x.push_back (std::log (1000.0 * (1 + i)));
+                }
+                x.push_back (std::log (ex)); x.push_back (std::log (kp)); x.push_back (std::log (300.0));
+                starts.emplace_back (cost (x), x);
+            }
+    std::sort (starts.begin(), starts.end(), [] (const auto& a, const auto& b) { return a.first < b.first; });
+    std::vector<double> best;
+    double bestCost = 1.0e30;
+    for (std::size_t start = 0; start < 4; ++start)
+    {
+        auto x = starts[start].second;
+        for (int restart = 0; restart < 4; ++restart)
+            x = nelderMead (cost, x, std::vector<double> (x.size(), 0.3), 3000);
+        const auto value = cost (x);
+        std::cout << "6386 sections " << count << " start " << start << " cost " << value << std::endl;
+        if (value < bestCost) { bestCost = value; best = x; }
+    }
+    return variableMuFrom (best, count);
+}
+void writeGainTubeFit (const juce::File& root)
+{
+    auto search = csv (root, "gain_tube_fit_search.csv", "tube,sections,parameters...,cost");
+    auto summary = csv (root, "gain_tube_fit.csv", "tube,model,sections,section,mu,ex,kg1,kp,kvb,transfer_rms_relative,plate_rms_volts,cost");
+    auto anchors = csv (root, "gain_tube_anchors.csv", "tube,model,point,plate_volts,grid_volts,published,model");
+    auto transfer = csv (root, "gain_tube_transfer.csv", "tube,model,plate_volts,grid_volts,published_ma,model_ma");
+    // 5670: an ordinary medium-mu triode; Koren fitted to its plate family as before.
+    const auto p5670 = fitTube ("5670", TubeCurves::ge5670, TubeCurves::ge5670Typical[0], search);
+    const auto koren = [&p5670] (double va, double vg) { return triodeCurrent (p5670, va, vg).ia; };
+    summary << "5670,koren,1,1," << p5670.mu << ',' << p5670.ex << ',' << p5670.kg1 << ',' << p5670.kp << ',' << p5670.kvb << ','
+            << transferError (koren, TubeCurves::ge5670Transfer) << ',' << voltageRms (p5670, TubeCurves::ge5670) << ",\n";
+    for (const auto& p : TubeCurves::ge5670Transfer)
+        transfer << "5670,koren," << p.va << ',' << p.vg << ',' << p.ma << ',' << koren (p.va, p.vg) * 1000 << '\n';
+    {
+        const auto& t = TubeCurves::ge5670Typical[0];
+        const auto c = triodeCurrent (p5670, t.va, t.vg);
+        anchors << "5670,koren,Ia mA," << t.va << ',' << t.vg << ',' << t.ma << ',' << c.ia * 1000 << '\n'
+                << "5670,koren,gm mS," << t.va << ',' << t.vg << ',' << t.gmMs << ',' << c.dVg * 1000 << '\n'
+                << "5670,koren,mu," << t.va << ',' << t.vg << ',' << t.mu << ',' << c.dVg / c.dVa << '\n';
+    }
+    // 6386: sums of one to three sections; the best is recorded.
+    for (int count : { 1, 2, 3 })
+    {
+        const auto p = fitVariableMu (count, search);
+        const auto current = [&p] (double va, double vg) { return variableMuCurrent (p, va, vg).ia; };
+        const auto model = "sections-" + std::to_string (count);
+        for (int i = 0; i < count; ++i)
+        {
+            const auto& s = p.sections[static_cast<std::size_t> (i)];
+            summary << "6386," << model << ',' << count << ',' << i + 1 << ',' << s.mu << ',' << s.ex << ',' << s.kg1 << ',' << s.kp << ',' << s.kvb << ','
+                    << transferError (current, TubeCurves::ge6386Transfer) << ",," << variableMuCost (p) << '\n';
+        }
+        for (const auto& pt : TubeCurves::ge6386Transfer)
+            transfer << "6386," << model << ',' << pt.va << ',' << pt.vg << ',' << pt.ma << ',' << current (pt.va, pt.vg) * 1000 << '\n';
+        const auto& t = TubeCurves::ge6386Typical[0];
+        const auto c = variableMuCurrent (p, t.va, t.vg);
+        const auto tail = variableMuCurrent (p, TubeCurves::ge6386PlateFor100uS, TubeCurves::ge6386GridFor100uS);
+        anchors << "6386," << model << ",Ia mA," << t.va << ',' << t.vg << ',' << t.ma << ',' << c.ia * 1000 << '\n'
+                << "6386," << model << ",gm mS," << t.va << ',' << t.vg << ',' << t.gmMs << ',' << c.dVg * 1000 << '\n'
+                << "6386," << model << ",mu," << t.va << ',' << t.vg << ',' << t.mu << ',' << c.dVg / c.dVa << '\n'
+                << "6386," << model << ",gm uS," << TubeCurves::ge6386PlateFor100uS << ',' << TubeCurves::ge6386GridFor100uS << ",100," << tail.dVg * 1.0e6 << '\n';
+        std::cout << "6386 " << model << " transfer rms " << transferError (current, TubeCurves::ge6386Transfer) << " typical " << c.ia * 1000 << " mA gm " << c.dVg * 1000 << " tail gm " << tail.dVg * 1.0e6 << " uS" << std::endl;
+        std::cout << std::setprecision (10);
+        for (int i = 0; i < count; ++i) { const auto& s = p.sections[static_cast<std::size_t> (i)]; std::cout << "  { " << s.mu << ", " << s.ex << ", " << s.kg1 << ", " << s.kp << ", " << s.kvb << " }" << std::endl; }
+    }
+    std::cout << "5670 { " << p5670.mu << ", " << p5670.ex << ", " << p5670.kg1 << ", " << p5670.kp << ", " << p5670.kvb << " } transfer rms " << transferError (koren, TubeCurves::ge5670Transfer) << std::endl;
+}
+
 // ---- Step 2: coupling test ----
 using namespace TubeCoupling;
 constexpr double couplingRate = 384000; // 8x 48 kHz; every path runs here, so differences are coupling only.
@@ -389,6 +516,123 @@ void writeTubeAliasing (const juce::File& root)
             }
 }
 
+// ---- Gain tube report (docs/GainTube.md): task gain-tube-report ----
+void writeGainTubeReport (const juce::File& root)
+{
+    using GainTube::Tube;
+    // 1. Distortion of the cell against gain reduction and level (memoryless, so
+    //    frequency-independent): one period, 1024 points.
+    auto thd = csv (root, "gain_tube_thd.csv", "tube,grid_level_db,level_dbu,gain_reduction_db,gain_error_db,thd_db,thd_percent,h2_dbc,h3_dbc,h5_dbc");
+    for (auto tube : { Tube::ge5670, Tube::ge6386 })
+        for (double gridDb : { -12.0, 0.0, 12.0 })
+            for (double dbu : { -10.0, 0.0, 4.0, 10.0, 18.0 })
+                for (double reduction = 0; reduction <= 30.01; reduction += 2)
+                {
+                    GainTube::Cell cell;
+                    cell.configure ({ tube, gridDb, 0.0 });
+                    const auto peak = std::pow (10.0, (dbu - 18.0) / 20.0);
+                    constexpr int count = 1024;
+                    std::array<std::complex<double>, 12> h {};
+                    for (int n = 0; n < count; ++n)
+                    {
+                        const auto phase = 2.0 * ShuntResearch::pi * n / count;
+                        const auto y = cell.process (peak * std::sin (phase), reduction);
+                        for (std::size_t k = 0; k < h.size(); ++k) h[k] += y * std::polar (1.0, -static_cast<double> (k) * phase) * (2.0 / count);
+                    }
+                    double sum = 0;
+                    for (std::size_t k = 2; k < h.size(); ++k) sum += std::norm (h[k]);
+                    const auto t = 10.0 * std::log10 (sum / std::norm (h[1]) + 1.0e-30);
+                    const auto rel = [&h] (std::size_t k) { return 20.0 * std::log10 (std::abs (h[k]) / std::abs (h[1]) + 1.0e-30); };
+                    thd << (tube == Tube::ge5670 ? "5670" : "6386") << ',' << gridDb << ',' << dbu << ',' << reduction << ','
+                        << 20.0 * std::log10 (std::abs (h[1]) / peak) + reduction << ',' << t << ',' << 100.0 * std::pow (10.0, t / 20.0) << ','
+                        << rel (2) << ',' << rel (3) << ',' << rel (5) << '\n';
+                }
+    // 2. Aliasing at a fixed GR: steep oversampling around the cell against 64x,
+    //    the same method as the transformer and output stage.
+    auto alias = csv (root, "gain_tube_aliasing.csv", "tube,factor,gain_reduction_db,peak_dbfs,requested_hz,nonharmonic_dbc_audio,difference_to_64x_band_dbr");
+    for (auto tube : { Tube::ge5670, Tube::ge6386 })
+        for (double reduction : { 0.0, 10.0, 20.0 })
+            for (double requested : { 1000.0, 7001.0, 13001.0, 19001.0 })
+            {
+                using namespace ShuntResearch;
+                const auto bin = static_cast<int> (2 * std::round ((requested * sineSize / rate - 1) / 2) + 1);
+                const auto renderAt = [&] (int factor)
+                {
+                    juce::dsp::Oversampling<double> filters { 1 };
+                    filters.clearOversamplingStages();
+                    if (factor == 1) filters.addDummyOversamplingStage();
+                    std::size_t index = 0;
+                    for (int stage = 1; stage < factor; stage *= 2, ++index)
+                    {
+                        const auto up = index < MagneticAudio::upWidths.size() ? MagneticAudio::upWidths[index] : 0.08;
+                        const auto down = index < MagneticAudio::downWidths.size() ? MagneticAudio::downWidths[index] : 0.08;
+                        filters.addOversamplingStage (juce::dsp::Oversampling<double>::filterHalfBandFIREquiripple, static_cast<float> (up), -120.0f, static_cast<float> (down), -120.0f);
+                    }
+                    filters.setUsingIntegerLatency (false); filters.initProcessing (ModuleResearch::capacity);
+                    GainTube::Cell cell;
+                    cell.configure ({ tube, 0.0, 0.0 });
+                    constexpr int warm = 8192;
+                    const auto count = warm + static_cast<int> (sineSize) + 1024;
+                    std::vector<double> raw (static_cast<std::size_t> (count));
+                    juce::AudioBuffer<double> block (1, ModuleResearch::capacity);
+                    for (int start = 0; start < count; start += ModuleResearch::capacity)
+                    {
+                        for (int n = 0; n < ModuleResearch::capacity; ++n)
+                            block.setSample (0, n, 0.5 * std::sin (2 * pi * bin * static_cast<double> (start + n) / sineSize));
+                        juce::dsp::AudioBlock<double> base (block);
+                        auto high = filters.processSamplesUp (base);
+                        for (std::size_t n = 0; n < high.getNumSamples(); ++n)
+                            high.setSample (0, static_cast<int> (n), cell.process (high.getSample (0, static_cast<int> (n)), reduction));
+                        filters.processSamplesDown (base);
+                        for (int n = 0; n < ModuleResearch::capacity && start + n < count; ++n) raw[static_cast<std::size_t> (start + n)] = block.getSample (0, n);
+                    }
+                    return MagneticValidation::alignTrace (raw, warm, filters.getLatencyInSamples(), static_cast<int> (sineSize)).samples;
+                };
+                const auto reference = renderAt (64);
+                for (int factor : { 1, 2, 4, 8 })
+                {
+                    const auto output = renderAt (factor);
+                    const auto bands = split (output, output, bin);
+                    double fundamental = 0, nonHarmonic = 0;
+                    for (const auto& b : bands) { fundamental += b.fundamental; nonHarmonic += b.nonHarmonic; }
+                    alias << (tube == Tube::ge5670 ? "5670" : "6386") << ',' << factor << ',' << reduction << ",-6," << requested << ','
+                          << powerDb (nonHarmonic / fundamental) << ',' << bandDifference (output, reference) << '\n';
+                }
+                alias.flush();
+                std::cout << "gain tube alias " << static_cast<int> (tube) << ' ' << reduction << ' ' << requested << std::endl;
+            }
+    // 3. Whole plugin CPU, gain tube in and out (defaults otherwise), 48 kHz stereo.
+    auto cpu = csv (root, "gain_tube_cpu.csv", "tube,threshold_db,ns_per_host_sample_stereo,percent_core_48k");
+    for (const auto& [tubeIn, choice] : { std::pair { false, 0.0f }, std::pair { true, 0.0f }, std::pair { true, 1.0f } })
+    {
+        PluginProcessor processor;
+        for (auto* p : processor.getParameters())
+            if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
+            {
+                if (ranged->paramID == "gainTubeOut") ranged->setValueNotifyingHost (tubeIn ? 0.0f : 1.0f);
+                if (ranged->paramID == "threshold") ranged->setValueNotifyingHost (ranged->convertTo0to1 (-30.0f));
+            }
+        processor.getGainTubeVoicing().setCurrent ({ choice });
+        processor.prepareToPlay (48000.0, 256);
+        juce::AudioBuffer<float> audio (2, 256);
+        juce::MidiBuffer midi;
+        const auto block = [&] (int b)
+        {
+            for (int n = 0; n < 256; ++n)
+                for (int ch = 0; ch < 2; ++ch)
+                    audio.setSample (ch, n, 0.3f * static_cast<float> (std::sin (2 * ShuntResearch::pi * 110.0 * (b * 256 + n) / 48000.0)));
+            processor.processBlock (audio, midi);
+        };
+        for (int b = 0; b < 200; ++b) block (b);
+        const auto begin = std::chrono::steady_clock::now();
+        constexpr int blocks = 2000;
+        for (int b = 0; b < blocks; ++b) block (b);
+        const auto ns = 1.0e9 * std::chrono::duration<double> (std::chrono::steady_clock::now() - begin).count() / (blocks * 256.0);
+        cpu << (tubeIn ? (choice > 0.5f ? "6386" : "5670") : "out") << ",-30," << ns << ',' << 100.0 * ns * 48000.0 * 1.0e-9 << '\n';
+        std::cout << "gain tube cpu " << tubeIn << ' ' << choice << ' ' << 100.0 * ns * 48000.0 * 1.0e-9 << '%' << std::endl;
+    }
+}
+
 void writeWav (const juce::File& path, const std::array<std::vector<double>, 2>& audio, double gain)
 {
     juce::AudioBuffer<float> buffer (2, static_cast<int> (audio[0].size()));
@@ -523,12 +767,14 @@ TEST_CASE ("Export tube stage reports", "[tube-report]")
 {
     const auto* taskValue = std::getenv ("LUMIERE_MODULE_TASK");
     const std::string task = taskValue ? taskValue : "";
-    if (task != "tube-fit" && task != "tube-coupling" && task != "tube-coupling-cpu" && task != "tube-aliasing") { SUCCEED ("Explicit tube report opt-in"); return; }
+    if (task != "tube-fit" && task != "tube-coupling" && task != "tube-coupling-cpu" && task != "tube-aliasing" && task != "gain-tube-fit" && task != "gain-tube-report") { SUCCEED ("Explicit tube report opt-in"); return; }
     const auto* directory = std::getenv ("LUMIERE_MODULE_REPORT_DIR"); REQUIRE (directory != nullptr);
     const juce::File root (juce::String::fromUTF8 (directory)); REQUIRE (root.createDirectory().wasOk());
     if (task == "tube-fit") writeFit (root);
     else if (task == "tube-coupling-cpu") writeCouplingCpu (root);
     else if (task == "tube-aliasing") writeTubeAliasing (root);
+    else if (task == "gain-tube-fit") writeGainTubeFit (root);
+    else if (task == "gain-tube-report") writeGainTubeReport (root);
     else { writeCoupling (root); writeCouplingRenders (root); }
 }
 

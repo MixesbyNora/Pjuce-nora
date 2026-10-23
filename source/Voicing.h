@@ -18,6 +18,7 @@ struct Descriptor
     const char* label;
     const char* unit;
     double minimum, maximum, step, defaultValue, skew;
+    const char* choices = nullptr; // "A|B|...": names for the integer steps of a choice.
 };
 using Word = std::uint64_t;
 constexpr Word steps (const Descriptor& d) noexcept
