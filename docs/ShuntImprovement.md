@@ -584,3 +584,89 @@ LUMIERE_MODULE_REPORT_DIR="$PWD/docs/measurements/shunt_improvement" LUMIERE_MOD
 - The CPU and latency budgets, before Step 4 (solver cost).
 
 Stop at the Step 3 gate.
+
+## Step 3b — onset ladder
+
+Owner request: C rendered with 1% THD at about +23, +20, +17 and +14 dBu
+(20 Hz), each checked against the published data.
+
+- **How each rung is set.** Only the flux capacity moves, with (saturation,
+  knee) × s solved by bisection. Everything below onset is unchanged.
+- **Range change.** The `saturation` descriptor lower bound was widened from
+  0.1 to 0.01.
+- **Consistency rule.** The same as the Step 3 onset choice: RMS error over all
+  32 targets within 0.25 dB of the fitted C.
+
+[step3_ladder.csv](measurements/shunt_improvement/step3_ladder.csv),
+[step3_ladder_fit.csv](measurements/shunt_improvement/step3_ladder_fit.csv),
+[step3_ladder_level_sweep.csv](measurements/shunt_improvement/step3_ladder_level_sweep.csv),
+[step3_ladder_audio/](measurements/shunt_improvement/step3_ladder_audio/).
+
+**MEASUREMENT:**
+
+| Rung | s | 1% THD 20 Hz | 1% THD 50 Hz | RMS error | Δ vs C | 20 Hz +7.5 dBu | 50 Hz +16 dBu bound | Consistent |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| +23 dBu | 0.0991 | +23.0 | +34.4 | 3.07 dB | +0.00 | +1.6 dB | +2.3 dB | yes |
+| +20 dBu | 0.0702 | +20.0 | +31.4 | 3.14 dB | +0.07 | +2.3 dB | +3.1 dB | yes |
+| +17 dBu | 0.0497 | +17.0 | +28.5 | 3.32 dB | +0.24 | +3.9 dB | +4.9 dB | yes (at the limit) |
+| +14 dBu | 0.0352 | +14.0 | +25.5 | 3.81 dB | +0.74 | +6.8 dB | +8.3 dB | **no** |
+
+**+17 dBu is the earliest onset the published data supports.** At +14 dBu, the
+model is already clearly more distorted than the published VTB1148 at 20 Hz,
++7.5 dBu, and over the 50 Hz, +16 dBu bound.
+
+**MEASUREMENT — how audible the rung choice is in the renders.** Residual of
+each rung against the +23 dBu rung at the same drive, after gain match. This
+removes the shared linear LF phase.
+
+| Material, drive | +20 vs +23 | +17 vs +23 | +14 vs +23 |
+|---|---:|---:|---:|
+| bass, +0 dB | −99 dB | −90 dB | −82 dB |
+| bass, +12 dB | −74 dB | −64 dB | −55 dB |
+| bass, +18 dB | −59 dB | −47 dB | −39 dB |
+| drums, +12 dB | −56 dB | −43 dB | −36 dB |
+| drums, +18 dB | −40 dB | −34 dB | −31 dB |
+| log sweep, +18 dB | −50 dB | −40 dB | −35 dB |
+
+At nominal level, all rungs are identical for practical purposes. The
+differences only appear when pushed: mostly at +18 dB, and on drums from
++12 dB.
+
+The synthetic bass notes are 55–82 Hz. At those frequencies onset sits roughly
+11–14 dB later than at 20 Hz. Real material with content below 50 Hz will show
+the differences sooner.
+
+Every render reported zero solver failures, and C used 5–6 iterations per sample.
+The ladder export passed 1473 checks. The three Debug plugin targets and Tests
+built with no warnings. Debug and Release suites passed 159/159 each. Reproduce:
+
+```bash
+LUMIERE_MODULE_REPORT_DIR="$PWD/docs/measurements/shunt_improvement" LUMIERE_MODULE_TASK=shunt-step3-ladder Builds/Release/Tests "Export VTB1148 shunt calibration"
+```
+
+**DECISION (owner, after listening):** the **+17 dBu rung**. It is the earliest
+onset the published data supports.
+
+The chosen values are recorded as `vtb1148OutputC()` in
+[TransformerModule.h](../source/modules/TransformerModule.h), for use with
+`Variant::play3Outer` and `Topology::shunt`:
+
+| Term | Value |
+|---|---:|
+| Drive calibration | −26.257 dB |
+| Saturation | 0.04969 |
+| Knee | 0.09938 |
+| Width | 0.008140 |
+| Memory | 0.8813 |
+| Asymmetry | 0.03162 |
+| Loss / source / load | 0.016 / 0.01 Ω / 34 617 Ω (thesis circuit) |
+
+These give 1% THD at +17 dBu at 20 Hz and +28.5 dBu at 50 Hz, with 3.32 dB RMS
+error over the 32 published targets. A `[shunt-calibration]` test pins both values.
+
+**OPEN:**
+- The CPU and latency budgets, before Step 4 (solver cost).
+- Which load the live stage should assume: the thesis 100 kΩ analyzer load
+  (34.6 kΩ referred), or the datasheet 600 Ω (208 Ω referred, about −0.5 dB
+  insertion loss).
+- H5 remains +12 dB high at 20 Hz/−38 dBu.

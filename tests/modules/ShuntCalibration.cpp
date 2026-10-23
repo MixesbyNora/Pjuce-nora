@@ -5,6 +5,7 @@
 #include <future>
 #include <iomanip>
 #include <iostream>
+#include <sstream>
 
 // Step 2: calibrate the shunt prototype to published VTB1148 data. Only
 // parameter values change here; curve, circuit and solver are untouched.
@@ -594,6 +595,72 @@ void step3Report (const juce::File& root)
 }
 }
 
+namespace
+{
+// Onset ladder for C: move only the flux capacity, (saturation, knee) x s, so
+// everything below onset is unchanged, and solve s for a 1% THD level at 20 Hz.
+void onsetLadderReport (const juce::File& root)
+{
+    // Fitted C values from step3_parameters.csv.
+    std::ifstream fitted (root.getChildFile ("step3_parameters.csv").getFullPathName().toStdString()); REQUIRE (fitted.good());
+    std::string line; std::vector<double> c;
+    while (std::getline (fitted, line))
+        if (line.starts_with ("C,"))
+        {
+            std::istringstream stream (line.substr (2)); std::string value;
+            while (std::getline (stream, value, ',')) c.push_back (std::stod (value));
+        }
+    REQUIRE (c.size() >= 6);
+    // Columns: drive, saturation, knee, width, memory, asymmetry, ...
+    const std::vector<double> shape { c[0], std::log (c[2] / c[1]), std::log (c[3]), c[4] };
+    const auto asymmetry = c[5];
+    const auto all = step3Targets();
+    const auto baseline = rmsError (Variant::play3Outer, fromStep3 (shape, asymmetry, c[1]), all);
+
+    auto ladder = csv (root, "step3_ladder.csv", "rung,target_thd1_20hz_dbu,onset_scale,saturation,knee,thd1_20hz_dbu,thd1_50hz_dbu,rms_error_db_all_targets,rms_change_db,err_g16_p6_db,err_g16_p7_5_db,err_g16_50_p16_db,consistent_with_published");
+    auto fitOut = csv (root, "step3_ladder_fit.csv", fitHeader);
+    std::vector<Fit> rungs;
+    for (double target : { 23.0, 20.0, 17.0, 14.0 })
+    {
+        // 1% level falls as s falls (about 6 dB per halving); bisect in log s.
+        double lo = std::log (0.01), hi = std::log (1.0);
+        for (int iteration = 0; iteration < 30; ++iteration)
+        {
+            const auto mid = 0.5 * (lo + hi);
+            const auto level = onePercentLevel (fromStep3 (shape, asymmetry, std::exp (mid)), 20);
+            if (std::isnan (level) || level > target) hi = mid; else lo = mid;
+        }
+        const auto s = std::exp (0.5 * (lo + hi));
+        const auto p = fromStep3 (shape, asymmetry, s);
+        REQUIRE (inDescriptorRange (p));
+        const auto values = measureTargets (Variant::play3Outer, p, all);
+        double sum = 0, g6 = 0, g75 = 0, g50 = 0;
+        for (std::size_t i = 0; i < all.size(); ++i)
+        {
+            const auto error = errorDb (all[i], modelValue (all[i], values[i]));
+            sum += error * error;
+            const std::string id = all[i].id;
+            if (id == "g16-p6") g6 = error;
+            if (id == "g16-p7.5") g75 = error;
+            if (id == "g16-50-p16") g50 = error;
+        }
+        const auto error = std::sqrt (sum / static_cast<double> (all.size()));
+        // Same rule as the Step 3 onset choice: within 0.25 dB of the fitted C.
+        const auto consistent = error <= baseline + 0.25;
+        const auto label = "C-onset" + std::to_string (static_cast<int> (target)) + "dBu";
+        ladder << label << ',' << target << ',' << s << ',' << p.saturation << ',' << p.knee << ',' << onePercentLevel (p, 20) << ',' << onePercentLevel (p, 50) << ','
+               << error << ',' << error - baseline << ',' << g6 << ',' << g75 << ',' << g50 << ',' << consistent << '\n';
+        ladder.flush();
+        rungs.push_back ({ Variant::play3Outer, p, error, label });
+        std::cout << "vtb1148 ladder " << label << " s " << s << " error " << error << std::endl;
+    }
+    writeFitRows (fitOut, rungs, all);
+    REQUIRE (ladder.good()); REQUIRE (fitOut.good());
+    writeLevelSweep (root, "step3_ladder_level_sweep.csv", rungs);
+    writeRenders (root, "step3_ladder_audio", "step3_ladder_renders.csv", rungs);
+}
+}
+
 TEST_CASE ("Integer-period harmonic measurement recovers a known transfer", "[shunt-calibration]")
 {
     // A near-linear module at moderate level: unity small-signal gain, no failures,
@@ -622,13 +689,23 @@ TEST_CASE ("Variant C reduces to A without memory and makes even harmonics only 
     CHECK (symmetric.failures == 0); CHECK (biased.failures == 0);
 }
 
+TEST_CASE ("Chosen VTB1148 C calibration keeps its +17 dBu onset and published fit", "[shunt-calibration]")
+{
+    const auto p = vtb1148OutputC();
+    CHECK (inDescriptorRange (p));
+    CHECK (std::abs (onePercentLevel (p, 20) - 17) < 0.05);
+    // Step 3b: 3.32 dB RMS over all 32 published targets.
+    CHECK (std::abs (rmsError (Variant::play3Outer, p, step3Targets()) - 3.3169) < 0.01);
+}
+
 TEST_CASE ("Export VTB1148 shunt calibration", "[shunt-report]")
 {
     const auto* taskValue = std::getenv ("LUMIERE_MODULE_TASK");
     const std::string task = taskValue ? taskValue : "";
-    if (task != "shunt-step2" && task != "shunt-step3") { SUCCEED ("Explicit shunt calibration opt-in"); return; }
+    if (task != "shunt-step2" && task != "shunt-step3" && task != "shunt-step3-ladder") { SUCCEED ("Explicit shunt calibration opt-in"); return; }
     const auto* directory = std::getenv ("LUMIERE_MODULE_REPORT_DIR"); REQUIRE (directory != nullptr);
     const juce::File root (juce::String::fromUTF8 (directory)); REQUIRE (root.createDirectory().wasOk());
     if (task == "shunt-step2") calibrationReport (root);
-    else step3Report (root);
+    else if (task == "shunt-step3") step3Report (root);
+    else onsetLadderReport (root);
 }

@@ -169,7 +169,8 @@ not a source resistor; the application circuit is a low-impedance driver into
 
 A retired; new variant C (hysteresis before one saturating curve, with
 polarity asymmetry). Reported in [ShuntImprovement.md](ShuntImprovement.md).
-HF roll-off remains on hold (no published VTB1148 HF data).
+HF roll-off remains on hold (no published VTB1148 HF data). Owner chose the
++17 dBu onset rung (Step 3b); values are `vtb1148OutputC()` in TransformerModule.h.
 
 ## Original Step 3 text — superseded: knee shape and HF roll-off
 

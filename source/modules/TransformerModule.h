@@ -9,7 +9,8 @@ namespace ModuleSpike
 enum class Variant { smooth, play3, play3Outer };
 enum class Topology { shunt, series };
 inline constexpr std::array transformerDescriptors {
-    Descriptor { "saturation", "Saturation point", "normalized flux", 0.1, 4.0, 0.01, 1.0, 1.0 },
+    // Lower bound widened from 0.1 to 0.01 for the shunt Step 3 onset ladder.
+    Descriptor { "saturation", "Saturation point", "normalized flux", 0.01, 4.0, 0.001, 1.0, 1.0 },
     Descriptor { "knee", "Knee", "normalized current", 0.02, 2.0, 0.01, 0.2, 0.5 },
     Descriptor { "memory", "Memory", "", 0.0, 1.0, 0.01, 0.35, 1.0 },
     Descriptor { "loss", "Winding loss", "normalized resistance", 0.01, 1.0, 0.01, 0.1, 1.0 },
@@ -28,6 +29,18 @@ struct TransformerParameters
     double width = transformerDescriptors[5].defaultValue, asymmetry = transformerDescriptors[6].defaultValue;
     double sourceOhms = 1000.0, loadOhms = 10000.0;
 };
+// Owner-chosen C calibration for the VTB1148 output stage: shunt Step 3 fit with
+// the Step 3b +17 dBu onset rung (1% THD at +17 dBu, 20 Hz; 0 dBFS = +18 dBu).
+// Circuit terms are the Woods (2019) test conditions referred to the primary.
+// Use with Variant::play3Outer and Topology::shunt.
+inline TransformerParameters vtb1148OutputC() noexcept
+{
+    TransformerParameters p;
+    p.driveDb = -26.25656557; p.saturation = 0.04969067925; p.knee = 0.09938129798;
+    p.width = 0.008139760066; p.memory = 0.8813396527; p.asymmetry = 0.0316227766;
+    p.loss = 0.016; p.sourceOhms = 0.01; p.loadOhms = 34616.609;
+    return p;
+}
 // Separate input protection, before drive and before the circuit. Not magnetics.
 struct InputSafety
 {
