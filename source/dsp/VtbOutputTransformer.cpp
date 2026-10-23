@@ -11,7 +11,7 @@ void VtbOutputTransformer::prepare (double sampleRate, float amountPercent, bool
 {
     rate = sampleRate;
     factor = ModuleSpike::vtb1148OutputFactor (rate);
-    MagneticAudio::prepareFilters (filters, factor);
+    MagneticAudio::prepareLiveFilters (filters, factor, sampleRate);
     latency = juce::roundToInt (filters.getLatencyInSamples());
     jassert (latency <= MagneticAudio::maximumLatency && std::abs (filters.getLatencyInSamples() - latency) < 1.0e-10);
     scratch.setSize (2, MagneticAudio::capacity);

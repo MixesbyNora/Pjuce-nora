@@ -71,7 +71,7 @@ double residualDb (const juce::AudioBuffer<float>& a, const juce::AudioBuffer<fl
     return 10.0 * std::log10 (error / std::max (power, 1.0e-30) + 1.0e-30);
 }
 
-juce::AudioBuffer<float> delayed (juce::AudioBuffer<float> input, int samples = 124)
+juce::AudioBuffer<float> delayed (juce::AudioBuffer<float> input, int samples = 48)
 {
     for (int channel = 0; channel < input.getNumChannels(); ++channel)
     {
@@ -162,7 +162,7 @@ TEST_CASE ("BA defaults leave the analog chain near unity and the compressor in 
                 settings.thresholdDb = -30.0f;
             BaSignalPath path;
             path.prepare (48000.0, 17, settings, {});
-            CHECK (path.getLatencySamples() == 124);
+            CHECK (path.getLatencySamples() == 48);
             const auto input = tone (channels, 9600);
             auto actual = input;
             const auto reduction = path.process (actual, channels, settings, {});
@@ -425,7 +425,7 @@ TEST_CASE ("Processor Delta respects Mix and stays small for a neutral chain", "
         for (int i = 0; i < dry.getNumSamples(); ++i)
         {
             fullError = juce::jmax (fullError, std::abs (fullDelta.getSample (channel, i)
-                - (wet.getSample (channel, i) - (i < 124 ? 0.0f : dry.getSample (channel, i - 124)))));
+                - (wet.getSample (channel, i) - (i < 48 ? 0.0f : dry.getSample (channel, i - 48)))));
             halfError = juce::jmax (halfError, std::abs (halfDelta.getSample (channel, i)
                 - 0.5f * fullDelta.getSample (channel, i)));
         }

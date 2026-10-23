@@ -88,7 +88,7 @@ TEST_CASE ("VTB1148 transformer is deterministic across block partitions and aut
     VtbOutputTransformer whole, split;
     whole.prepare (48000.0, 100.0f, false);
     split.prepare (48000.0, 100.0f, false);
-    CHECK (whole.getLatencySamples() == 124); // 4x half-band FIRs at 48 kHz.
+    CHECK (whole.getLatencySamples() == 48); // Relaxed 4x half-band FIRs at 48 kHz.
     for (int start = 0; start < a.getNumSamples(); start += 128)
     {
         for (auto* stage : { &whole, &split })
@@ -316,7 +316,7 @@ TEST_CASE ("Transformer and processor remain finite through loud DC noise block 
 TEST_CASE ("Transformer leaves detection and meter positions intact and Delta still follows Mix", "[transformer][integration]")
 {
     const auto dry = sine (48000.0, 73.0, -12.0, 8192);
-    const auto latencyDry = delayed (dry, 124);
+    const auto latencyDry = delayed (dry, 48);
     const auto render = [&dry] (float amount, int monitor, float mix, float outGain = 0.0f)
     {
         PluginProcessor processor;

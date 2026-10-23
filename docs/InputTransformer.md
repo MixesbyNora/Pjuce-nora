@@ -113,7 +113,8 @@ same matching as the VTB1148 renders.
 
 ```
 Digital IN (BA "IN")
-  -> [ shared oversampled region, 4/2/1: one up/down, 124/99/0 samples ]
+  -> [ shared oversampled region, 4/2/1: one up/down; latency 78/48/11/0 samples
+       at 44.1/48/96/192 kHz (relaxed linear-phase design, docs/OversamplingOptions.md) ]
        Input transformer (VTB9046, always in circuit)
        -> Analog Input (compressor "Input") -> compressor -> Makeup
        -> Output transformer (VTB1148, Amount / Xfrm Out)

@@ -103,8 +103,9 @@ TEST_CASE ("VTB1148 Amount maps -24 to +18 dB over its calibrated nominal", "[vt
 
 TEST_CASE ("Reported latency is the VTB1148 stage's own FIR delay at every rate", "[vtb][latency]")
 {
-    for (const auto& [rate, expected] : { std::pair { 44100.0, 124 }, std::pair { 48000.0, 124 }, std::pair { 88200.0, 99 },
-             std::pair { 96000.0, 99 }, std::pair { 176400.0, 0 }, std::pair { 192000.0, 0 } })
+    // Relaxed linear-phase design (docs/OversamplingOptions.md), flat to 20 kHz.
+    for (const auto& [rate, expected] : { std::pair { 44100.0, 78 }, std::pair { 48000.0, 48 }, std::pair { 88200.0, 11 },
+             std::pair { 96000.0, 11 }, std::pair { 176400.0, 0 }, std::pair { 192000.0, 0 } })
     {
         CAPTURE (rate);
         PluginProcessor processor;

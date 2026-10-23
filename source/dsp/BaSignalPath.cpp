@@ -6,7 +6,7 @@ void BaSignalPath::prepare (double sampleRate, int maximumBlockSize,
     chunkCapacity = juce::jmax (1, maximumBlockSize);
     dry.setSize (2, chunkCapacity);
     factor = ModuleSpike::vtb1148OutputFactor (sampleRate);
-    MagneticAudio::prepareFilters (filters, factor);
+    MagneticAudio::prepareLiveFilters (filters, factor, sampleRate);
     latency = juce::roundToInt (filters.getLatencyInSamples());
     jassert (latency <= MagneticAudio::maximumLatency && std::abs (filters.getLatencyInSamples() - latency) < 1.0e-10);
     const auto internalRate = sampleRate * factor;
