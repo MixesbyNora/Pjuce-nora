@@ -184,6 +184,10 @@ set(SourceFiles
     source/experimental/TransformerAudioCircuit.cpp
     source/dsp/TransformerSaturation.h
     source/dsp/TransformerSaturation.cpp
+    source/dsp/VtbOutputTransformer.h
+    source/dsp/VtbOutputTransformer.cpp
+    source/modules/ModuleContract.h
+    source/modules/TransformerModule.h
     source/dsp/Biquad.h
     source/dsp/LowFrequencyMono.h
     source/dsp/LowFrequencyMono.cpp
@@ -256,8 +260,9 @@ endif()
 # Everything related to the tests target
 pamplejuce_add_tests()
 
-# Isolated module-contract research. Never add these headers to SharedCode.
-target_sources(Tests PRIVATE source/modules/ModuleContract.h)
+# Module-contract research. TransformerModule.h (and ModuleContract.h) joined
+# SharedCode when the owner moved variant C into the live build; the rest of
+# the contract research stays Tests-only.
 
 # The magnetic circuit is shared by plugin, Standalone and offline measurements.
 

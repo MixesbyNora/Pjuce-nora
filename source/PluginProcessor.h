@@ -82,6 +82,7 @@ private:
     const std::atomic<float>* baMonitor = nullptr;
     const std::atomic<float>* xfrmOut = nullptr;
     const std::atomic<float>* xfrmAmount = nullptr;
+    const std::atomic<float>* xfrmModel = nullptr;
     BaSignalPath signalPath;
     std::unique_ptr<GainLinkController> gainLink;
     std::atomic<float> currentGainReductionDb { 0.0f };

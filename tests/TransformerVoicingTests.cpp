@@ -117,7 +117,7 @@ TEST_CASE ("Plugin state retains private voicing without adding or reordering ho
     PluginProcessor restored;
     restored.setStateInformation (block.getData(), static_cast<int> (block.getSize()));
     CHECK (restored.getTransformerVoicing().toJson() == processor.getTransformerVoicing().toJson());
-    REQUIRE (restored.getParameters().size() == 16);
+    REQUIRE (restored.getParameters().size() == 17);
     for (int i = 0; i < processor.getParameters().size(); ++i)
     {
         const auto* original = dynamic_cast<juce::RangedAudioParameter*> (processor.getParameters()[i]);
@@ -194,6 +194,8 @@ TEST_CASE ("Voicing changes reach the transformer while detection meters and byp
         set (*processor, "xfrmAmount", 100.0f);
         set (*processor, "threshold", -30.0f);
         set (*processor, "makeup", 12.0f);
+        // The workbench voices the Magnetic engine; VTB1148 is the default model.
+        set (*processor, "xfrmModel", static_cast<float> (BaParameters::xfrmModelMagnetic));
     }
     voiced.getTransformerVoicing().setCurrent ({ 6.0f });
     for (auto* processor : { &reference, &voiced })

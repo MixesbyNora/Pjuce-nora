@@ -5,9 +5,18 @@ void BaSignalPath::prepare (double sampleRate, int maximumBlockSize,
 {
     chunkCapacity = juce::jmax (1, maximumBlockSize);
     dry.setSize (2, chunkCapacity);
+    alternate.setSize (2, chunkCapacity);
     compressor.prepare (sampleRate, compressorValues);
     transformer.prepare (sampleRate, values.transformerAmountPercent, values.transformerOut,
         values.transformerVoicing, values.voicingLevelMatch);
+    vtb.prepare (sampleRate, values.transformerAmountPercent, values.transformerOut, transformer.getLatencySamples());
+    jassert (vtb.getLatencySamples() == transformer.getLatencySamples());
+    modelBlend.reset (sampleRate, TransformerSettings::modelFadeSeconds);
+    selectedModel = values.transformerModel;
+    modelTarget = selectedModel == BaParameters::xfrmModelVtb1148 ? 1.0f : 0.0f;
+    modelBlend.setCurrentAndTargetValue (modelTarget);
+    modelWarmRemaining = 0;
+    modelWarmSamples = transformer.getLatencySamples() + juce::roundToInt (sampleRate * TransformerSettings::modelFadeSeconds);
     dryDelay.prepare (transformer.getLatencySamples());
     lfm.prepare (sampleRate, values.lfmHz);
     inputGain.reset (sampleRate, BaParameters::gainRampSeconds);
@@ -22,6 +31,44 @@ void BaSignalPath::prepare (double sampleRate, int maximumBlockSize,
     {
         monitor[i].reset (sampleRate, BaParameters::switchRampSeconds);
         monitor[i].setCurrentAndTargetValue (static_cast<int> (i) == values.monitor ? 1.0f : 0.0f);
+    }
+}
+
+void BaSignalPath::processTransformer (juce::AudioBuffer<float>& wet, int channels, int samples) noexcept
+{
+    if (modelWarmRemaining > 0)
+    {
+        modelWarmRemaining -= samples;
+        if (modelWarmRemaining <= 0)
+        {
+            modelWarmRemaining = 0;
+            modelBlend.setTargetValue (modelTarget);
+        }
+    }
+    else if (! modelBlend.isSmoothing())
+    {
+        if (modelBlend.getCurrentValue() < 0.5f)
+            transformer.process (wet, channels);
+        else
+            vtb.process (wet, channels);
+        return;
+    }
+    // Both engines run only during a model change (warm-up and fade). Non-owning
+    // view of preallocated storage, as for wet (no heap allocation).
+    std::array<float*, 2> pointers {};
+    for (int channel = 0; channel < channels; ++channel)
+    {
+        alternate.copyFrom (channel, 0, wet, channel, 0, samples);
+        pointers[static_cast<std::size_t> (channel)] = alternate.getWritePointer (channel);
+    }
+    juce::AudioBuffer<float> other (pointers.data(), channels, samples);
+    transformer.process (wet, channels);
+    vtb.process (other, channels);
+    for (int sample = 0; sample < samples; ++sample)
+    {
+        const auto amount = modelBlend.getNextValue();
+        for (int channel = 0; channel < channels; ++channel)
+            wet.setSample (channel, sample, crossfade (wet.getSample (channel, sample), other.getSample (channel, sample), amount));
     }
 }
 
@@ -41,6 +88,15 @@ float BaSignalPath::process (juce::AudioBuffer<float>& buffer, int channels,
     compressor.setParameters (compressorValues);
     transformer.setParameters (values.transformerAmountPercent, values.transformerOut);
     transformer.setVoicing (values.transformerVoicing, values.voicingLevelMatch);
+    vtb.setParameters (values.transformerAmountPercent, values.transformerOut);
+    if (values.transformerModel != selectedModel)
+    {
+        selectedModel = values.transformerModel;
+        modelTarget = selectedModel == BaParameters::xfrmModelVtb1148 ? 1.0f : 0.0f;
+        // The VTB core starts from clean history; the fade begins after the warm-up.
+        if (modelTarget > 0.5f) vtb.resetHistory();
+        modelWarmRemaining = modelWarmSamples;
+    }
     inputGain.setTargetValue (juce::Decibels::decibelsToGain (values.inGainDb));
     outputGain.setTargetValue (juce::Decibels::decibelsToGain (values.outGainDb));
     mix.setTargetValue (values.mixPercent * 0.01f);
@@ -74,7 +130,7 @@ float BaSignalPath::process (juce::AudioBuffer<float>& buffer, int channels,
                 inputPeaks[static_cast<std::size_t> (channel)] = juce::jmax (inputPeaks[static_cast<std::size_t> (channel)],
                     PeakAccumulator::findPeak (pointers[static_cast<std::size_t> (channel)], samples));
         peakDb = juce::jmax (peakDb, compressor.process (wet, channels));
-        transformer.process (wet, channels);
+        processTransformer (wet, channels, samples);
         for (int sample = 0; sample < samples; ++sample)
         {
             const auto gain = outputGain.getNextValue();

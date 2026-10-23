@@ -871,3 +871,65 @@ Reproduce, run alone:
 ```bash
 LUMIERE_MODULE_REPORT_DIR="$PWD/docs/measurements/shunt_improvement" LUMIERE_MODULE_TASK=shunt-step3-aliasing Builds/Release/Tests "Export VTB1148 shunt calibration"
 ```
+
+# Live integration of C (VTB1148 output transformer)
+
+**DECISIONS (owner, 2026-10-22):**
+- C is **selectable**, not a replacement.
+- Amount gives C **−24 to +18 dB** of extra drive.
+- Plugin latency stays **constant** across models.
+- New instances start on **VTB1148**.
+
+**What changed in the shipped plugin:**
+
+- **New host parameter `xfrmModel`** ("Xfrm Model": Magnetic / VTB1148). It is
+  appended last with version hint 4, so existing host ordering and automation
+  are unchanged.
+  - New instances start on VTB1148.
+  - A session saved before this parameter existed restores as **Magnetic**:
+    `setStateInformation` adds the missing value before restoring.
+- **[VtbOutputTransformer](../source/dsp/VtbOutputTransformer.h)** is the live
+  stage. It uses `vtb1148OutputC()` and `vtb1148OutputFactor()` (4/2/1) and the
+  existing half-band FIRs.
+  - Amount maps to extra drive over the calibrated nominal: 0% → −24 dB,
+    57.1% → 0 dB (nominal), 100% → +18 dB.
+  - Amount 0 or Out gives the exactly delayed input, bit for bit.
+  - It pads its FIR delay up to the Magnetic stage's latency: 144 / 137 / 124
+    samples at 44.1–48 / 88.2–96 / 176.4–192 kHz.
+  - It sanitizes and limits input as the research module did: nonfinite
+    becomes 0, and the input is limited to ±16.
+- **Model switching ([BaSignalPath](../source/dsp/BaSignalPath.cpp)).** Only
+  the selected engine runs. On a switch:
+  1. Both engines run for one latency plus 20 ms, which flushes the idle
+     engine's stale filter and delay history.
+  2. A 20 ms crossfade follows.
+
+  The second engine's buffer is preallocated, so there is no allocation on the
+  audio thread.
+- **[TransformerModule.h](../source/modules/TransformerModule.h)** and
+  `ModuleContract.h` are now part of `SharedCode`. The rest of the contract
+  research stays Tests-only.
+- **The Voicing workbench still voices only the Magnetic engine.** With
+  VTB1148 selected, its controls and level match have no effect. Hiding or
+  adapting the panel is an open UI decision.
+
+**Tests (`[vtb]`):**
+- parameter defaults and order;
+- old-session restore as Magnetic;
+- Amount mapping;
+- equal latency for both models at six rates;
+- bit-exact bypass at Amount 0 and Out;
+- loud 50 Hz bass is finite, with no solver failures and within 1 dB of input
+  level;
+- a mid-stream model switch has no step larger than 1.5× the input's own
+  sample step.
+
+The first switch implementation failed that test (a 0.04 step from stale
+history). The warm-up fixed it. Existing parameter-count guards moved from 16
+to 17. One voicing test now selects Magnetic explicitly, because voicing
+applies only to that engine.
+
+**Not yet verified:**
+- Owner listening in a DAW, and real recordings.
+- Host behavior when automating the model choice.
+- CPU in the plugin, as opposed to the Step 3c stage timing.

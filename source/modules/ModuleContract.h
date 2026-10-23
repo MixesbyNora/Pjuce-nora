@@ -8,7 +8,8 @@
 #include <cstdint>
 #include <span>
 
-// Tests-only contract experiment. No shipped target includes this directory.
+// Contract experiment. Only TransformerModule.h (variant C, the live VTB1148
+// output stage) is used by shipped targets; the rest remains Tests-only.
 namespace ModuleSpike
 {
 inline bool isFinite (double x) noexcept
