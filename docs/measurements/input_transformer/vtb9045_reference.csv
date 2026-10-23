@@ -1,0 +1,15 @@
+id,quantity,value,unit,frequency_hz,level,test_conditions,source,location,plot_estimate,verified,note
+ds-type,type,low-level microphone input transformer,,,,,Carnhill Design Guide Issue 1e,p.8,0,1,Neve 10468 equivalent per forum sources (GroupDIY); not stated by Carnhill
+ds-ratio,turns ratio N1:N2,1+1:2+2,,,,,Carnhill Design Guide Issue 1e,p.8,0,1,
+ds-dcr,DC resistance P1+P2:S1+S2,24+24:130+130,ohm,,,,Carnhill Design Guide Issue 1e,p.8,0,1,
+ds-ss,optimum source/load series/series,1k2/4k8,ohm,,,,Carnhill Design Guide Issue 1e,p.8,0,1,gain +6 dB (1:2)
+ds-sp,optimum source/load series/parallel,1k2/1k2,ohm,,,,Carnhill Design Guide Issue 1e,p.8,0,1,gain 0 dB
+ds-ps,optimum source/load parallel/series,300/4k8,ohm,,,,Carnhill Design Guide Issue 1e,p.8,0,1,gain +12 dB (1:4); the 1073 300-ohm mic setting
+ds-pp,optimum source/load parallel/parallel,300/1k2,ohm,,,,Carnhill Design Guide Issue 1e,p.8,0,1,gain +6 dB
+th-config,winding configuration,1:4 (parallel primaries; secondaries in series),,,,analyzer 50 ohm source; 100 kOhm load; no test circuit,Woods 2019,pp.52 and 70,0,1,
+th-dcr,DC resistance each primary / secondary (measured),25 / 140,ohm,,,,Woods 2019,p.53 Table 3,0,1,
+th-thd-m50,THD (+N),0.042,%,20,-50 dBu,1:4; 50 ohm source; 100 kOhm load,Woods 2019,p.90 (text),0,1,text value only; no VTB9045 plots in the thesis; distortion rises at low level
+th-hf,HF response,+2 (approx.),dBr,22000,,1:4; 50 ohm source; 100 kOhm load (lightly damped),Woods 2019,p.90 (text),0,1,resonance of leakage inductance with winding capacitance; depends on load and damping
+jlm-05,THD,0.5,%,20,+7 dBm,10468 (Neve original) in a 1073 context; winding and level point not confirmed,JLM Audio Neve transformer info (via search snippet),web,0,0,page behind bot verification; quote unverified
+jlm-1,THD,1,%,20,+9 dBm,as above,JLM Audio Neve transformer info (via search snippet),web,0,0,page behind bot verification; quote unverified
+ams-module,module frequency response,+/-0.5 dB 20 Hz-20 kHz; -3 dB at 40 kHz,,,,whole 1073 module (Marinair-spec 10468),AMS Neve 1073 product page,web,0,1,module figure; includes amplifier and loading

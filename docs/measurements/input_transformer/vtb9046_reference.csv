@@ -1,0 +1,15 @@
+id,quantity,value,unit,frequency_hz,level,test_conditions,source,location,plot_estimate,verified,note
+ds-type,type,high-level line input transformer,,,,,Carnhill Design Guide Issue 1e,p.10,0,1,commonly cited modern substitute for the Neve 31267 line input (GroupDIY forum); equivalence not stated by Carnhill
+ds-ratio,turns ratio N1:N2,2+2:1+1,,,,,Carnhill Design Guide Issue 1e,p.10,0,1,step-down
+ds-dcr,DC resistance P1:P2:S1:S2,175:175:56:56,ohm,,,,Carnhill Design Guide Issue 1e,p.10,0,1,
+ds-ss,optimum source/load series/series,10k/2k4,ohm,,,,Carnhill Design Guide Issue 1e,p.10,0,1,gain -6 dB
+ds-sp,optimum source/load series/parallel,10k/600,ohm,,,,Carnhill Design Guide Issue 1e,p.10,0,1,gain -13 dB; the classic 31267 10k:600 wiring (forum)
+ds-ps,optimum source/load parallel/series,2k4/2k4,ohm,,,,Carnhill Design Guide Issue 1e,p.10,0,1,gain 0 dB
+ds-pp,optimum source/load parallel/parallel,2k4/600,ohm,,,,Carnhill Design Guide Issue 1e,p.10,0,1,gain -6 dB
+jlm-05,THD,0.5,%,20,+7 dBm at transformer input,Neve 31267 wired as a 10468 (one primary and one secondary winding) in a real 1073; 50 or 200 ohm generator; single unit,JLM Audio Neve transformer info,web (owner screenshot 2026-10-23),0,1,JLM: identical to the 10468; 'the level at the input to the transformer at which the core saturates'
+jlm-1,THD,1,%,20,+9 dBm at transformer input,as above,JLM Audio Neve transformer info,web (owner screenshot 2026-10-23),0,1,as above
+jlm-hf-par,HF step response,one large overshoot,,,,31267 wired 600:2k4 (windings in parallel) in a 1073,JLM Audio Neve transformer info,web (owner screenshot 2026-10-23),0,1,qualitative; probably fixable with a Zobel
+jlm-hf-ser,HF step response,no overshoot; rounded (over-damped),,,,31267 wired 2k4:10k (windings in series) in a 1073,JLM Audio Neve transformer info,web (owner screenshot 2026-10-23),0,1,qualitative
+jlm-hf-one,HF step response,lines up with the 10468,,,,31267 one input and one output winding,JLM Audio Neve transformer info,web (owner screenshot 2026-10-23),0,1,qualitative
+inf-line-onset,THD onset in 10k:600 line wiring (series primaries),0.5% near +13 dBu and 1% near +15 dBu,,20,at line input,inferred,derived from jlm-05/jlm-1,,0,0,INFERENCE: two primary windings in series halve the flux per input volt (+6 dB); not measured
+ga-pre73,whole-preamp harmonics at 1 kHz,see note,,1000,-18 dBFS interface send; preamp gain varied,GAP Pre-73 Premier 500-series in line mode; output not level-matched,owner measurement (Pro-Q 3 photos 2026-10-23),local,1,1,input level constant so the input transformer is the same in every shot; changes are the gain stage and output stage; clean (no harmonics above about -95 dBFS) at low gain; H2 and H3 appear first then a dense series near full scale

@@ -41,6 +41,17 @@ inline TransformerParameters vtb1148OutputC() noexcept
     p.loss = 0.016; p.sourceOhms = 0.01; p.loadOhms = 34616.609;
     return p;
 }
+// Input transformer: Carnhill VTB9046 / Neve 31267 in the 1073 line wiring
+// (10k:600, series primaries). Family tuning of C: the VTB1148 shape is inherited
+// unchanged and only flux capacity is fitted, to 0.5% / 1% THD at +13 / +15 dBu,
+// 20 Hz (JLM's measured +7 / +9 dBm for one winding, +6 dB for series primaries;
+// inferred). See docs/InputTransformer.md.
+inline TransformerParameters vtb9046LineInputC() noexcept
+{
+    auto p = vtb1148OutputC();
+    p.saturation *= 0.7810356989; p.knee *= 0.7810356989;
+    return p;
+}
 // Owner decision (shunt Step 3d): C at the VTB1148 calibration runs at about
 // 192 kHz internal, i.e. 4x / 2x / 1x at 44.1-48 / 88.2-96 / 176.4-192 kHz.
 // Measured aliasing at 4x and 48 kHz: below -120 dBc up to +18 dB drive. Other

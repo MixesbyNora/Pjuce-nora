@@ -493,17 +493,19 @@ bool inDescriptorRange (const TransformerParameters& p)
     return true;
 }
 // Level (dBu) at which THD first reaches 1%, by linear interpolation in dB; NaN if never by +36 dBu.
-double onePercentLevel (const TransformerParameters& p, double hz)
+// Level (dBu) at which THD first reaches the given percentage, interpolated in dB; NaN if never by +36 dBu.
+double thresholdLevel (const TransformerParameters& p, double hz, double percent)
 {
     double previousLevel = -10, previous = 100 * measureSine (Variant::play3Outer, p, hz, previousLevel).thd;
     for (double dbu = -9; dbu <= 36.01; dbu += 1)
     {
         const auto value = 100 * measureSine (Variant::play3Outer, p, hz, dbu).thd;
-        if (value >= 1 && previous < 1) return previousLevel + (dbu - previousLevel) * (0 - db (previous / 100) + db (0.01)) / (db (value / 100) - db (previous / 100));
+        if (value >= percent && previous < percent) return previousLevel + (dbu - previousLevel) * (db (percent / 100) - db (previous / 100)) / (db (value / 100) - db (previous / 100));
         previous = value; previousLevel = dbu;
     }
     return std::numeric_limits<double>::quiet_NaN();
 }
+double onePercentLevel (const TransformerParameters& p, double hz) { return thresholdLevel (p, hz, 1.0); }
 void step3Report (const juce::File& root)
 {
     const auto all = step3Targets();
@@ -738,9 +740,9 @@ namespace
 // Aliasing of the chosen C versus oversampling factor at 48 kHz, Step 1 method:
 // coherent odd-bin sines, energy on exact harmonic bins versus all other bins.
 // Includes HF probes, whose harmonics fold first. Run before deciding on ADAA.
-void aliasingReport (const juce::File& root)
+void aliasingReport (const juce::File& root, const TransformerParameters& calibration = vtb1148OutputC(), const char* file = "step3_aliasing.csv")
 {
-    auto out = csv (root, "step3_aliasing.csv", "factor,extra_drive_db,peak_dbfs,requested_hz,actual_hz,second_tone_hz,fundamental_dbfs,harmonic_dbc_audio,nonharmonic_dbc_audio,nonharmonic_dbc_worst_band,difference_to_64x_band_dbr,solver_failures");
+    auto out = csv (root, file, "factor,extra_drive_db,peak_dbfs,requested_hz,actual_hz,second_tone_hz,fundamental_dbfs,harmonic_dbc_audio,nonharmonic_dbc_audio,nonharmonic_dbc_worst_band,difference_to_64x_band_dbr,solver_failures");
     // requested 0 = two-tone: 55 Hz at -6 dBFS plus 13001 Hz at -20 dBFS (bass saturating the core under a treble probe).
     for (double extra : { 0.0, 12.0, 18.0 })
         for (double peakDb : { -6.0 })
@@ -753,7 +755,7 @@ void aliasingReport (const juce::File& root)
                 const auto amplitude = std::pow (10.0, peakDb / 20);
                 const auto renderAt = [&] (int factor)
                 {
-                    auto p = vtb1148OutputC(); p.driveDb += extra;
+                    auto p = calibration; p.driveDb += extra;
                     Processor processor (rate, factor, 1, Variant::play3Outer, Topology::shunt, p);
                     constexpr int warm = 49152; // One second, rounded to blocks.
                     const auto count = warm + static_cast<int> (sineSize) + 1024;
@@ -790,6 +792,59 @@ void aliasingReport (const juce::File& root)
                 std::cout << "alias " << extra << ' ' << frequency << std::endl;
             }
     REQUIRE (out.good());
+}
+}
+
+namespace
+{
+// Input transformer, Carnhill VTB9046 / Neve 31267 in the 1073 line wiring
+// (10k:600, series primaries). Family tuning: the VTB1148 shape is inherited
+// unchanged; only flux capacity (saturation and knee together) is fitted to the
+// 20 Hz onset. Targets: JLM measured 0.5% at +7 and 1% at +9 dBm with one winding;
+// series primaries halve flux per volt, so +13 and +15 dBu (inferred, +6 dB).
+constexpr std::array<std::pair<double, double>, 2> lineOnsetTargets { std::pair { 0.5, 13.0 }, std::pair { 1.0, 15.0 } };
+TransformerParameters vtb9046Candidate (double scale)
+{
+    auto p = vtb1148OutputC();
+    p.saturation *= scale; p.knee *= scale;
+    return p;
+}
+double onsetError (double scale)
+{
+    double sum = 0;
+    for (const auto& [percent, level] : lineOnsetTargets)
+    {
+        const auto measured = thresholdLevel (vtb9046Candidate (scale), 20, percent);
+        sum += std::isnan (measured) ? 1.0e6 : std::pow (measured - level, 2);
+    }
+    return std::sqrt (sum / lineOnsetTargets.size());
+}
+void inputTransformerReport (const juce::File& root)
+{
+    // Golden-section search in log scale around the VTB1148 calibration.
+    double lo = std::log (0.25), hi = std::log (4.0);
+    const auto ratio = (std::sqrt (5.0) - 1) / 2;
+    auto a = hi - ratio * (hi - lo), b = lo + ratio * (hi - lo);
+    auto fa = onsetError (std::exp (a)), fb = onsetError (std::exp (b));
+    for (int i = 0; i < 40; ++i)
+    {
+        if (fa < fb) { hi = b; b = a; fb = fa; a = hi - ratio * (hi - lo); fa = onsetError (std::exp (a)); }
+        else { lo = a; a = b; fa = fb; b = lo + ratio * (hi - lo); fb = onsetError (std::exp (b)); }
+    }
+    const auto scale = std::exp (0.5 * (lo + hi));
+    const auto p = vtb9046Candidate (scale);
+    auto fit = csv (root, "vtb9046_fit.csv", "target_thd_percent,target_level_dbu,model_level_dbu,error_db,onset_scale_vs_vtb1148,saturation,knee,rms_error_db");
+    for (const auto& [percent, level] : lineOnsetTargets)
+    {
+        const auto measured = thresholdLevel (p, 20, percent);
+        fit << percent << ',' << level << ',' << measured << ',' << measured - level << ',' << scale << ',' << p.saturation << ',' << p.knee << ',' << onsetError (scale) << '\n';
+    }
+    REQUIRE (fit.good());
+    std::cout << "vtb9046 scale " << scale << " saturation " << p.saturation << " knee " << p.knee << " error " << onsetError (scale) << std::endl;
+    const std::vector<Fit> fits { { Variant::play3Outer, vtb1148OutputC(), 0, "VTB1148" }, { Variant::play3Outer, p, onsetError (scale), "VTB9046" } };
+    writeLevelSweep (root, "vtb9046_level_sweep.csv", fits);
+    writeRenders (root, "vtb9046_audio", "vtb9046_renders.csv", { fits[1] });
+    aliasingReport (root, p, "vtb9046_aliasing.csv");
 }
 }
 
@@ -837,16 +892,26 @@ TEST_CASE ("Chosen C oversampling schedule is 4/2/1", "[shunt-calibration]")
     CHECK (vtb1148OutputFactor (176400) == 1); CHECK (vtb1148OutputFactor (192000) == 1);
 }
 
+TEST_CASE ("VTB9046 line input calibration keeps its +13 / +15 dBu onset", "[shunt-calibration]")
+{
+    const auto p = vtb9046LineInputC();
+    CHECK (inDescriptorRange (p));
+    CHECK (std::abs (thresholdLevel (p, 20, 0.5) - 13) < 0.3);
+    CHECK (std::abs (thresholdLevel (p, 20, 1.0) - 15) < 0.3);
+    CHECK (vtb1148OutputFactor (48000) == 4); // Same oversampling schedule; see vtb9046_aliasing.csv.
+}
+
 TEST_CASE ("Export VTB1148 shunt calibration", "[shunt-report]")
 {
     const auto* taskValue = std::getenv ("LUMIERE_MODULE_TASK");
     const std::string task = taskValue ? taskValue : "";
-    if (task != "shunt-step2" && task != "shunt-step3" && task != "shunt-step3-ladder" && task != "shunt-step3-cpu" && task != "shunt-step3-aliasing") { SUCCEED ("Explicit shunt calibration opt-in"); return; }
+    if (task != "shunt-step2" && task != "shunt-step3" && task != "shunt-step3-ladder" && task != "shunt-step3-cpu" && task != "shunt-step3-aliasing" && task != "input-vtb9046") { SUCCEED ("Explicit shunt calibration opt-in"); return; }
     const auto* directory = std::getenv ("LUMIERE_MODULE_REPORT_DIR"); REQUIRE (directory != nullptr);
     const juce::File root (juce::String::fromUTF8 (directory)); REQUIRE (root.createDirectory().wasOk());
     if (task == "shunt-step2") calibrationReport (root);
     else if (task == "shunt-step3") step3Report (root);
     else if (task == "shunt-step3-ladder") onsetLadderReport (root);
     else if (task == "shunt-step3-cpu") cpuReport (root);
-    else aliasingReport (root);
+    else if (task == "shunt-step3-aliasing") aliasingReport (root);
+    else inputTransformerReport (root);
 }
