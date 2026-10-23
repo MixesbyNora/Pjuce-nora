@@ -1,0 +1,2 @@
+tube,sections,supply_volts,grid_bias_volts,cathode_ohms,coupling_uf,quiescent_cathode_volts,plate_volts,grid_cathode_volts,plate_ma_total,dissipation_watts_per_section,output_ohms,primary_inductance_h,winding_ohms,load_ohms,lf_corner_hz,transformer_unit_volts
+12BH7-A,2,300,145,7500,1000,150.5353579,149.4646421,-5.53535788,20.07138105,1.499980893,118.1807998,3.000001522,16,34616.609,7.091022704,178.8211574

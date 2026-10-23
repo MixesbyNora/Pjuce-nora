@@ -76,6 +76,19 @@ carry impedance in both directions:
 
 ## Test: tube-to-transformer coupling (PROPOSAL)
 
+**RUN 2026-10-23**, see [TubeStage.md](TubeStage.md#step-2-tube-to-transformer-coupling-test).
+- The fixture became a 12BH7 cathode follower (owner decision), because a
+  common-cathode 12BH7 loses the bass into this primary.
+- The stage was solved by trapezoidal nodal Newton, not a WDF tree. A WDF with
+  trapezoidal capacitors gives the same discretization. WDF and ADAA wait for
+  live integration.
+- **Result:** the linear interface (a) holds to better than −40 dB until the
+  iron saturates, then fails, as expected. Per-block resistance (b) does not
+  fix it. No coupling (c) is 10–43 dB off everywhere.
+- **Recommendation:** a joint tube + C solve for this pair. It is one scalar
+  root per sample and costs about 35% more than (a), unoptimized.
+
+
 **Question:** is the linear impedance interface close enough to a fully
 coupled solve when a tube stage drives the VTB1148 output transformer?
 

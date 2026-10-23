@@ -180,6 +180,7 @@ set(SourceFiles
     source/dsp/VtbOutputTransformer.cpp
     source/modules/ModuleContract.h
     source/modules/TransformerModule.h
+    source/modules/TriodeModel.h
     source/dsp/Biquad.h
     source/dsp/LowFrequencyMono.h
     source/dsp/LowFrequencyMono.cpp

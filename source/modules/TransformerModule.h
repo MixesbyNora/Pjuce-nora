@@ -181,6 +181,9 @@ public:
     void prepare (double rate, Variant v, Topology t, TransformerParameters p) noexcept
     { dt = 0.5 / rate; variant = v; topology = t; parameters = p; reset(); }
     void reset() noexcept { smooth.reset(); play.reset(); outer.reset(); current = flux = previousVoltage = 0; diagnostics = {}; }
+    // Keeps flux and hysteresis history; used when a driving stage's output
+    // resistance moves with its operating point (tube coupling test).
+    void setSourceOhms (double ohms) noexcept { parameters.sourceOhms = ohms; }
     double process (double u) noexcept
     {
         const auto rs = parameters.sourceOhms / impedanceBase + parameters.loss, rl = parameters.loadOhms / impedanceBase;
