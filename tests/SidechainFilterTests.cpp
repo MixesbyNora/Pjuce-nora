@@ -92,6 +92,7 @@ TEST_CASE ("Full feedforward is bit-identical to the audio captured before FB FF
 {
     // Full stereo float PCM captured before this change, including parameter
     // automation, transients, and release tails. No second DSP implementation.
+    // Recaptured 2026-10-24 for the 20 ms release floor and Release Mod.
     const auto path = juce::File (__FILE__).getSiblingFile ("data").getChildFile ("FeedforwardAudioReference.bin");
     std::ifstream input (path.getFullPathName().toStdString(), std::ios::binary);
     REQUIRE (input.good());

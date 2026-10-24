@@ -47,11 +47,12 @@ int samplesFor (double sampleRate, double milliseconds)
     return juce::roundToInt (sampleRate * milliseconds * 0.001);
 }
 
-DbGainEnvelope primedEnvelope (double sampleRate, float initialReductionDb, float releaseMs)
+DbGainEnvelope primedEnvelope (double sampleRate, float initialReductionDb, float releaseMs, float releaseMod = 1.0f)
 {
     DbGainEnvelope envelope;
     envelope.prepare (sampleRate);
     envelope.setTimes (0.2f, releaseMs);
+    envelope.setReleaseMod (releaseMod);
     for (int sample = 0; sample < samplesFor (sampleRate, 20.0); ++sample)
         envelope.process (initialReductionDb);
     REQUIRE (envelope.getGainReductionDb() == Catch::Approx (initialReductionDb).margin (0.000001f));
@@ -73,7 +74,7 @@ bool bufferIsFinite (const juce::AudioBuffer<float>& buffer)
 TEST_CASE ("Compressor and BA bar expose stable parameters and persist state", "[compressor][state]")
 {
     PluginProcessor processor;
-    REQUIRE (processor.getParameters().size() == 22);
+    REQUIRE (processor.getParameters().size() == 24);
     CHECK (findParameter (processor, "gain") == nullptr);
 
     struct Expected
@@ -260,7 +261,9 @@ TEST_CASE ("Deep gain reduction releases faster than shallow reduction", "[compr
         CAPTURE (sampleRate);
         auto deep = primedEnvelope (sampleRate, 18.0f, 200.0f);
         auto shallow = primedEnvelope (sampleRate, 0.1f, 200.0f);
-        for (int sample = 0; sample < samplesFor (sampleRate, 1.0); ++sample)
+        // Over 20 ms: deep reduction (Release Mod 100%) releases at the 20 ms floor,
+        // shallow reduction at about the 200 ms Release time.
+        for (int sample = 0; sample < samplesFor (sampleRate, 20.0); ++sample)
         {
             deep.process (0.0f);
             shallow.process (0.0f);
@@ -269,11 +272,11 @@ TEST_CASE ("Deep gain reduction releases faster than shallow reduction", "[compr
         const auto shallowFraction = shallow.getGainReductionDb() / 0.1f;
         CHECK (deepFraction < shallowFraction);
         CHECK (deepFraction < 0.5f);
-        CHECK (shallowFraction > 0.99f);
+        CHECK (shallowFraction > 0.85f);
     }
 }
 
-TEST_CASE ("Effective release stays between one sample and the Release setting", "[compressor][release]")
+TEST_CASE ("Effective release stays between 20 ms and the Release setting", "[compressor][release]")
 {
     for (double sampleRate : { 44100.0, 48000.0, 96000.0, 192000.0 })
     {
@@ -291,9 +294,10 @@ TEST_CASE ("Effective release stays between one sample and the Release setting",
                         const auto before = envelope.getGainReductionDb();
                         const auto after = envelope.process (targetDb);
                         const auto slowest = targetDb + (before - targetDb) * slowestCoefficient;
-                        const auto fastest = targetDb + (before - targetDb) * std::exp (-1.0);
-                        CHECK (after <= slowest + 0.000001);
-                        CHECK (after >= fastest - 0.000001);
+                        const auto fastest = targetDb + (before - targetDb) * std::exp (-1000.0 / (sampleRate * CompressorParameters::fastestReleaseMs));
+                        const auto margin = 0.000001 + 0.0000001 * std::abs (before); // Float state.
+                        CHECK (after <= slowest + margin);
+                        CHECK (after >= fastest - margin);
                     }
                 }
             }
@@ -306,14 +310,20 @@ TEST_CASE ("Release modulation reaches the geometric midpoint and clamps at full
     for (double sampleRate : { 44100.0, 48000.0, 96000.0, 192000.0 })
     {
         constexpr auto releaseMs = 200.0f;
+        const auto fastest = CompressorParameters::fastestReleaseMs;
+        const auto coefficientFor = [sampleRate] (double ms) { return std::exp (-1000.0 / (sampleRate * ms)); };
+        // Release Mod 100%: half depth is the geometric midpoint of 20 ms and Release.
         auto halfDepth = primedEnvelope (sampleRate, 6.0f, releaseMs);
-        const auto midpointMs = std::sqrt ((1000.0 / sampleRate) * releaseMs);
-        const auto midpointCoefficient = std::exp (-1000.0 / (sampleRate * midpointMs));
-        CHECK (halfDepth.process (0.0f) == Catch::Approx (6.0 * midpointCoefficient).margin (0.000001));
+        CHECK (halfDepth.process (0.0f) == Catch::Approx (6.0 * coefficientFor (std::sqrt (fastest * releaseMs))).margin (0.000001));
         for (float depth : { 12.0f, 24.0f })
         {
             auto envelope = primedEnvelope (sampleRate, depth, releaseMs);
-            CHECK (envelope.process (0.0f) == Catch::Approx (depth * std::exp (-1.0)).margin (0.000001));
+            CHECK (envelope.process (0.0f) == Catch::Approx (depth * coefficientFor (fastest)).margin (0.000001));
+            // Release Mod 50% goes half way (geometrically); 0% keeps the Release time.
+            auto half = primedEnvelope (sampleRate, depth, releaseMs, 0.5f);
+            CHECK (half.process (0.0f) == Catch::Approx (depth * coefficientFor (std::sqrt (fastest * releaseMs))).margin (0.000001));
+            auto fixed = primedEnvelope (sampleRate, depth, releaseMs, 0.0f);
+            CHECK (fixed.process (0.0f) == Catch::Approx (depth * coefficientFor (releaseMs)).margin (0.000001));
         }
     }
 }

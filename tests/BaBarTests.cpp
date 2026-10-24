@@ -122,7 +122,7 @@ void dispatchLink()
 TEST_CASE ("BA parameter types ranges defaults skew text and host bypass are exposed", "[ba][parameters]")
 {
     PluginProcessor processor;
-    REQUIRE (processor.getParameters().size() == 22);
+    REQUIRE (processor.getParameters().size() == 24);
     CHECK (processor.getBypassParameter() == parameter (processor, "bypass"));
     CHECK (dynamic_cast<juce::AudioParameterBool*> (parameter (processor, "bypass")) != nullptr);
     CHECK (dynamic_cast<juce::AudioParameterBool*> (parameter (processor, "ioLink")) != nullptr);
@@ -456,12 +456,14 @@ TEST_CASE ("Processor Delta retains monitor bypass and Mix crossfades", "[ba][mo
 {
     // A twin processor with LR monitor, no bypass and full Mix supplies the wet
     // signal sample by sample; the analog chain is identical in both. The output
-    // stage is out so the DC test signal stays near the dry level.
+    // stage and tubes are out so the DC test signal stays near the dry level.
     PluginProcessor processor, reference;
     for (auto* p : { &processor, &reference })
     {
         set (*p, "xfrmOut", 1.0f);
         set (*p, "outputTubeOut", 1.0f);
+        set (*p, "gainTubeOut", 1.0f);
+        set (*p, "ampTubeOut", 1.0f); // Its coupling capacitor blocks this DC signal too.
         set (*p, "threshold", 0.0f);
         set (*p, "outGain", 6.0f);
         p->prepareToPlay (48000.0, 256);

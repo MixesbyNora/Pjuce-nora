@@ -23,6 +23,10 @@ public:
     double gmAt (double grid) const noexcept;
     double biasFor (double reductionDb) const noexcept;
     double quiescentGrid() const noexcept { return quiescent; }
+    // The grid voltage for a driving voltage when grid current flows through the
+    // driving source (docs/Overdrive.md): grid + Rsource x Ig(grid) = drive.
+    static double gridFor (double drive) noexcept;
+    static constexpr double sourceOhms = 4700.0; // Inferred: the input iron's secondary.
     double quiescentGm() const noexcept { return gmQuiescent; }
     double plateVolts() const noexcept { return plate; }
     static constexpr double maximumReductionDb = 60.0;

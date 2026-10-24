@@ -34,6 +34,22 @@ inline TriodeCurrent triodeCurrent (const TriodeParameters& p, double va, double
     const auto slope = 2 * p.ex * power / e1 / p.kg1;
     return { 2 * power / p.kg1, slope * (softplus / p.kp - sigmoid * vg * va * va / (s * s * s)), slope * va * sigmoid / s };
 }
+// Grid current: 3/2-power in grid-to-cathode voltage above about 0 V, its onset
+// smoothed over a few tenths of a volt (contact potential). Fitted to the GE 5670
+// sheet's dashed grid-current lines (p5: 2.0 / 5.75 / 10 mA at +2 / +4 / +6 V):
+// 0.70 mA/V^1.5 (docs/Overdrive.md). No other sheet here publishes it.
+inline constexpr double ge5670GridPerveance = 0.70e-3;
+struct GridCurrent { double ig = 0, slope = 0; };
+inline GridCurrent gridCurrent (double vgk, double perveance = ge5670GridPerveance) noexcept
+{
+    constexpr double sharpness = 4.0; // per volt
+    const auto z = sharpness * vgk;
+    const auto e = std::exp (std::min (z, 30.0));
+    const auto x = z > 30 ? vgk : std::log1p (e) / sharpness;
+    const auto dx = z > 30 ? 1.0 : e / (1 + e);
+    const auto root = std::sqrt (std::max (x, 0.0));
+    return { perveance * x * root, 1.5 * perveance * root * dx };
+}
 // Remote-cutoff (variable-mu) triode, such as the 6386: its variable-pitch grid
 // behaves like sections in parallel with different cutoffs. Each section is a
 // Koren triode and the currents add (docs/GainTube.md).

@@ -15,6 +15,9 @@ ModuleSpike::TransformerParameters VtbTransformerCore::parametersFor (ModuleSpik
 }
 ModuleSpike::StageDesign VtbTransformerCore::designFor (TubeVoicing::Values voice) noexcept
 {
+    if (TubeVoicing::dspValue (voice, TubeVoicing::wiring) < 0.5)
+        return ModuleSpike::pushPullDesign (TubeVoicing::dspValue (voice, TubeVoicing::plateCurrent) * 1.0e-3,
+            TubeVoicing::dspValue (voice, TubeVoicing::coupling) * 1.0e-6, TubeVoicing::dspValue (voice, TubeVoicing::supply));
     return ModuleSpike::followerDesign (TubeVoicing::dspValue (voice, TubeVoicing::plateCurrent) * 1.0e-3,
         TubeVoicing::dspValue (voice, TubeVoicing::coupling) * 1.0e-6, TubeVoicing::dspValue (voice, TubeVoicing::supply),
         TubeVoicing::dspValue (voice, TubeVoicing::sections));

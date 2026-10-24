@@ -95,6 +95,8 @@ private:
     const std::atomic<float>* calibration = nullptr;
     const std::atomic<float>* gainTubeOut = nullptr;
     const std::atomic<float>* ampTubeOut = nullptr;
+    const std::atomic<float>* releaseMod = nullptr;
+    const std::atomic<float>* headroom = nullptr;
     BaSignalPath signalPath;
     std::unique_ptr<GainLinkController> gainLink;
     std::atomic<float> currentGainReductionDb { 0.0f };

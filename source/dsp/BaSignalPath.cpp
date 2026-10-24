@@ -16,10 +16,10 @@ void BaSignalPath::prepare (double sampleRate, int maximumBlockSize,
     // filters follow the rate it is prepared with.
     compressor.setGainElement (gainElement (values));
     compressor.prepare (internalRate, compressorValues);
-    inputTransformer.prepare (internalRate, ModuleSpike::vtb9046LineInputC(), 0.0,
+    inputTransformer.prepare (internalRate, ModuleSpike::vtb9046LineInputC(), BaParameters::headroomDriveDb (values.headroomDb),
         values.inputTransformerVoicing, values.inputVoicingLevelMatch);
     outputTransformer.prepare (internalRate, ModuleSpike::vtb1148OutputC(),
-        VtbOutputTransformer::driveDbFor (values.transformerAmountPercent), values.transformerVoicing,
+        VtbOutputTransformer::driveDbFor (values.transformerAmountPercent) + BaParameters::headroomDriveDb (values.headroomDb), values.transformerVoicing,
         values.voicingLevelMatch || values.tubeVoicingLevelMatch, outputStage (values));
     outputActive.reset (sampleRate, TransformerSettings::bypassRampSeconds);
     outputActive.setCurrentAndTargetValue (outputEngaged (values) ? 1.0f : 0.0f);
@@ -132,15 +132,16 @@ VtbTransformerCore::Tube BaSignalPath::outputStage (const BaParameters::Values& 
 {
     // Owner decision: only the switches bypass; each Amount is drive alone.
     return { values.tubeVoicing, ! values.outputTubeOut, ! values.transformerOut,
-        VtbOutputTransformer::driveDbFor (values.tubeAmountPercent) };
+        VtbOutputTransformer::driveDbFor (values.tubeAmountPercent) + BaParameters::headroomDriveDb (values.headroomDb) };
 }
 StereoCompressor::GainElement BaSignalPath::gainElement (const BaParameters::Values& values) noexcept
 {
     const auto& v = values.gainTubeVoicing;
     return { ! values.gainTubeOut,
         { GainTubeVoicing::dspValue (v, GainTubeVoicing::tube) > 0.5 ? GainTube::Tube::ge6386 : GainTube::Tube::ge5670,
-          GainTubeVoicing::dspValue (v, GainTubeVoicing::gridLevel), GainTubeVoicing::dspValue (v, GainTubeVoicing::imbalance) * 0.01 },
-        ! values.ampTubeOut };
+          GainTubeVoicing::dspValue (v, GainTubeVoicing::gridLevel) + BaParameters::headroomDriveDb (values.headroomDb),
+          GainTubeVoicing::dspValue (v, GainTubeVoicing::imbalance) * 0.01 },
+        ! values.ampTubeOut, BaParameters::headroomDriveDb (values.headroomDb) };
 }
 bool BaSignalPath::outputEngaged (const BaParameters::Values& values) noexcept
 {
@@ -163,7 +164,8 @@ float BaSignalPath::process (juce::AudioBuffer<float>& buffer, int channels,
 {
     compressor.setParameters (compressorValues);
     compressor.setGainElement (gainElement (values));
-    outputTransformer.setExtraDriveDb (VtbOutputTransformer::driveDbFor (values.transformerAmountPercent));
+    outputTransformer.setExtraDriveDb (VtbOutputTransformer::driveDbFor (values.transformerAmountPercent) + BaParameters::headroomDriveDb (values.headroomDb));
+    inputTransformer.setExtraDriveDb (BaParameters::headroomDriveDb (values.headroomDb));
     outputTransformer.setVoicing (values.transformerVoicing, values.voicingLevelMatch || values.tubeVoicingLevelMatch);
     outputTransformer.setTube (outputStage (values));
     outputActive.setTargetValue (outputEngaged (values) ? 1.0f : 0.0f);

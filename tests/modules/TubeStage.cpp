@@ -811,6 +811,116 @@ void writeCouplingRenders (const juce::File& root)
         }
     }
 }
+// ---- Saturation diagnosis (docs/Overdrive.md): task saturation-diagnosis ----
+// The plugin at 48 kHz with stages isolated by their In/Out switches, driven from
+// saturation into overdrive. Coherent tones; spectra split into the fundamental,
+// low (H2-H5), mid (H6-H10) and high (H11+) harmonics and non-harmonic energy
+// (aliasing or other products), all relative to the fundamental.
+struct DiagnosisSetup { const char* name; std::vector<std::pair<const char*, float>> settings; const char* drive; };
+void setAll (PluginProcessor& processor, const std::vector<std::pair<const char*, float>>& settings)
+{
+    for (const auto& [id, value] : settings)
+        for (auto* p : processor.getParameters())
+            if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p); ranged != nullptr && ranged->paramID == id)
+                ranged->setValueNotifyingHost (ranged->convertTo0to1 (value));
+}
+std::vector<double> renderPlugin (const std::vector<std::pair<const char*, float>>& settings, const std::function<double (int, int)>& input, int total)
+{
+    PluginProcessor processor;
+    // At the stages' calibration reference (Headroom 18 dB), so results compare
+    // with the first diagnosis run; settings may override it.
+    setAll (processor, { { "headroom", 18.0f } });
+    setAll (processor, settings);
+    processor.prepareToPlay (ShuntResearch::rate, 512);
+    juce::MidiBuffer midi;
+    std::vector<double> out;
+    out.reserve (static_cast<std::size_t> (total));
+    juce::AudioBuffer<float> block (2, 512);
+    for (int start = 0; start < total; start += 512)
+    {
+        for (int n = 0; n < 512; ++n)
+            for (int ch = 0; ch < 2; ++ch)
+                block.setSample (ch, n, static_cast<float> (input (ch, start + n)));
+        processor.processBlock (block, midi);
+        for (int n = 0; n < 512 && static_cast<int> (out.size()) < total; ++n) out.push_back (block.getSample (0, n));
+    }
+    return out;
+}
+void writeSaturationDiagnosis (const juce::File& root)
+{
+    using namespace ShuntResearch;
+    const std::vector<std::pair<const char*, float>> allOut { { "inputXfrmOut", 1 }, { "gainTubeOut", 1 }, { "ampTubeOut", 1 }, { "outputTubeOut", 1 }, { "xfrmOut", 1 }, { "threshold", 0 } };
+    const auto with = [&allOut] (std::vector<std::pair<const char*, float>> extra)
+    {
+        auto s = allOut;
+        s.insert (s.end(), extra.begin(), extra.end());
+        return s;
+    };
+    struct Case { const char* stage; std::vector<std::pair<const char*, float>> base; const char* drive; std::vector<float> values; };
+    const std::vector<Case> cases {
+        { "input-iron", with ({ { "inputXfrmOut", 0 } }), "inGain", { 0, 6, 12, 18, 24 } },
+        { "gain-tube", with ({ { "gainTubeOut", 0 }, { "threshold", -30 } }), "inGain", { 0, 6, 12, 18, 24 } },
+        { "amp-5751", with ({ { "ampTubeOut", 0 } }), "makeup", { 0, 6, 12, 18, 24 } },
+        { "output-tube", with ({ { "outputTubeOut", 0 }, { "tubeAmount", 100 } }), "inGain", { 0, 2, 6, 12, 18 } },
+        { "output-iron", with ({ { "xfrmOut", 0 }, { "xfrmAmount", 100 } }), "inGain", { 0, 2, 6, 12, 18 } },
+        { "output-stage", with ({ { "outputTubeOut", 0 }, { "xfrmOut", 0 }, { "tubeAmount", 100 }, { "xfrmAmount", 100 } }), "inGain", { 0, 2, 6, 12, 18 } },
+        { "all-digital-in", { { "threshold", 0 } }, "inGain", { 0, 6, 12, 18, 24 } },
+        { "all-makeup", { { "threshold", 0 } }, "makeup", { 0, 6, 12, 18, 24 } },
+        { "all-amounts-100", { { "threshold", 0 }, { "tubeAmount", 100 }, { "xfrmAmount", 100 } }, "inGain", { 0, 2, 6, 12 } }
+    };
+    auto out = csv (root, "saturation_spectra.csv", "stage,drive,drive_db,tone_hz,input_peak_dbfs,output_fundamental_dbfs,thd_percent,h2_5_dbc,h6_10_dbc,h11_up_dbc,nonharmonic_dbc,output_peak_dbfs");
+    auto waves = csv (root, "saturation_waveforms.csv", "stage,drive,drive_db,tone_hz,sample,output");
+    constexpr double inputPeakDb = -12.0;
+    const auto warm = static_cast<int> (rate);
+    for (const auto& c : cases)
+        for (auto value : c.values)
+            for (double requested : { 100.0, 1000.0, 5000.0 })
+            {
+                const auto bin = static_cast<int> (2 * std::round ((requested * sineSize / rate - 1) / 2) + 1);
+                const auto amplitude = std::pow (10.0, inputPeakDb / 20.0);
+                auto settings = c.base;
+                settings.emplace_back (c.drive, value);
+                const auto rendered = renderPlugin (settings, [&] (int, int n) { return amplitude * std::sin (2 * pi * bin * static_cast<double> (n) / sineSize); },
+                    warm + static_cast<int> (sineSize));
+                std::vector<double> window (rendered.end() - static_cast<long> (sineSize), rendered.end());
+                const auto bins = fft (window);
+                const auto power = [&bins] (std::size_t k) { return 2 * std::norm (bins[k]); };
+                const auto fundamental = power (static_cast<std::size_t> (bin));
+                double low = 0, mid = 0, high = 0, total = 0, peak = 0;
+                for (auto x : window) peak = std::max (peak, std::abs (x));
+                const auto top = static_cast<std::size_t> (20000.0 * sineSize / rate);
+                for (std::size_t k = static_cast<std::size_t> (20.0 * sineSize / rate); k <= top; ++k) total += power (k);
+                for (std::size_t h = 2; h * static_cast<std::size_t> (bin) <= top; ++h)
+                {
+                    const auto p = power (h * static_cast<std::size_t> (bin));
+                    (h <= 5 ? low : h <= 10 ? mid : high) += p;
+                }
+                const auto nonHarmonic = std::max (total - fundamental - low - mid - high, 1.0e-30);
+                out << c.stage << ',' << c.drive << ',' << value << ',' << bin * rate / sineSize << ',' << inputPeakDb << ',' << powerDb (fundamental / 2) << ','
+                    << 100 * std::sqrt ((low + mid + high) / fundamental) << ',' << powerDb (low / fundamental) << ',' << powerDb (mid / fundamental) << ','
+                    << powerDb (high / fundamental) << ',' << powerDb (nonHarmonic / fundamental) << ',' << db (peak) << '\n';
+                if (requested < 200 && value >= c.values[c.values.size() - 2])
+                {
+                    const auto period = static_cast<int> (std::round (sineSize / static_cast<double> (bin)));
+                    for (int n = 0; n < 2 * period; n += 2)
+                        waves << c.stage << ',' << c.drive << ',' << value << ',' << bin * rate / sineSize << ',' << n << ',' << window[static_cast<std::size_t> (n)] << '\n';
+                }
+            }
+    // Renders for listening: the owner's three scenarios on the synthetic material.
+    const auto audioRoot = root.getChildFile ("saturation_audio"); REQUIRE (audioRoot.createDirectory().wasOk());
+    const std::vector<std::pair<const char*, std::vector<std::pair<const char*, float>>>> scenes {
+        { "digital-in-18", { { "inGain", 18 } } }, { "makeup-18", { { "makeup", 18 } } },
+        { "amounts-100-in-6", { { "tubeAmount", 100 }, { "xfrmAmount", 100 }, { "inGain", 6 } } }, { "nominal", {} } };
+    constexpr std::array materials { "bass", "drums", "vocal" };
+    for (int type = 0; type < 3; ++type)
+        for (const auto& [sceneName, sceneSettings] : scenes)
+        {
+            const auto length = static_cast<int> (rate);
+            const auto rendered = renderPlugin (sceneSettings, [type] (int ch, int n) { return 0.5 * material (type, ch, static_cast<double> (n)); }, length);
+            std::array<std::vector<double>, 2> stereo { rendered, rendered };
+            writeWav (audioRoot.getChildFile (juce::String (materials[static_cast<std::size_t> (type)]) + "_" + sceneName + ".wav"), stereo, 1.0);
+        }
+}
 }
 
 TEST_CASE ("Koren triode derivatives match finite differences", "[tube-stage]")
@@ -834,7 +944,7 @@ TEST_CASE ("Export tube stage reports", "[tube-report]")
 {
     const auto* taskValue = std::getenv ("LUMIERE_MODULE_TASK");
     const std::string task = taskValue ? taskValue : "";
-    if (task != "tube-fit" && task != "tube-coupling" && task != "tube-coupling-cpu" && task != "tube-aliasing" && task != "gain-tube-fit" && task != "gain-tube-report") { SUCCEED ("Explicit tube report opt-in"); return; }
+    if (task != "tube-fit" && task != "tube-coupling" && task != "tube-coupling-cpu" && task != "tube-aliasing" && task != "gain-tube-fit" && task != "gain-tube-report" && task != "saturation-diagnosis") { SUCCEED ("Explicit tube report opt-in"); return; }
     const auto* directory = std::getenv ("LUMIERE_MODULE_REPORT_DIR"); REQUIRE (directory != nullptr);
     const juce::File root (juce::String::fromUTF8 (directory)); REQUIRE (root.createDirectory().wasOk());
     if (task == "tube-fit") writeFit (root);
@@ -842,6 +952,7 @@ TEST_CASE ("Export tube stage reports", "[tube-report]")
     else if (task == "tube-aliasing") writeTubeAliasing (root);
     else if (task == "gain-tube-fit") writeGainTubeFit (root);
     else if (task == "gain-tube-report") writeGainTubeReport (root);
+    else if (task == "saturation-diagnosis") writeSaturationDiagnosis (root);
     else { writeCoupling (root); writeCouplingRenders (root); }
 }
 

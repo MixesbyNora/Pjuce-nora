@@ -117,7 +117,7 @@ TEST_CASE ("Plugin state retains private voicing without adding or reordering ho
     PluginProcessor restored;
     restored.setStateInformation (block.getData(), static_cast<int> (block.getSize()));
     CHECK (restored.getTransformerVoicing().toJson() == processor.getTransformerVoicing().toJson());
-    REQUIRE (restored.getParameters().size() == 22);
+    REQUIRE (restored.getParameters().size() == 24);
     for (int i = 0; i < processor.getParameters().size(); ++i)
     {
         const auto* original = dynamic_cast<juce::RangedAudioParameter*> (processor.getParameters()[i]);

@@ -21,9 +21,10 @@ public:
         bool tube = false;
         GainTube::Settings settings;
         bool amp = false; // Makeup drives it: the amplifier follows the makeup gain.
+        double ampDriveDb = 0.0; // Headroom's drive into the amplifier, level-compensated.
         bool operator== (const GainElement& other) const noexcept
         {
-            return tube == other.tube && amp == other.amp && settings.tube == other.settings.tube
+            return tube == other.tube && amp == other.amp && std::abs (ampDriveDb - other.ampDriveDb) < 1.0e-9 && settings.tube == other.settings.tube
                 && std::abs (settings.gridLevelDb - other.settings.gridLevelDb) < 1.0e-9 && std::abs (settings.imbalance - other.settings.imbalance) < 1.0e-12;
         }
     };
@@ -36,17 +37,20 @@ private:
     {
         GainElement settings;
         std::array<GainTube::Cell, 2> cells;
-        void configure (GainElement) noexcept;
-        double render (std::size_t channel, double x, double reductionDb, double digitalGain, double makeupGain) const noexcept
+        std::array<AmpTube::Grid, 2> grids;
+        void configure (GainElement, double sampleRate) noexcept;
+        double render (std::size_t channel, double x, double reductionDb, double digitalGain, double makeupGain) noexcept
         {
             const auto y = settings.tube ? cells[channel].process (x, reductionDb) * makeupGain : x * digitalGain;
-            return settings.amp ? AmpTube::stage().process (y) : y;
+            return settings.amp ? AmpTube::stage().outputForGrid (grids[channel].process (y * ampDrive)) / ampDrive : y;
         }
+        double ampDrive = 1.0;
     };
     Element active, next;
     GainElement requested;
     juce::SmoothedValue<float> elementFade;
     bool fading = false;
+    double rate = 48000.0;
     juce::SmoothedValue<float> calibrationDb;
     SoftKneeGainComputer gainComputer;
     DbGainEnvelope envelope;

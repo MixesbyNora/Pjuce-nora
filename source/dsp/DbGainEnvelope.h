@@ -9,15 +9,17 @@ public:
     void prepare (double sampleRate) noexcept
     {
         fillCoefficients (attackCoefficients, CompressorParameters::attack, sampleRate);
-        minReleaseMs = 1000.0 / sampleRate;
+        sampleMs = 1000.0 / sampleRate;
         gainReductionDb = 0.0;
     }
 
     void setTimes (float attackMs, float releaseMs) noexcept
     {
         attackCoefficient = attackCoefficients[indexFor (attackMs, CompressorParameters::attack)];
-        releaseTimeMs = juce::jmax (minReleaseMs, static_cast<double> (releaseMs));
+        releaseTimeMs = juce::jmax (CompressorParameters::fastestReleaseMs, static_cast<double> (releaseMs));
     }
+    // 0 = the Release time always; 1 = full program dependence.
+    void setReleaseMod (float amount) noexcept { releaseMod = juce::jlimit (0.0, 1.0, static_cast<double> (amount)); }
 
     float process (float targetReductionDb) noexcept
     {
@@ -25,12 +27,13 @@ public:
         if (static_cast<double> (targetReductionDb) < gainReductionDb)
         {
             const auto depth = juce::jlimit (0.0, 1.0,
-                gainReductionDb / CompressorParameters::fullSpeedGrDb);
-            const auto effectiveMs = juce::jlimit (minReleaseMs, releaseTimeMs,
-                releaseTimeMs * std::pow (minReleaseMs / releaseTimeMs, depth));
-            // Calculated only while releasing. The user's Release is the
-            // slowest time constant; deep reduction can reach one sample.
-            coefficient = std::exp (-minReleaseMs / effectiveMs);
+                gainReductionDb / CompressorParameters::fullSpeedGrDb) * releaseMod;
+            const auto fastest = CompressorParameters::fastestReleaseMs;
+            const auto effectiveMs = juce::jlimit (fastest, releaseTimeMs,
+                releaseTimeMs * std::pow (fastest / releaseTimeMs, depth));
+            // Calculated only while releasing. The user's Release is the slowest
+            // time constant; deep reduction with Release Mod reaches 20 ms at most.
+            coefficient = std::exp (-sampleMs / effectiveMs);
         }
         gainReductionDb = targetReductionDb + coefficient * (gainReductionDb - targetReductionDb);
         return getGainReductionDb();
@@ -63,7 +66,8 @@ private:
 
     std::array<double, CompressorParameters::stepCount (CompressorParameters::attack)> attackCoefficients {};
     double attackCoefficient = 0.0;
-    double minReleaseMs = 1.0;
+    double sampleMs = 1.0;
+    double releaseMod = CompressorParameters::releaseMod.defaultValue * 0.01;
     double releaseTimeMs = CompressorParameters::release.defaultValue;
     double gainReductionDb = 0.0;
 };

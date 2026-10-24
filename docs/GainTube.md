@@ -158,6 +158,14 @@ from 19.9% with the gain tube out to 20.4% with either tube in.
 - crossfades without a step;
 - parameters, state and the editor's fourth stage.
 
+## Overdrive additions (2026-10-24)
+
+See [Overdrive.md](Overdrive.md).
+- **Grid current:** the gain-tube grids are driven through 4.7 kΩ (inferred)
+  and draw current (the 5670 sheet's law) when driven positive.
+- **Release:** the compressor's release is floored at 20 ms, with Release Mod.
+- **Headroom** offsets the gain tube's grid level and the 5751's drive.
+
 ## Changes to know about
 
 - **The gain tube is In by default,** so every instance, including older

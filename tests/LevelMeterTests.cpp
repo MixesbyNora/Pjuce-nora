@@ -215,7 +215,8 @@ TEST_CASE ("Meter peaks persist through quieter blocks until the UI reads them",
     // The 5751's H2 skews the waveform slightly, so the output peak moves a little.
     CHECK (juce::Decibels::gainToDecibels (peaks.outL) == Catch::Approx (-6.0f).margin (0.25f));
     CHECK (juce::Decibels::gainToDecibels (peaks.inR) == Catch::Approx (-18.04f).margin (0.1f));
-    CHECK (juce::Decibels::gainToDecibels (peaks.outR) == Catch::Approx (-18.04f).margin (0.1f));
+    // The output stage's start-up transient (coupling cap and iron) lands in this first block.
+    CHECK (juce::Decibels::gainToDecibels (peaks.outR) == Catch::Approx (-18.04f).margin (0.2f));
 }
 
 TEST_CASE ("Meters stay finite for silence mono stereo block sizes and sample rates", "[meters][finite]")

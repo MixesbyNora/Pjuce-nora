@@ -32,7 +32,9 @@ PluginProcessor::PluginProcessor()
        tubeAmount (parameters.getRawParameterValue (BaParameters::tubeAmount.id)),
        calibration (parameters.getRawParameterValue (CompressorParameters::calibration.id)),
        gainTubeOut (parameters.getRawParameterValue (BaParameters::gainTubeOut.id)),
-       ampTubeOut (parameters.getRawParameterValue (BaParameters::ampTubeOut.id))
+       ampTubeOut (parameters.getRawParameterValue (BaParameters::ampTubeOut.id)),
+       releaseMod (parameters.getRawParameterValue (CompressorParameters::releaseMod.id)),
+       headroom (parameters.getRawParameterValue (BaParameters::headroom.id))
 {
     gainLink = std::make_unique<GainLinkController> (parameters);
 }
@@ -128,6 +130,20 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::createParam
     const auto& ampOut = BaParameters::ampTubeOut;
     layout.add (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { ampOut.id, 9 }, ampOut.name, ampOut.initial, inOutAttributes));
+    const auto& mod = CompressorParameters::releaseMod;
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { mod.id, 10 }, mod.name,
+        juce::NormalisableRange<float> { mod.minimum, mod.maximum, mod.step }, mod.defaultValue,
+        juce::AudioParameterFloatAttributes().withLabel (mod.unit)
+            .withStringFromValueFunction ([] (float value, int) { return juce::String (value, 1); })
+            .withValueFromStringFunction ([] (const juce::String& text) { return text.getFloatValue(); })));
+    const auto& room = BaParameters::headroom;
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { room.id, 11 }, room.name,
+        juce::NormalisableRange<float> { room.minimum, room.maximum, room.step }, room.initial,
+        juce::AudioParameterFloatAttributes().withLabel (room.unit)
+            .withStringFromValueFunction ([] (float value, int) { return juce::String (value, 1); })
+            .withValueFromStringFunction ([] (const juce::String& text) { return text.getFloatValue(); })));
     return layout;
 }
 
@@ -147,7 +163,8 @@ BaParameters::Values PluginProcessor::readBaParameters() const noexcept
         tube.voicing, tube.levelMatch, outputTubeOut->load (std::memory_order_relaxed) >= 0.5f,
         tubeAmount->load (std::memory_order_relaxed), gainTubeVoicing.readAudio().voicing,
         gainTubeOut->load (std::memory_order_relaxed) >= 0.5f,
-        ampTubeOut->load (std::memory_order_relaxed) >= 0.5f };
+        ampTubeOut->load (std::memory_order_relaxed) >= 0.5f,
+        headroom->load (std::memory_order_relaxed) };
 }
 
 juce::AudioProcessorParameter* PluginProcessor::getBypassParameter() const
@@ -164,7 +181,8 @@ CompressorParameters::Values PluginProcessor::readParameters() const noexcept
         makeup->load (std::memory_order_relaxed),
         juce::roundToInt (scFilter->load (std::memory_order_relaxed)),
         fbff->load (std::memory_order_relaxed),
-        calibration->load (std::memory_order_relaxed) };
+        calibration->load (std::memory_order_relaxed),
+        releaseMod->load (std::memory_order_relaxed) };
 }
 
 PluginProcessor::~PluginProcessor()

@@ -196,8 +196,8 @@ TEST_CASE ("Calibration and Gain Tube are appended; the gain tube workbench roun
     CHECK (gainTube->getName (32) == "Gain Tube");
     CHECK_FALSE (gainTube->get());
     CHECK (gainTube->getVersionHint() == 8);
-    CHECK (processor.getParameters().indexOf (gainTube) == processor.getParameters().size() - 2);
-    CHECK (processor.getParameters().indexOf (calibration) == processor.getParameters().size() - 3);
+    CHECK (processor.getParameters().indexOf (gainTube) == processor.getParameters().size() - 4);
+    CHECK (processor.getParameters().indexOf (calibration) == processor.getParameters().size() - 5);
     processor.getGainTubeVoicing().setCurrent ({ 1.0f, 4.5f, 2.5f });
     juce::MemoryBlock block;
     processor.getStateInformation (block);
@@ -309,7 +309,7 @@ TEST_CASE ("Makeup drives the 5751 harder; Amp Tube is appended and switches smo
     CHECK (amp->getName (32) == "Amp Tube");
     CHECK_FALSE (amp->get());
     CHECK (amp->getVersionHint() == 9);
-    CHECK (processor.getParameters().indexOf (amp) == processor.getParameters().size() - 1);
+    CHECK (processor.getParameters().indexOf (amp) == processor.getParameters().size() - 3);
     set (processor, "threshold", 0.0f);
     processor.prepareToPlay (48000.0, 256);
     const auto dry = sine (48000.0, 110.0, 0.5f, 256 * 48);

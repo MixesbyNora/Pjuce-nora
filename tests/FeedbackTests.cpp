@@ -144,7 +144,9 @@ TEST_CASE ("FB FF step response settles without sustained oscillation at every s
             CHECK (high.tailMinimum == Catch::Approx (expected).margin (0.05f));
             CHECK (high.tailMaximum == Catch::Approx (expected).margin (0.05f));
             CHECK (high.tailMaximum - high.tailMinimum < 0.05f);
-            const auto low = renderDc (compressor, frame, 0.0f, samples, tail);
+            // Release is never faster than 20 ms (docs/Overdrive.md), so 20 dB needs
+            // a little longer than the 200 ms attack phase to clear.
+            const auto low = renderDc (compressor, frame, 0.0f, 2 * samples, tail);
             CHECK (low.allFinite);
             CHECK (low.minimum >= 0.0f);
             CHECK (low.maximum <= high.last);

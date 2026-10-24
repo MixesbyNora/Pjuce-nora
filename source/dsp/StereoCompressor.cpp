@@ -2,6 +2,7 @@
 
 void StereoCompressor::prepare (double sampleRate, const CompressorParameters::Values& values) noexcept
 {
+    rate = sampleRate;
     envelope.prepare (sampleRate);
     sidechainFilter.prepare (sampleRate);
     inputDb.reset (sampleRate, 0.02);
@@ -14,7 +15,7 @@ void StereoCompressor::prepare (double sampleRate, const CompressorParameters::V
     GainTube::curve (GainTube::Tube::ge5670);
     GainTube::curve (GainTube::Tube::ge6386);
     AmpTube::stage();
-    active.configure (requested);
+    active.configure (requested, rate);
     fading = false;
     inputDb.setCurrentAndTargetValue (values.inputDb);
     makeupDb.setCurrentAndTargetValue (values.makeupDb);
@@ -30,14 +31,18 @@ void StereoCompressor::setParameters (const CompressorParameters::Values& values
     calibrationDb.setTargetValue (values.calibrationDb);
     gainComputer.setThresholdDb (values.thresholdDb);
     envelope.setTimes (values.attackMs, values.releaseMs);
+    envelope.setReleaseMod (values.releaseModPercent * 0.01f);
     sidechainFilter.setMode (values.scFilterMode);
 }
 
-void StereoCompressor::Element::configure (GainElement element) noexcept
+void StereoCompressor::Element::configure (GainElement element, double sampleRate) noexcept
 {
     settings = element;
+    ampDrive = std::pow (10.0, element.ampDriveDb / 20.0);
     for (auto& cell : cells)
         cell.configure (element.settings);
+    for (auto& grid : grids)
+        grid.prepare (sampleRate);
 }
 
 void StereoCompressor::setGainElement (GainElement element) noexcept
@@ -79,7 +84,7 @@ float StereoCompressor::process (juce::AudioBuffer<float>& buffer, int numInputC
         const auto outputGain = juce::Decibels::decibelsToGain (makeup - reductionDb);
         if (! fading && ! (requested == active.settings))
         {
-            next.configure (requested);
+            next.configure (requested, rate);
             elementFade.setCurrentAndTargetValue (0.0f);
             elementFade.setTargetValue (1.0f);
             fading = true;

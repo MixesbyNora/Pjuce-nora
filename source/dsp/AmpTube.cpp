@@ -61,8 +61,51 @@ double Stage::plateFor (double grid) const noexcept
 
 double Stage::process (double x) const noexcept
 {
+    return outputForGrid (x * gridScale);
+}
+
+double Stage::outputForGrid (double grid) const noexcept
+{
     // Inverting stage; divide by the (negative) small-signal gain to keep polarity.
-    return (plateFor (x * gridScale) - plateQuiescent) / (smallSignalGain * gridScale);
+    return (plateFor (grid) - plateQuiescent) / (smallSignalGain * gridScale);
+}
+
+void Grid::prepare (double sampleRate) noexcept
+{
+    step = 1.0 / (2.0 * sampleRate * couplingFarads); // Trapezoidal capacitor: T / 2C.
+    // Midband the leak divides the drive by Rleak / (Rsource + Rleak): undo it so
+    // the small-signal gain stays unity.
+    scale = stage().gridVoltsPerUnit() * (sourceOhms + leakOhms) / leakOhms;
+    cathode = stage().cathodeVolts();
+    reset();
+}
+
+double Grid::process (double x) noexcept
+{
+    // Source -- Rs -- C -- grid -- Rleak to ground, grid current to the cathode.
+    // Coupling current i = (a - grid) / r with the capacitor's trapezoidal step folded in.
+    const auto a = x * scale - capacitor - step * previousCurrent;
+    const auto r = sourceOhms + step;
+    // KCL at the grid rises monotonically with the grid voltage.
+    auto grid = a / (1.0 + r / leakOhms);
+    if (grid - cathode > -2.0)
+    {
+        double lo = grid - 1.0e3, hi = a;
+        for (int n = 0; n < 60; ++n)
+        {
+            const auto g = ModuleSpike::gridCurrent (grid - cathode);
+            const auto residual = grid / leakOhms + g.ig - (a - grid) / r;
+            if (std::abs (residual) < 1.0e-15) break;
+            (residual > 0 ? hi : lo) = grid;
+            auto next = grid - residual / (1.0 / leakOhms + g.slope + 1.0 / r);
+            if (! (next > lo && next < hi) || n >= 8) next = 0.5 * (lo + hi);
+            grid = next;
+        }
+    }
+    const auto current = (a - grid) / r;
+    capacitor += step * (current + previousCurrent);
+    previousCurrent = current;
+    return grid;
 }
 
 const Stage& stage() noexcept

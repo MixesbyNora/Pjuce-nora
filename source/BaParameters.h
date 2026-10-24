@@ -40,6 +40,14 @@ inline constexpr FloatSpecification tubeAmount { "tubeAmount", "Tube Amount", "%
 inline constexpr BoolSpecification gainTubeOut { "gainTubeOut", "Gain Tube", false };
 // The 5751 amplifier after Makeup (docs/TubeStage.md); Out is a clean gain.
 inline constexpr BoolSpecification ampTubeOut { "ampTubeOut", "Amp Tube", false };
+// Headroom (owner decision, 2026-10-24; docs/Overdrive.md): the analog reference
+// for every saturating stage, both irons and all three tubes, but not the
+// compressor law or Calibration. H dB means 0 dBu = -H dBFS (0 dBFS = +H dBu).
+// The stages were calibrated at 18 dB; the default 14 drives them all 4 dB softer.
+inline constexpr FloatSpecification headroom { "headroom", "Headroom", "dB", 6.0f, 30.0f, 0.1f, 14.0f };
+inline constexpr double calibratedHeadroomDb = 18.0;
+// Extra drive every saturating stage gets for a Headroom setting.
+inline double headroomDriveDb (float headroomDb) noexcept { return calibratedHeadroomDb - static_cast<double> (headroomDb); }
 // Amounts are drive only (-24 to +18 dB; 400/7 % is the calibrated 0 dB, the
 // default). Owner decision: the In/Out switches are the only bypass.
 inline constexpr FloatSpecification xfrmAmount { "xfrmAmount", "Xfrm Amount", "%", 0.0f, 100.0f, 0.1f, 400.0f / 7.0f };
@@ -78,6 +86,7 @@ struct Values
     GainTubeVoicing::Values gainTubeVoicing;
     bool gainTubeOut = BaParameters::gainTubeOut.initial;
     bool ampTubeOut = BaParameters::ampTubeOut.initial;
+    float headroomDb = headroom.initial;
 };
 
 void appendLayout (juce::AudioProcessorValueTreeState::ParameterLayout& layout);

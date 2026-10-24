@@ -40,6 +40,53 @@ Curve::Curve (Tube tubeType, double plateVolts, double quiescentGrid, double min
     }
 }
 
+namespace
+{
+// Grid voltage against driving voltage, shared by both tubes (one grid law),
+// tabulated once for linear interpolation; beyond it the last slope continues.
+struct GridClamp
+{
+    static constexpr double low = -80.0, high = 40.0, step = 0.002;
+    std::vector<double> grid;
+    GridClamp()
+    {
+        grid.resize (static_cast<std::size_t> ((high - low) / step) + 1);
+        auto vg = low;
+        for (std::size_t i = 0; i < grid.size(); ++i)
+        {
+            const auto drive = low + static_cast<double> (i) * step;
+            // vg + R Ig(vg) rises monotonically with vg: Newton from the last answer.
+            for (int n = 0; n < 50; ++n)
+            {
+                const auto g = ModuleSpike::gridCurrent (vg);
+                const auto residual = vg + Curve::sourceOhms * g.ig - drive;
+                if (std::abs (residual) < 1.0e-12) break;
+                vg = std::min (vg - residual / (1 + Curve::sourceOhms * g.slope), drive);
+            }
+            grid[i] = vg;
+        }
+    }
+};
+const GridClamp& clamp()
+{
+    static const GridClamp table;
+    return table;
+}
+}
+
+double Curve::gridFor (double drive) noexcept
+{
+    const auto& t = clamp();
+    const auto position = (drive - GridClamp::low) / GridClamp::step;
+    const auto last = t.grid.size() - 1;
+    if (! (position > 0)) return drive; // Far below cut-off: no grid current.
+    if (position >= static_cast<double> (last))
+        return t.grid[last] + (drive - GridClamp::high) * (t.grid[last] - t.grid[last - 1]) / GridClamp::step;
+    const auto i = static_cast<std::size_t> (position);
+    const auto f = position - static_cast<double> (i);
+    return t.grid[i] + f * (t.grid[i + 1] - t.grid[i]);
+}
+
 double Curve::currentAt (double grid) const noexcept
 {
     const auto position = (grid - bottom) / step;
@@ -74,6 +121,7 @@ const Curve& curve (Tube tube) noexcept
 {
     static const Curve ge5670 (Tube::ge5670, 150.0, -1.968, -30.0);
     static const Curve ge6386 (Tube::ge6386, 100.0, -1.92, -80.0);
+    clamp(); // Built with the curves, never on the audio thread.
     return tube == Tube::ge6386 ? ge6386 : ge5670;
 }
 
@@ -94,6 +142,8 @@ double Cell::process (double x, double reductionDb) const noexcept
 {
     const auto bias = tube->biasFor (reductionDb);
     const auto swing = gridVolts * x;
-    return (tube->currentAt (bias + swing) - second * tube->currentAt (bias - swing) - idleOffset) * scale;
+    // Each grid is driven through the source; driven positive, it draws current
+    // and its peaks round off (the bias is grid-to-cathode, so the cathode is 0 V here).
+    return (tube->currentAt (Curve::gridFor (bias + swing)) - second * tube->currentAt (Curve::gridFor (bias - swing)) - idleOffset) * scale;
 }
 }

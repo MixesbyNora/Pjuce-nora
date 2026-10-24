@@ -22,7 +22,11 @@ public:
     explicit Stage (Design = {});
     // x in full-scale units at the amplifier's input (after Makeup); returns the
     // output in full-scale units with unity small-signal gain (polarity kept).
+    // Memoryless: no grid current (see Grid for the live input network).
     double process (double x) const noexcept;
+    // Output in full-scale units for an absolute grid voltage.
+    double outputForGrid (double grid) const noexcept;
+    double cathodeVolts() const noexcept { return cathode; }
     double gainDb() const noexcept { return 20.0 * std::log10 (std::abs (smallSignalGain)); }
     double gridVoltsPerUnit() const noexcept { return gridScale; }
     double cathodeOhms() const noexcept { return rk; }
@@ -37,4 +41,22 @@ private:
 };
 // The live stage, built on first use (at prepare, never on the audio thread).
 const Stage& stage() noexcept;
+
+// The 5751's input network, one per channel (docs/Overdrive.md): the driving
+// source (the gain tubes' plates, inferred 22 kOhm), a 0.1 uF coupling capacitor
+// and a 1 MOhm grid leak. Driven past its cathode voltage the grid draws current
+// (5670 law), which rounds the peaks and charges the capacitor: the stage biases
+// itself colder after big hits and recovers through the leak (blocking).
+class Grid
+{
+public:
+    void prepare (double sampleRate) noexcept;
+    void reset() noexcept { capacitor = previousCurrent = 0; }
+    // x in full-scale units; returns the absolute grid voltage.
+    double process (double x) noexcept;
+    static constexpr double sourceOhms = 22.0e3, couplingFarads = 0.1e-6, leakOhms = 1.0e6;
+
+private:
+    double step = 0, capacitor = 0, previousCurrent = 0, scale = 1, cathode = 0;
+};
 }

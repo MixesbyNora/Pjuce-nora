@@ -253,6 +253,7 @@ TEST_CASE ("Input transformer voicing reaches the audio and round-trips through 
         set (processor, "outputTubeOut", 1.0f);
         set (processor, "gainTubeOut", 1.0f);
         set (processor, "ampTubeOut", 1.0f);
+        set (processor, "headroom", 18.0f); // The iron's calibration reference.
         set (processor, "inGain", 12.0f);
         if (voiced) processor.getInputTransformerVoicing().setCurrent ({ -12.0f, 24.0f });
         return renderProcessor (processor, 30.0, -12.0, 48000 + 4800);
@@ -293,8 +294,8 @@ TEST_CASE ("Input XFRM bypass is appended and removes the input iron; Output XFR
     CHECK (parameter (processor, "inputXfrmOut")->getText (0.0f, 32) == "In");
     CHECK (parameter (processor, "inputXfrmOut")->getText (1.0f, 32) == "Out");
     CHECK_FALSE (input->get());
-    // Appended before Output Tube (hint 6), Tube Amount (7), Calibration and Gain Tube (8), Amp Tube (9).
-    CHECK (processor.getParameters().indexOf (input) == processor.getParameters().size() - 6);
+    // Appended before Output Tube (6), Tube Amount (7), Calibration and Gain Tube (8), Amp Tube (9), Release Mod (10), Headroom (11).
+    CHECK (processor.getParameters().indexOf (input) == processor.getParameters().size() - 8);
     CHECK (input->getVersionHint() > parameter (processor, "xfrmAmount")->getVersionHint());
     // Driven 30 Hz with the output iron out: only the input iron adds H3.
     const auto thirdWith = [] (bool inputOut)

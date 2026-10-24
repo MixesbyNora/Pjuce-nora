@@ -324,9 +324,10 @@ saved as `TUBE_VOICING`. Sessions without it restore the defaults.
 | Control | Range | Default | What it does physically |
 |---|---|---|---|
 | Plate current | 3–20 mA per section | 10 mA | Sets the follower's output resistance (≈ 1/gm). Less current: the tube leans harder on the iron, more bass saturation, earlier cut-off on bass peaks. |
-| Coupling cap | 22–1000 µF | 1000 µF | Small values resonate with the primary inductance (an LF bump or tilt) and limit bass current into the core. |
+| Coupling cap | 22–1000 µF | 220 µF (was 1000 µF until 2026-10-24) | Small values resonate with the primary inductance (an LF bump or tilt) and limit bass current into the core. |
 | Supply (B+) | 200–400 V | 300 V | The cathode sits at half of it, so it sets the swing headroom before the tube runs out of plate voltage. |
-| Sections | 1 or 2 | 2 | One section doubles the output resistance. |
+| Sections | 1 or 2 | 2 | One section doubles the output resistance (single-ended wiring only). |
+| Wiring | Push-pull / Single-ended | Push-pull | Added 2026-10-24 ([Overdrive.md](Overdrive.md)): a White cathode follower that pushes and pulls current, or the original single-ended follower. |
 
 - **Design rule** (`followerDesign`). The cathode is set to half the supply;
   the cathode resistor gives the chosen current; the grid bias comes from the

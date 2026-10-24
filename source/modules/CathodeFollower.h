@@ -20,6 +20,13 @@ struct StageDesign
     TriodeParameters tube = rca12bh7a();
     double sections = 2;               // Both 12BH7 sections in parallel (inference: one bottle per channel).
     double supply = 300, bias = 145, cathodeOhms = 7500, couplingFarads = 1000.0e-6;
+    // White cathode follower (owner decision 2026-10-24, docs/Overdrive.md): the
+    // upper section's plate resistor drives the lower section's grid through an
+    // (ideal) coupling capacitor, so the lower section sinks current when the load
+    // pulls back. One section in each position; `bias` is the upper grid,
+    // `cathodeOhms` the lower section's bypassed cathode resistor.
+    bool pushPull = false;
+    double plateOhms = 0, quiescentPlate = 0, quiescentOutput = 0, lowerCathode = 0;
 };
 // A follower biased for a quiescent current per section, with the cathode at
 // half the supply (the widest symmetric swing). Grid bias solved from the triode law.
@@ -36,6 +43,37 @@ inline StageDesign followerDesign (double plateAmps, double couplingFarads, doub
         (triodeCurrent (d.tube, supply - cathode, mid).ia < plateAmps ? lo : hi) = mid;
     }
     d.bias = cathode + 0.5 * (lo + hi);
+    return d;
+}
+// A White cathode follower at a quiescent current per section: both sections get
+// the same plate-to-cathode voltage, the lower grid sits at 0 V DC (grid leak) and
+// its bypassed cathode resistor sets the current. 1.5 kOhm upper plate resistor.
+inline StageDesign pushPullDesign (double plateAmps, double couplingFarads, double supply) noexcept
+{
+    StageDesign d;
+    d.pushPull = true; d.sections = 1; d.supply = supply; d.couplingFarads = couplingFarads;
+    d.plateOhms = 1500.0;
+    d.quiescentPlate = supply - d.plateOhms * plateAmps;
+    const auto gridFor = [&d, plateAmps] (double plateToCathode)
+    {
+        double lo = -150, hi = 20;
+        for (int i = 0; i < 100; ++i)
+        {
+            const auto mid = 0.5 * (lo + hi);
+            (triodeCurrent (d.tube, plateToCathode, mid).ia < plateAmps ? lo : hi) = mid;
+        }
+        return 0.5 * (lo + hi);
+    };
+    auto lowerCathode = 5.0;
+    for (int i = 0; i < 60; ++i)
+    {
+        d.quiescentOutput = 0.5 * (d.quiescentPlate + lowerCathode);
+        lowerCathode = -gridFor (d.quiescentOutput - lowerCathode);
+    }
+    d.lowerCathode = lowerCathode;
+    d.quiescentOutput = 0.5 * (d.quiescentPlate + lowerCathode);
+    d.cathodeOhms = lowerCathode / plateAmps;
+    d.bias = d.quiescentOutput + gridFor (d.quiescentPlate - d.quiescentOutput);
     return d;
 }
 // The live VTB1148 C calibration: 0 dBFS = +18 dBu at the primary, so one
@@ -126,11 +164,13 @@ public:
     {
         load.reset();
         cathode = quiescent;
+        upperPlate = design.quiescentPlate; upperSlope = 0; upperAt = quiescent;
         capacitor = cathode; primaryCurrent = unknown = previousUnknown = lastOutput = 0; diagnostics = {};
     }
     // Quiescent cathode voltage: the coupling capacitor blocks DC.
     static double quiescentCathode (const StageDesign& d) noexcept
     {
+        if (d.pushPull) return d.quiescentOutput;
         double lo = 0, hi = d.supply;
         for (int i = 0; i < 200; ++i)
         {
@@ -155,7 +195,7 @@ public:
         double lo = 0, hi = 0, x = 2 * unknown - previousUnknown, reach = 1.0e-3;
         bool haveLo = false, haveHi = false;
         LoadTrial t;
-        double residual = 0, vk = 0, vc = 0, plateAmps = 0;
+        double residual = 0, vk = 0, vc = 0, plateAmps = 0, plate = upperPlate, plateSlope = upperSlope, plateAt = upperAt;
         int iteration = 0;
         for (; iteration < 200; ++iteration)
         {
@@ -164,14 +204,36 @@ public:
             vk = t.vp + vc;
             const auto dVk = t.dVp + step * t.dIp;
             const auto tubeCathode = quiescent + drive * (vk - quiescent); // The tube's side of the level shift.
-            const auto tube = triodeCurrent (design.tube, design.supply - tubeCathode, grid - tubeCathode);
-            plateAmps = design.sections * tube.ia;
-            residual = plateAmps - tubeCathode / design.cathodeOhms - drive * t.ip;
-            const auto conductance = design.sections * (tube.dVa + tube.dVg) + 1 / design.cathodeOhms;
+            double conductance = 0, scale = 0;
+            if (design.pushPull)
+            {
+                // Upper plate for this output voltage (inner monotone root), then KCL at
+                // the output: upper current = lower current + load current.
+                // Start from the linear prediction of the last solve: usually one correction.
+                const auto solved = solveUpperPlate (tubeCathode, grid, plate + plateSlope * (tubeCathode - plateAt));
+                plate = solved.plate;
+                plateAt = tubeCathode;
+                const auto& upper = solved.current;
+                const auto lower = triodeCurrent (design.tube, tubeCathode - design.lowerCathode, plate - design.quiescentPlate - design.lowerCathode);
+                plateAmps = upper.ia;
+                residual = upper.ia - lower.ia - drive * t.ip;
+                plateSlope = (upper.dVa + upper.dVg) / (1 / design.plateOhms + upper.dVa);
+                conductance = -(upper.dVa * (plateSlope - 1) - upper.dVg) + lower.dVa + lower.dVg * plateSlope;
+                scale = upper.ia + lower.ia;
+            }
+            else
+            {
+                const auto tube = triodeCurrent (design.tube, design.supply - tubeCathode, grid - tubeCathode);
+                plateAmps = design.sections * tube.ia;
+                residual = plateAmps - tubeCathode / design.cathodeOhms - drive * t.ip;
+                conductance = design.sections * (tube.dVa + tube.dVg) + 1 / design.cathodeOhms;
+                scale = plateAmps + std::abs (tubeCathode) / design.cathodeOhms;
+            }
             const auto derivative = drive * (-conductance * dVk - t.dIp);
-            // Roundoff bound from the term sizes, including the cathode voltage's own rounding.
+            // 1e-11 of the term sizes (including the cathode voltage's own scale): far
+            // below audibility, and reachable without bisecting into roundoff.
             constexpr auto epsilon = std::numeric_limits<double>::epsilon();
-            const auto goal = 1.0e-18 + 256 * epsilon * (design.sections * tube.ia + std::abs (tubeCathode) / design.cathodeOhms + drive * std::abs (t.ip) + conductance * std::abs (tubeCathode));
+            const auto goal = 1.0e-18 + 1.0e-11 * (scale + drive * std::abs (t.ip) + conductance * std::abs (tubeCathode));
             if (std::abs (residual) <= goal) break;
             // Residual falls as the unknown rises.
             if (residual > 0) { lo = x; haveLo = true; } else { hi = x; haveHi = true; }
@@ -192,6 +254,7 @@ public:
         // On failure keep the state and hold the last output rather than click to 0.
         if (iteration >= 200 || ! isFinite (x)) { ++diagnostics.failures; return lastOutput; }
         load.commit (x, t);
+        upperPlate = plate; upperSlope = plateSlope; upperAt = plateAt;
         previousUnknown = unknown; unknown = x; capacitor = vc; cathode = vk; primaryCurrent = t.ip; lastOutput = t.output;
         diagnostics.minimumPlateMa = std::min (diagnostics.minimumPlateMa, plateAmps * 1000);
         diagnostics.maximumPlateMa = std::max (diagnostics.maximumPlateMa, plateAmps * 1000);
@@ -207,6 +270,14 @@ public:
     // (coupling capacitor shorted, magnetizing branch open).
     static double midbandGain (const StageDesign& d, double loadOhms) noexcept
     {
+        if (d.pushPull)
+        {
+            // Linearized White follower: output per upper-grid volt into the load.
+            const auto upper = triodeCurrent (d.tube, d.quiescentPlate - d.quiescentOutput, d.bias - d.quiescentOutput);
+            const auto lower = triodeCurrent (d.tube, d.quiescentOutput - d.lowerCathode, -d.lowerCathode);
+            const auto plateTerm = 1 / d.plateOhms + upper.dVa, lowerTerm = 1 / d.plateOhms + lower.dVg;
+            return (upper.dVg / plateTerm) / ((upper.dVg + upper.dVa) / plateTerm + (lower.dVa + 1 / loadOhms) / lowerTerm);
+        }
         const auto vk = quiescentCathode (d);
         const auto tube = triodeCurrent (d.tube, d.supply - vk, d.bias - vk);
         return d.sections * tube.dVg / (d.sections * (tube.dVa + tube.dVg) + 1 / d.cathodeOhms + 1 / loadOhms);
@@ -217,7 +288,38 @@ public:
 private:
     StageDesign design;
     Load load;
-    double dt = 0, quiescent = 0, cathode = 0, capacitor = 0, primaryCurrent = 0, unknown = 0, previousUnknown = 0, lastOutput = 0;
+    // Upper plate voltage of the White follower for an output (cathode) voltage,
+    // with the upper section's current there: KCL at the plate falls
+    // monotonically with plate voltage. Newton from a predicted start, then bisection.
+    struct UpperPlate { double plate; TriodeCurrent current; };
+    UpperPlate solveUpperPlate (double output, double grid, double guess) const noexcept
+    {
+        // At absurd drive the output can sit at or above B+: the upper section is off.
+        if (! (output < design.supply)) return { design.supply, {} };
+        double lo = output, hi = design.supply, vp = std::clamp (guess, lo, hi);
+        const auto goal = 1.0e-15 + 1.0e-13 * design.supply / design.plateOhms;
+        TriodeCurrent c;
+        for (int i = 0; i < 60; ++i)
+        {
+            c = triodeCurrent (design.tube, vp - output, grid - output);
+            const auto g = (design.supply - vp) / design.plateOhms - c.ia;
+            if (std::abs (g) <= goal || hi - lo <= 1.0e-12 * design.supply) break;
+            (g > 0 ? lo : hi) = vp;
+            const auto newton = g / (1 / design.plateOhms + c.dVa);
+            if (std::abs (newton) < 1.0e-6 && i < 8)
+            {
+                // A tiny final step: take it with the current carried to first order
+                // (the error is second order, far below the outer tolerance).
+                c.ia += c.dVa * newton;
+                return { vp + newton, c };
+            }
+            auto next = vp + newton;
+            if (! (next > lo && next < hi) || i >= 8) next = 0.5 * (lo + hi);
+            vp = next;
+        }
+        return { vp, c };
+    }
+    double dt = 0, quiescent = 0, cathode = 0, capacitor = 0, primaryCurrent = 0, unknown = 0, previousUnknown = 0, lastOutput = 0, upperPlate = 0, upperSlope = 0, upperAt = 0;
 };
 
 }

@@ -29,8 +29,12 @@ inline constexpr Specification fbff { "fbff", "FB/FF", "", 0.0f, 100.0f, 100.0f,
 inline constexpr Specification calibration { "calibration", "Calibration", "dB", -24.0f, 24.0f, 0.0f, 0.1f };
 inline constexpr double fbffSmoothingSeconds = 0.02;
 
-// Fixed, always-on program-dependent release; this is not a host parameter.
+// Program-dependent release: from fullSpeedGrDb of reduction, Release Mod at 100%
+// speeds release from the Release time down to fastestReleaseMs (owner decision,
+// 2026-10-24: never faster, so the gain cannot follow the waveform; docs/Overdrive.md).
 inline constexpr float fullSpeedGrDb = 12.0f;
+inline constexpr double fastestReleaseMs = 20.0;
+inline constexpr Specification releaseMod { "releaseMod", "Release Mod", "%", 0.0f, 100.0f, 50.0f, 0.1f };
 inline constexpr const char* scFilterId = "scFilter";
 
 constexpr std::size_t stepCount (const Specification& spec) noexcept
@@ -48,5 +52,6 @@ struct Values
     int scFilterMode = 0;
     float fbffPercent = fbff.defaultValue;
     float calibrationDb = calibration.defaultValue;
+    float releaseModPercent = releaseMod.defaultValue;
 };
 }

@@ -65,17 +65,61 @@ bool allFinite (const std::vector<double>& x)
 }
 }
 
-TEST_CASE ("Default tube voicing is the 12BH7 follower at 10 mA per section, cathode at half the supply", "[tube][voicing]")
+TEST_CASE ("Default tube voicing is the push-pull 12BH7 follower at 10 mA per section", "[tube][voicing]")
 {
+    // White cathode follower (docs/Overdrive.md): both sections at 10 mA with the
+    // same plate-to-cathode voltage; 220 uF to the primary.
     const auto design = VtbTransformerCore::designFor ({});
-    const auto cathode = ModuleSpike::CathodeFollower<ModuleSpike::ResistiveLoad>::quiescentCathode (design);
+    REQUIRE (design.pushPull);
+    const auto output = ModuleSpike::CathodeFollower<ModuleSpike::ResistiveLoad>::quiescentCathode (design);
+    const auto upper = ModuleSpike::triodeCurrent (design.tube, design.quiescentPlate - output, design.bias - output);
+    const auto lower = ModuleSpike::triodeCurrent (design.tube, output - design.lowerCathode, -design.lowerCathode);
+    CHECK (upper.ia == Catch::Approx (0.010).epsilon (1.0e-4));
+    CHECK (lower.ia == Catch::Approx (0.010).epsilon (1.0e-4));
+    CHECK (design.quiescentPlate - output == Catch::Approx (output - design.lowerCathode).margin (0.01));
+    CHECK (design.quiescentPlate == Catch::Approx (285.0));
+    CHECK (design.couplingFarads == Catch::Approx (220.0e-6));
+    // Single-ended wiring keeps the original design: cathode at half the supply.
+    TubeVoicing::Values single;
+    single[TubeVoicing::wiring] = 1.0f;
+    const auto plain = VtbTransformerCore::designFor (single);
+    CHECK_FALSE (plain.pushPull);
+    const auto cathode = ModuleSpike::CathodeFollower<ModuleSpike::ResistiveLoad>::quiescentCathode (plain);
     CHECK (cathode == Catch::Approx (150.0).margin (0.01));
-    CHECK (ModuleSpike::triodeCurrent (design.tube, design.supply - cathode, design.bias - cathode).ia == Catch::Approx (0.010).epsilon (1.0e-4));
-    CHECK (design.cathodeOhms == Catch::Approx (7500.0));
-    CHECK (design.sections == Catch::Approx (2.0));
-    CHECK (design.couplingFarads == Catch::Approx (1.0e-3));
-    CHECK (design.bias - cathode < -4.0);
-    CHECK (design.bias - cathode > -7.0);
+    CHECK (ModuleSpike::triodeCurrent (plain.tube, plain.supply - cathode, plain.bias - cathode).ia == Catch::Approx (0.010).epsilon (1.0e-4));
+    CHECK (plain.cathodeOhms == Catch::Approx (7500.0));
+    CHECK (plain.sections == Catch::Approx (2.0));
+}
+
+TEST_CASE ("Push-pull follower saturates the iron far more gracefully than single-ended", "[tube][overdrive]")
+{
+    // Both Amounts at 100% (+18 dB) and 100 Hz at -6 dBFS, the owner's "Amounts all
+    // the way" case (docs/Overdrive.md): the single-ended follower cuts off on the
+    // iron's magnetizing current; the push-pull one keeps driving it.
+    const auto distortion = [] (float wiring)
+    {
+        TubeVoicing::Values voicing;
+        voicing[TubeVoicing::wiring] = wiring;
+        VtbTransformerCore core;
+        auto stage = stageFor (Mode::tubeAndTransformer, voicing);
+        stage.tubeExtraDriveDb = 18.0;
+        core.prepare (internalRate, ModuleSpike::vtb1148OutputC(), 18.0, {}, false, stage);
+        std::vector<double> out;
+        for (int n = 0; n < static_cast<int> (internalRate); ++n)
+        {
+            std::array<double, 2> frame;
+            frame.fill (0.5 * std::sin (2.0 * juce::MathConstants<double>::pi * 100.0 * n / internalRate));
+            core.processFrame (frame, 2);
+            out.push_back (frame[0]);
+        }
+        CHECK (core.getTubeDiagnostics (0).failures == 0);
+        double sum = 0;
+        for (int h = 2; h <= 30; ++h) sum += std::pow (harmonic (out, 100.0, h, 20), 2);
+        return 100.0 * std::sqrt (sum) / harmonic (out, 100.0, 1, 20);
+    };
+    const auto pushPull = distortion (0.0f), single = distortion (1.0f);
+    CAPTURE (pushPull, single);
+    CHECK (pushPull < 0.5 * single);
 }
 
 TEST_CASE ("Tube in or out keeps the output stage's 1 kHz level", "[tube][audio]")
@@ -108,13 +152,15 @@ TEST_CASE ("Every tube control reaches the audio and extremes solve finitely whe
         const auto& d = TubeVoicing::Schema::descriptors[i];
         TubeVoicing::Values voicing;
         voicing[i] = static_cast<float> (std::abs (d.minimum - d.defaultValue) > std::abs (d.maximum - d.defaultValue) ? d.minimum : d.maximum);
+        if (i == TubeVoicing::sections) voicing[TubeVoicing::wiring] = 1.0f; // Sections apply to single-ended wiring.
         CAPTURE (d.id);
         const auto changed = run (Mode::tubeAndTransformer, 30.0, 0.0, 0.25, voicing, 12.0);
         double difference = 0;
         for (std::size_t n = 0; n < changed.size(); ++n) difference = std::max (difference, std::abs (changed[n] - reference[n]));
         CHECK (difference > 1.0e-3);
     }
-    for (const auto& voicing : { TubeVoicing::Values { 3.0f, 22.0f, 200.0f, 1.0f }, TubeVoicing::Values { 20.0f, 1000.0f, 400.0f, 2.0f } })
+    for (const auto& voicing : { TubeVoicing::Values { 3.0f, 22.0f, 200.0f, 1.0f, 0.0f }, TubeVoicing::Values { 20.0f, 1000.0f, 400.0f, 2.0f, 0.0f },
+             TubeVoicing::Values { 3.0f, 22.0f, 200.0f, 1.0f, 1.0f }, TubeVoicing::Values { 20.0f, 1000.0f, 400.0f, 2.0f, 1.0f } })
         for (auto mode : { Mode::tubeAndTransformer, Mode::tube })
         {
             VtbTransformerCore core;
@@ -158,12 +204,12 @@ TEST_CASE ("Output Tube and Tube Amount are appended and the tube workbench roun
     CHECK (tube->getName (32) == "Output Tube");
     CHECK (parameter (processor, "outputTubeOut")->getText (0.0f, 32) == "In");
     CHECK_FALSE (tube->get());
-    CHECK (processor.getParameters().indexOf (tube) == processor.getParameters().size() - 5);
+    CHECK (processor.getParameters().indexOf (tube) == processor.getParameters().size() - 7);
     CHECK (tube->getVersionHint() == 6);
     auto* amount = parameter (processor, "tubeAmount");
     REQUIRE (amount != nullptr);
     CHECK (amount->getName (32) == "Tube Amount");
-    CHECK (processor.getParameters().indexOf (amount) == processor.getParameters().size() - 4);
+    CHECK (processor.getParameters().indexOf (amount) == processor.getParameters().size() - 6);
     CHECK (amount->getVersionHint() == 7);
     // Both Amounts default to the calibrated 0 dB drive (57.1% on the 0.1 grid).
     for (const auto* id : { "tubeAmount", "xfrmAmount" })
