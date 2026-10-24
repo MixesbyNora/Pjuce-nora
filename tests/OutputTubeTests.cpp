@@ -93,6 +93,44 @@ TEST_CASE ("Default tube voicing is the push-pull 12BH7 follower at 10 mA per se
     CHECK (plain.sections == Catch::Approx (2.0));
 }
 
+TEST_CASE ("Tube designs meet their operating point across the workbench's range", "[tube][voicing]")
+{
+    // Designs are rebuilt on the audio thread when a voicing changes, with a few
+    // guarded Newton steps where 100-step bisections cost a 475 us frame
+    // (docs/Overdrive.md, "Voicing changes"). Each must still meet its defining
+    // equations exactly.
+    using Follower = ModuleSpike::CathodeFollower<ModuleSpike::ResistiveLoad>;
+    for (float plateMa : { 3.0f, 10.0f, 20.0f })
+        for (float supply : { 200.0f, 300.0f, 400.0f })
+        {
+            CAPTURE (plateMa, supply);
+            TubeVoicing::Values voicing;
+            voicing[TubeVoicing::plateCurrent] = plateMa;
+            voicing[TubeVoicing::supply] = supply;
+            const auto amps = plateMa * 1.0e-3;
+            // Push-pull: both sections at the current, the same plate-to-cathode
+            // voltage, the lower grid at 0 V and its cathode resistor carrying it.
+            const auto d = VtbTransformerCore::designFor (voicing);
+            const auto upper = ModuleSpike::triodeCurrent (d.tube, d.quiescentPlate - d.quiescentOutput, d.bias - d.quiescentOutput);
+            const auto lower = ModuleSpike::triodeCurrent (d.tube, d.quiescentOutput - d.lowerCathode, -d.lowerCathode);
+            CHECK (upper.ia == Catch::Approx (amps).epsilon (1.0e-9));
+            CHECK (lower.ia == Catch::Approx (amps).epsilon (1.0e-9));
+            CHECK (d.quiescentPlate - d.quiescentOutput == Catch::Approx (d.quiescentOutput - d.lowerCathode).epsilon (1.0e-12));
+            CHECK (d.cathodeOhms * amps == Catch::Approx (d.lowerCathode).epsilon (1.0e-12));
+            // Single-ended: the cathode at half the supply, carrying both sections.
+            for (float sections : { 1.0f, 2.0f })
+            {
+                voicing[TubeVoicing::wiring] = 1.0f;
+                voicing[TubeVoicing::sections] = sections;
+                const auto s = VtbTransformerCore::designFor (voicing);
+                const auto cathode = Follower::quiescentCathode (s);
+                CHECK (cathode == Catch::Approx (0.5 * supply).epsilon (1.0e-9));
+                CHECK (ModuleSpike::triodeCurrent (s.tube, s.supply - cathode, s.bias - cathode).ia == Catch::Approx (amps).epsilon (1.0e-8));
+            }
+            voicing[TubeVoicing::wiring] = 0.0f;
+        }
+}
+
 TEST_CASE ("Push-pull follower saturates the iron far more gracefully than single-ended", "[tube][overdrive]")
 {
     // Both Amounts at 100% (+18 dB) and 100 Hz at -6 dBFS, the owner's "Amounts all

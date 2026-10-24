@@ -293,6 +293,20 @@ worst block rose to 89–99%. Traces showed why:
   is now the next largest cost. It is shared by every transformer, so it is
   left alone.
 
+### Voicing changes
+
+A tube voicing change rebuilds the stage's design on the audio thread: the
+operating point, inside the frame that applies it.
+- **Before:** 60 rounds of a 100-step bisection for the push-pull's grid bias,
+  so **475 µs in one frame**. That is 9% of a 256-sample block at 48 kHz, in a
+  single sample, repeated with every slider step while dragging. Single-ended
+  cost 57 µs.
+- **Now:** guarded Newton solves (`risingRoot`, `gridForCurrent`), and the
+  push-pull's outer fixed point stops once converged. The worst frame is
+  **18 µs** push-pull and 16 µs single-ended.
+- **Tested:** the designs meet their defining equations, within 10⁻⁹, across
+  the workbench's current and supply range.
+
 ## Tests
 
 [OverdriveTests.cpp](../tests/OverdriveTests.cpp):

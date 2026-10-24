@@ -42,6 +42,33 @@ struct StageDesign
     // last Newton step is tiny is taken to first order without that evaluation.
     bool strictSolve = false;
 };
+// Root of a function that rises monotonically on [lo, hi], from `x`: Newton,
+// kept inside the shrinking bracket, else bisection. `f` returns {value, slope}.
+// Designs are rebuilt on the audio thread when a voicing changes, so these take a
+// handful of steps where the bisections they replace took 100 (docs/Overdrive.md).
+template <typename F>
+double risingRoot (F f, double lo, double hi, double x) noexcept
+{
+    for (int i = 0; i < 100; ++i)
+    {
+        const auto [value, slope] = f (x);
+        (value < 0 ? lo : hi) = x;
+        auto next = x - value / slope;
+        if (! (next > lo && next < hi)) next = 0.5 * (lo + hi);
+        if (std::abs (next - x) <= 1.0e-13 * (1 + std::abs (x)) || ! (hi - lo > 1.0e-13 * (1 + std::abs (x)))) return next;
+        x = next;
+    }
+    return x;
+}
+// Grid-to-cathode voltage for a plate current at a plate-to-cathode voltage.
+inline double gridForCurrent (const TriodeParameters& tube, double plateToCathode, double plateAmps, double guess = -5) noexcept
+{
+    return risingRoot ([&] (double vg)
+    {
+        const auto c = triodeCurrent (tube, plateToCathode, vg);
+        return std::pair { c.ia - plateAmps, c.dVg };
+    }, -150, 20, guess);
+}
 // A follower biased for a quiescent current per section, with the cathode at
 // half the supply (the widest symmetric swing). Grid bias solved from the triode law.
 inline StageDesign followerDesign (double plateAmps, double couplingFarads, double supply, double sections) noexcept
@@ -50,13 +77,7 @@ inline StageDesign followerDesign (double plateAmps, double couplingFarads, doub
     d.supply = supply; d.sections = sections; d.couplingFarads = couplingFarads; d.table = &rca12bh7aTable();
     const auto cathode = 0.5 * supply;
     d.cathodeOhms = cathode / (sections * plateAmps);
-    double lo = -150, hi = 20;
-    for (int i = 0; i < 100; ++i)
-    {
-        const auto mid = 0.5 * (lo + hi);
-        (triodeCurrent (d.tube, supply - cathode, mid).ia < plateAmps ? lo : hi) = mid;
-    }
-    d.bias = cathode + 0.5 * (lo + hi);
+    d.bias = cathode + gridForCurrent (d.tube, supply - cathode, plateAmps);
     return d;
 }
 // A White cathode follower at a quiescent current per section: both sections get
@@ -68,26 +89,23 @@ inline StageDesign pushPullDesign (double plateAmps, double couplingFarads, doub
     d.pushPull = true; d.sections = 1; d.supply = supply; d.couplingFarads = couplingFarads; d.table = &rca12bh7aTable();
     d.plateOhms = 1500.0;
     d.quiescentPlate = supply - d.plateOhms * plateAmps;
-    const auto gridFor = [&d, plateAmps] (double plateToCathode)
-    {
-        double lo = -150, hi = 20;
-        for (int i = 0; i < 100; ++i)
-        {
-            const auto mid = 0.5 * (lo + hi);
-            (triodeCurrent (d.tube, plateToCathode, mid).ia < plateAmps ? lo : hi) = mid;
-        }
-        return 0.5 * (lo + hi);
-    };
-    auto lowerCathode = 5.0;
+    // The lower cathode L must bias its own section at plateOhms' current with half
+    // of the remaining voltage across it: L = -grid((plate - L) / 2). A contraction
+    // (about 1 / (2 mu) per step), iterated to convergence.
+    auto lowerCathode = 5.0, grid = -5.0;
     for (int i = 0; i < 60; ++i)
     {
         d.quiescentOutput = 0.5 * (d.quiescentPlate + lowerCathode);
-        lowerCathode = -gridFor (d.quiescentOutput - lowerCathode);
+        grid = gridForCurrent (d.tube, d.quiescentOutput - lowerCathode, plateAmps, grid);
+        const auto next = -grid;
+        const auto converged = std::abs (next - lowerCathode) <= 1.0e-13 * (1 + std::abs (next));
+        lowerCathode = next;
+        if (converged) break;
     }
     d.lowerCathode = lowerCathode;
     d.quiescentOutput = 0.5 * (d.quiescentPlate + lowerCathode);
     d.cathodeOhms = lowerCathode / plateAmps;
-    d.bias = d.quiescentOutput + gridFor (d.quiescentPlate - d.quiescentOutput);
+    d.bias = d.quiescentOutput + gridForCurrent (d.tube, d.quiescentPlate - d.quiescentOutput, plateAmps);
     return d;
 }
 // The live VTB1148 C calibration: 0 dBFS = +18 dBu at the primary, so one
@@ -207,14 +225,12 @@ public:
     static double quiescentCathode (const StageDesign& d) noexcept
     {
         if (d.pushPull) return d.quiescentOutput;
-        double lo = 0, hi = d.supply;
-        for (int i = 0; i < 200; ++i)
+        // The cathode current's excess over the resistor's falls as the cathode rises.
+        return risingRoot ([&d] (double vk)
         {
-            const auto mid = 0.5 * (lo + hi);
-            const auto excess = d.sections * triodeCurrent (d.tube, d.supply - mid, d.bias - mid).ia - mid / d.cathodeOhms;
-            (excess > 0 ? lo : hi) = mid;
-        }
-        return 0.5 * (lo + hi);
+            const auto c = triodeCurrent (d.tube, d.supply - vk, d.bias - vk);
+            return std::pair { vk / d.cathodeOhms - d.sections * c.ia, 1 / d.cathodeOhms + d.sections * (c.dVa + c.dVg) };
+        }, 0, d.supply, 0.5 * d.supply);
     }
     // Grid signal in volts (added to the bias); returns the load voltage.
     // `drive` runs the tube at that multiple of the load's signal level, as if an
