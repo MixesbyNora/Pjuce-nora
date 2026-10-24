@@ -4,6 +4,7 @@
 #include "modules/ShuntAnalysis.h"
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include <complex>
 
 // The live output stage: 12BH7 cathode follower solved jointly with the VTB1148
@@ -334,8 +335,15 @@ TEST_CASE ("Tube Amount drives the tube alone and keeps the level", "[tube][amou
 
 TEST_CASE ("Tube Amount sweeps in the plugin ramp without a step", "[tube][amount][smoothing][processor]")
 {
+    // Also with the capacitor-coupled output grid: the charge it builds at 100%
+    // must not reappear larger when the Amount comes back down (docs/Overdrive.md).
+    const auto grid = GENERATE (0.0f, 2.0f);
+    CAPTURE (grid);
     PluginProcessor processor;
     set (processor, "threshold", 0.0f);
+    TubeVoicing::Values voicing;
+    voicing[TubeVoicing::outputGrid] = grid;
+    processor.getTubeVoicing().setCurrent (voicing);
     processor.prepareToPlay (48000.0, 256);
     juce::AudioBuffer<float> dry (2, 256 * 64);
     for (int i = 0; i < dry.getNumSamples(); ++i)
@@ -393,10 +401,15 @@ TEST_CASE ("Hot drums through the push-pull follower keep a bounded solver cost"
 {
     // Owner report 2026-10-24: pushed hard, loud hits spiked the CPU and glitched.
     // The drum fixture at Makeup +24's level into the output stage (about 14x full
-    // scale): every sample solves, the joint Newton rarely falls back, and the
-    // worst sample stays a bounded handful of evaluations.
+    // scale), with each Output grid choice: every sample solves, the damped joint
+    // Newton almost never falls back, and the worst sample stays a bounded handful
+    // of evaluations (docs/Overdrive.md, "CPU").
+    const auto grid = GENERATE (0.0f, 1.0f, 2.0f);
+    CAPTURE (grid);
+    TubeVoicing::Values voicing;
+    voicing[TubeVoicing::outputGrid] = grid;
     VtbTransformerCore core;
-    core.prepare (internalRate, ModuleSpike::vtb1148OutputC(), 0.0, {}, false, stageFor (Mode::tubeAndTransformer));
+    core.prepare (internalRate, ModuleSpike::vtb1148OutputC(), 0.0, {}, false, stageFor (Mode::tubeAndTransformer, voicing));
     for (int n = 0; n < static_cast<int> (internalRate); ++n)
     {
         std::array<double, 2> frame;
@@ -408,28 +421,42 @@ TEST_CASE ("Hot drums through the push-pull follower keep a bounded solver cost"
     const auto fallbacks = static_cast<double> (d.fallbacks) / static_cast<double> (d.samples);
     CAPTURE (perSample, fallbacks, d.maximumIterations);
     CHECK (d.failures == 0);
-    CHECK (perSample < 4.5);  // 3.7 measured
-    CHECK (fallbacks < 0.01); // 0.5% measured
-    CHECK (d.maximumIterations <= 40); // 32 measured; was 43 with bisection alone
+    CHECK (perSample < 3.0);   // 2.4-2.5 measured (3.7 before the damped joint Newton)
+    CHECK (fallbacks < 0.001); // under 0.02% measured (2% before)
+    CHECK (d.maximumIterations <= 40); // 31-33 measured; was 43 with bisection alone
+}
 
-    // The table changes nothing audible: the same follower with the exact law.
+TEST_CASE ("The fast output-stage solve sounds the same as the exact one", "[tube][cpu]")
+{
+    // The tabulated 12BH7 and the first-order last Newton step against the exact
+    // law with every root confirmed, on bass and drums from nominal to Makeup +24's
+    // level, with the ideal and the capacitor-coupled grid.
     const auto p = ModuleSpike::vtb1148OutputC();
-    auto exactDesign = VtbTransformerCore::designFor ({});
-    const auto tableDesign = exactDesign;
-    exactDesign.table = nullptr;
-    ModuleSpike::CathodeFollower<ModuleSpike::MagneticLoad> fast, exact;
-    fast.prepare (internalRate, tableDesign, p);
-    exact.prepare (internalRate, exactDesign, p);
     const auto unit = ModuleSpike::transformerUnitVolts (p);
-    double peak = 0, error = 0;
-    for (int n = 0; n < static_cast<int> (internalRate / 2); ++n)
-    {
-        const auto x = 14.0 * ShuntResearch::material (1, 0, n / 4.0) * unit;
-        const auto a = fast.process (x), b = exact.process (x);
-        peak = std::max (peak, std::abs (b));
-        error = std::max (error, std::abs (a - b));
-    }
-    CAPTURE (peak, error);
-    CHECK (fast.diagnostics.failures + exact.diagnostics.failures == 0);
-    CHECK (error < 1.0e-9 * peak); // 4e-12 measured
+    for (float grid : { 0.0f, 2.0f })
+        for (double level : { 0.5, 14.0 })
+            for (int type : { 0, 1 })
+            {
+                TubeVoicing::Values voicing;
+                voicing[TubeVoicing::outputGrid] = grid;
+                const auto fastDesign = VtbTransformerCore::designFor (voicing);
+                auto exactDesign = fastDesign;
+                exactDesign.table = nullptr;
+                exactDesign.strictSolve = true;
+                ModuleSpike::CathodeFollower<ModuleSpike::MagneticLoad> fast, exact;
+                fast.prepare (internalRate, fastDesign, p);
+                exact.prepare (internalRate, exactDesign, p);
+                double peak = 0, error = 0;
+                for (int n = 0; n < static_cast<int> (internalRate / 2); ++n)
+                {
+                    const auto x = level * ShuntResearch::material (type, 0, n / 4.0) * unit;
+                    const auto a = fast.process (x), b = exact.process (x);
+                    peak = std::max (peak, std::abs (b));
+                    error = std::max (error, std::abs (a - b));
+                }
+                CAPTURE (grid, level, type, peak, error);
+                CHECK (fast.diagnostics.failures + exact.diagnostics.failures == 0);
+                CHECK (error < 1.0e-8 * peak); // -160 dB; about -190 dB measured
+                CHECK (fast.diagnostics.evaluations < exact.diagnostics.evaluations);
+            }
 }

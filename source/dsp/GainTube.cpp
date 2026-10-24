@@ -138,12 +138,12 @@ void Cell::configure (Settings settings) noexcept
     scale = 1.0 / (gridVolts * tube->quiescentGm() * (1.0 + second));
 }
 
-double Cell::process (double x, double reductionDb) const noexcept
+double Cell::process (double x, double reductionDb, double gridGain) const noexcept
 {
     const auto bias = tube->biasFor (reductionDb);
-    const auto swing = gridVolts * x;
+    const auto swing = gridVolts * gridGain * x;
     // Each grid is driven through the source; driven positive, it draws current
     // and its peaks round off (the bias is grid-to-cathode, so the cathode is 0 V here).
-    return (tube->currentAt (Curve::gridFor (bias + swing)) - second * tube->currentAt (Curve::gridFor (bias - swing)) - idleOffset) * scale;
+    return (tube->currentAt (Curve::gridFor (bias + swing)) - second * tube->currentAt (Curve::gridFor (bias - swing)) - idleOffset) * scale / gridGain;
 }
 }

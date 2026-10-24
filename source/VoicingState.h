@@ -74,17 +74,21 @@ public:
             state.store (encode (snapshot), std::memory_order_relaxed);
             return true;
         }
-        if (static_cast<int> (root["version"]) != Schema::version || modelName != Schema::model)
+        const auto version = static_cast<int> (root["version"]);
+        if (version < Voicing::readableSince<Schema>() || version > Schema::version || modelName != Schema::model)
             return false;
+        const auto older = version < Schema::version;
         if (! root["legacyVoicingIgnored"].isVoid() && ! root["legacyVoicingIgnored"].isBool())
             return false;
-        const auto readValues = [] (const juce::var& object, Values& values)
+        const auto readValues = [older] (const juce::var& object, Values& values)
         {
             if (! object.isObject())
                 return false;
             for (std::size_t i = 0; i < Schema::descriptors.size(); ++i)
             {
                 const auto value = object[Schema::descriptors[i].id];
+                if (older && value.isVoid())
+                    continue; // Added since that version: keeps its default.
                 if (! value.isDouble() && ! value.isInt() && ! value.isInt64())
                     return false;
                 values[i] = static_cast<float> (value);

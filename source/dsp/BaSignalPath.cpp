@@ -16,6 +16,7 @@ void BaSignalPath::prepare (double sampleRate, int maximumBlockSize,
     // filters follow the rate it is prepared with.
     compressor.setGainElement (gainElement (values));
     compressor.prepare (internalRate, compressorValues);
+    compressor.setHeadroomDriveDb (BaParameters::headroomDriveDb (values.headroomDb), true);
     inputTransformer.prepare (internalRate, ModuleSpike::vtb9046LineInputC(), BaParameters::headroomDriveDb (values.headroomDb),
         values.inputTransformerVoicing, values.inputVoicingLevelMatch);
     outputTransformer.prepare (internalRate, ModuleSpike::vtb1148OutputC(),
@@ -139,9 +140,9 @@ StereoCompressor::GainElement BaSignalPath::gainElement (const BaParameters::Val
     const auto& v = values.gainTubeVoicing;
     return { ! values.gainTubeOut,
         { GainTubeVoicing::dspValue (v, GainTubeVoicing::tube) > 0.5 ? GainTube::Tube::ge6386 : GainTube::Tube::ge5670,
-          GainTubeVoicing::dspValue (v, GainTubeVoicing::gridLevel) + BaParameters::headroomDriveDb (values.headroomDb),
+          GainTubeVoicing::dspValue (v, GainTubeVoicing::gridLevel),
           GainTubeVoicing::dspValue (v, GainTubeVoicing::imbalance) * 0.01 },
-        ! values.ampTubeOut, BaParameters::headroomDriveDb (values.headroomDb) };
+        ! values.ampTubeOut };
 }
 bool BaSignalPath::outputEngaged (const BaParameters::Values& values) noexcept
 {
@@ -164,6 +165,7 @@ float BaSignalPath::process (juce::AudioBuffer<float>& buffer, int channels,
 {
     compressor.setParameters (compressorValues);
     compressor.setGainElement (gainElement (values));
+    compressor.setHeadroomDriveDb (BaParameters::headroomDriveDb (values.headroomDb));
     outputTransformer.setExtraDriveDb (VtbOutputTransformer::driveDbFor (values.transformerAmountPercent) + BaParameters::headroomDriveDb (values.headroomDb));
     inputTransformer.setExtraDriveDb (BaParameters::headroomDriveDb (values.headroomDb));
     outputTransformer.setVoicing (values.transformerVoicing, values.voicingLevelMatch || values.tubeVoicingLevelMatch);

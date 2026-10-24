@@ -35,55 +35,25 @@ inline TriodeCurrent triodeCurrent (const TriodeParameters& p, double va, double
     const auto slope = 2 * p.ex * power / e1 / p.kg1;
     return { 2 * power / p.kg1, slope * (softplus / p.kp - sigmoid * vg * va * va / (s * s * s)), slope * va * sigmoid / s };
 }
-// Koren's current is separable: Ia = 2/kg1 * (Va/kp)^ex * softplus(z)^ex, with
-// z = kp (1/mu + Vg / sqrt(kvb + Va^2)). Tabulating the two one-dimensional
-// factors (cubic Hermite with exact slopes; derivatives are the interpolant's
-// own, so Newton stays consistent) replaces exp, log1p and pow: about 3x faster,
-// within 3e-9 of the law (docs/Overdrive.md, "CPU"). Outside the tables, the
-// exact law. Built once, never on the audio thread.
-class TriodeTable
+// A uniform cubic Hermite table of a function and its slope, exact at the knots.
+// The slope it returns is the interpolant's own, so Newton on it stays consistent.
+// Built once, never on the audio thread.
+class HermiteTable
 {
 public:
-    explicit TriodeTable (const TriodeParameters& q) : p (q), kpOverMu (q.kp / q.mu), scale (2 / q.kg1)
-    {
-        build (grid, zLow, zHigh, zStep, [this] (double z)
-        {
-            const auto e = std::exp (z);
-            const auto softplus = std::log1p (e), power = std::pow (softplus, p.ex);
-            return Knot { power, p.ex * power / softplus * e / (1 + e) };
-        });
-        build (plate, vaLow, vaHigh, vaStep, [this] (double va)
-        {
-            const auto power = std::pow (va / p.kp, p.ex);
-            return Knot { power, p.ex * power / va };
-        });
-    }
-    TriodeCurrent operator() (double va, double vg) const noexcept
-    {
-        if (! (va > vaLow && va < vaHigh)) return triodeCurrent (p, va, vg);
-        const auto inverse = 1 / std::sqrt (p.kvb + va * va);
-        const auto z = kpOverMu + p.kp * vg * inverse;
-        if (! (z > zLow && z < zHigh)) return triodeCurrent (p, va, vg);
-        const auto g = at (grid, (z - zLow) / zStep, zStep), h = at (plate, (va - vaLow) / vaStep, vaStep);
-        const auto dz = p.kp * inverse;
-        return { scale * h.f * g.f, scale * (h.d * g.f - h.f * g.d * dz * vg * va * inverse * inverse), scale * h.f * g.d * dz };
-    }
-    const TriodeParameters& parameters() const noexcept { return p; }
-
-private:
-    struct Knot { double f, d; };
-    static constexpr double zLow = -40, zHigh = 40, zStep = 0.005, vaLow = 1, vaHigh = 800, vaStep = 0.05;
+    struct Knot { double f = 0, d = 0; };
+    HermiteTable() = default;
     template <typename F>
-    static void build (std::vector<Knot>& knots, double low, double high, double step, F law)
+    HermiteTable (double lowest, double highest, double spacing, F law) : low (lowest), high (highest), step (spacing)
     {
-        const auto count = static_cast<std::size_t> ((high - low) / step + 0.5) + 1;
-        knots.resize (count);
-        for (std::size_t i = 0; i < count; ++i) knots[i] = law (low + static_cast<double> (i) * step);
+        knots.resize (static_cast<std::size_t> ((high - low) / step + 0.5) + 1);
+        for (std::size_t i = 0; i < knots.size(); ++i) knots[i] = law (low + static_cast<double> (i) * step);
     }
-    // Value and slope of the cubic Hermite interpolant at a position in steps
-    // (in range by the callers' checks).
-    static Knot at (const std::vector<Knot>& knots, double position, double step) noexcept
+    bool contains (double x) const noexcept { return x > low && x < high; }
+    // Value and slope at x, which must be in range.
+    Knot operator() (double x) const noexcept
     {
+        const auto position = (x - low) / step;
         const auto i = std::min (static_cast<std::size_t> (position), knots.size() - 2);
         const auto t = position - static_cast<double> (i), t2 = t * t, t3 = t2 * t;
         const auto& a = knots[i];
@@ -92,9 +62,49 @@ private:
         return { (2 * t3 - 3 * t2 + 1) * a.f + (t3 - 2 * t2 + t) * da + (3 * t2 - 2 * t3) * b.f + (t3 - t2) * db,
                  ((6 * t2 - 6 * t) * (a.f - b.f) + (3 * t2 - 4 * t + 1) * da + (3 * t2 - 2 * t) * db) / step };
     }
+
+private:
+    double low = 0, high = 0, step = 1;
+    std::vector<Knot> knots;
+};
+// Koren's current is separable: Ia = 2/kg1 * (Va/kp)^ex * softplus(z)^ex, with
+// z = kp (1/mu + Vg / sqrt(kvb + Va^2)). Tabulating the two one-dimensional
+// factors replaces exp, log1p and pow: about 3x faster, within 3e-9 of the law
+// (docs/Overdrive.md, "CPU"). Outside the tables, the exact law.
+class TriodeTable
+{
+public:
+    explicit TriodeTable (const TriodeParameters& q)
+        : p (q), kpOverMu (q.kp / q.mu), scale (2 / q.kg1),
+          grid (-40, 40, 0.005, [q] (double z)
+          {
+              const auto e = std::exp (z);
+              const auto softplus = std::log1p (e), power = std::pow (softplus, q.ex);
+              return HermiteTable::Knot { power, q.ex * power / softplus * e / (1 + e) };
+          }),
+          plate (1, 800, 0.05, [q] (double va)
+          {
+              const auto power = std::pow (va / q.kp, q.ex);
+              return HermiteTable::Knot { power, q.ex * power / va };
+          })
+    {
+    }
+    TriodeCurrent operator() (double va, double vg) const noexcept
+    {
+        if (! plate.contains (va)) return triodeCurrent (p, va, vg);
+        const auto inverse = 1 / std::sqrt (p.kvb + va * va);
+        const auto z = kpOverMu + p.kp * vg * inverse;
+        if (! grid.contains (z)) return triodeCurrent (p, va, vg);
+        const auto g = grid (z), h = plate (va);
+        const auto dz = p.kp * inverse;
+        return { scale * h.f * g.f, scale * (h.d * g.f - h.f * g.d * dz * vg * va * inverse * inverse), scale * h.f * g.d * dz };
+    }
+    const TriodeParameters& parameters() const noexcept { return p; }
+
+private:
     TriodeParameters p;
     double kpOverMu, scale;
-    std::vector<Knot> grid, plate;
+    HermiteTable grid, plate;
 };
 // Grid current: 3/2-power in grid-to-cathode voltage above about 0 V, its onset
 // smoothed over a few tenths of a volt (contact potential). Fitted to the GE 5670
@@ -112,6 +122,49 @@ inline GridCurrent gridCurrent (double vgk, double perveance = ge5670GridPervean
     const auto root = std::sqrt (std::max (x, 0.0));
     return { perveance * x * root, 1.5 * perveance * root * dx };
 }
+// A grid driven from a source resistance into its own grid current (one law per
+// grid; `grids` in parallel). For an open-circuit drive d relative to the cathode,
+// the grid-to-cathode voltage w solves (d - w) / R = Ig(w): monotone, tabulated
+// with its slope dw/dd. Far below the cathode it is d itself; past the tables,
+// Newton on the law (docs/Overdrive.md, "Output grid current").
+class ResistiveGrid
+{
+public:
+    struct Point { double vgk = 0, slope = 1, ig = 0; };
+    ResistiveGrid (double sourceOhms, double grids, double perveance = ge5670GridPerveance)
+        : r (sourceOhms), scale (grids * perveance),
+          fine (cutoff, 60, 0.005, [this] (double d) { return knot (d); }),
+          coarse (60 - 1, 3000, 0.5, [this] (double d) { return knot (d); })
+    {
+    }
+    Point operator() (double d) const noexcept
+    {
+        if (! (d > cutoff)) return { d, 1, 0 };
+        const auto k = fine.contains (d) ? fine (d) : coarse.contains (d) ? coarse (d) : knot (d);
+        return { k.f, k.d, (d - k.f) / r };
+    }
+    double sourceOhms() const noexcept { return r; }
+
+private:
+    static constexpr double cutoff = -10; // Ig there is below 1e-24 A.
+    HermiteTable::Knot knot (double d) const noexcept
+    {
+        // w + R Ig(w) rises monotonically and convexly with w, and is at least d
+        // at w = d: Newton from there descends onto the root without overshoot.
+        auto w = d;
+        GridCurrent g;
+        for (int n = 0; n < 100; ++n)
+        {
+            g = gridCurrent (w, scale);
+            const auto residual = w + r * g.ig - d;
+            if (std::abs (residual) < 1.0e-13 * (1 + std::abs (d))) break;
+            w = std::min (w - residual / (1 + r * g.slope), d);
+        }
+        return { w, 1 / (1 + r * gridCurrent (w, scale).slope) };
+    }
+    double r, scale;
+    HermiteTable fine, coarse;
+};
 // Remote-cutoff (variable-mu) triode, such as the 6386: its variable-pitch grid
 // behaves like sections in parallel with different cutoffs. Each section is a
 // Koren triode and the currents add (docs/GainTube.md).

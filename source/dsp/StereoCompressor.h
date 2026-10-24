@@ -21,14 +21,17 @@ public:
         bool tube = false;
         GainTube::Settings settings;
         bool amp = false; // Makeup drives it: the amplifier follows the makeup gain.
-        double ampDriveDb = 0.0; // Headroom's drive into the amplifier, level-compensated.
         bool operator== (const GainElement& other) const noexcept
         {
-            return tube == other.tube && amp == other.amp && std::abs (ampDriveDb - other.ampDriveDb) < 1.0e-9 && settings.tube == other.settings.tube
+            return tube == other.tube && amp == other.amp && settings.tube == other.settings.tube
                 && std::abs (settings.gridLevelDb - other.settings.gridLevelDb) < 1.0e-9 && std::abs (settings.imbalance - other.settings.imbalance) < 1.0e-12;
         }
     };
     void setGainElement (GainElement) noexcept;
+    // Headroom's extra drive into both tubes, level-compensated (docs/Overdrive.md).
+    // It ramps over 20 ms like Makeup, so automating it is smooth; it is not part
+    // of the element, whose changes crossfade.
+    void setHeadroomDriveDb (double driveDb, bool immediately = false) noexcept;
 
     float getGainReductionDb() const noexcept { return envelope.getGainReductionDb(); }
 
@@ -39,12 +42,11 @@ private:
         std::array<GainTube::Cell, 2> cells;
         std::array<AmpTube::Grid, 2> grids;
         void configure (GainElement, double sampleRate) noexcept;
-        double render (std::size_t channel, double x, double reductionDb, double digitalGain, double makeupGain) noexcept
+        double render (std::size_t channel, double x, double reductionDb, double digitalGain, double makeupGain, double headroomGain) noexcept
         {
-            const auto y = settings.tube ? cells[channel].process (x, reductionDb) * makeupGain : x * digitalGain;
-            return settings.amp ? AmpTube::stage().outputForGrid (grids[channel].process (y * ampDrive)) / ampDrive : y;
+            const auto y = settings.tube ? cells[channel].process (x, reductionDb, headroomGain) * makeupGain : x * digitalGain;
+            return settings.amp ? AmpTube::stage().outputForGrid (grids[channel].process (y, headroomGain)) / headroomGain : y;
         }
-        double ampDrive = 1.0;
     };
     Element active, next;
     GainElement requested;
@@ -57,5 +59,6 @@ private:
     SidechainFilter sidechainFilter;
     juce::SmoothedValue<float> inputDb;
     juce::SmoothedValue<float> makeupDb;
+    juce::SmoothedValue<double> headroomDriveDb;
     juce::SmoothedValue<float> feedbackAmount;
 };

@@ -7,6 +7,7 @@ void StereoCompressor::prepare (double sampleRate, const CompressorParameters::V
     sidechainFilter.prepare (sampleRate);
     inputDb.reset (sampleRate, 0.02);
     makeupDb.reset (sampleRate, 0.02);
+    headroomDriveDb.reset (sampleRate, 0.02);
     feedbackAmount.reset (sampleRate, CompressorParameters::fbffSmoothingSeconds);
     calibrationDb.reset (sampleRate, 0.02);
     calibrationDb.setCurrentAndTargetValue (values.calibrationDb);
@@ -38,7 +39,6 @@ void StereoCompressor::setParameters (const CompressorParameters::Values& values
 void StereoCompressor::Element::configure (GainElement element, double sampleRate) noexcept
 {
     settings = element;
-    ampDrive = std::pow (10.0, element.ampDriveDb / 20.0);
     for (auto& cell : cells)
         cell.configure (element.settings);
     for (auto& grid : grids)
@@ -48,6 +48,12 @@ void StereoCompressor::Element::configure (GainElement element, double sampleRat
 void StereoCompressor::setGainElement (GainElement element) noexcept
 {
     requested = element;
+}
+
+void StereoCompressor::setHeadroomDriveDb (double driveDb, bool immediately) noexcept
+{
+    if (immediately) headroomDriveDb.setCurrentAndTargetValue (driveDb);
+    else headroomDriveDb.setTargetValue (driveDb);
 }
 
 float StereoCompressor::process (juce::AudioBuffer<float>& buffer, int numInputChannels) noexcept
@@ -81,6 +87,7 @@ float StereoCompressor::process (juce::AudioBuffer<float>& buffer, int numInputC
         const auto reductionDb = envelope.process (gainComputer.getGainReductionDb (detectDb));
         blockPeakDb = juce::jmax (blockPeakDb, reductionDb);
         const auto makeup = makeupDb.getNextValue();
+        const auto headroom = headroomDriveDb.getNextValue();
         const auto outputGain = juce::Decibels::decibelsToGain (makeup - reductionDb);
         if (! fading && ! (requested == active.settings))
         {
@@ -96,14 +103,15 @@ float StereoCompressor::process (juce::AudioBuffer<float>& buffer, int numInputC
             continue;
         }
         const auto makeupGain = static_cast<double> (juce::Decibels::decibelsToGain (makeup));
+        const auto headroomGain = std::pow (10.0, headroom / 20.0);
         const auto fade = fading ? static_cast<double> (elementFade.getNextValue()) : 0.0;
         for (int channel = 0; channel < numChannels; ++channel)
         {
             const auto ch = static_cast<std::size_t> (channel);
             const auto x = static_cast<double> (channels[channel][sample]);
-            auto y = active.render (ch, x, reductionDb, outputGain, makeupGain);
+            auto y = active.render (ch, x, reductionDb, outputGain, makeupGain, headroomGain);
             if (fading)
-                y += fade * (next.render (ch, x, reductionDb, outputGain, makeupGain) - y);
+                y += fade * (next.render (ch, x, reductionDb, outputGain, makeupGain, headroomGain) - y);
             channels[channel][sample] = static_cast<float> (y);
         }
         if (fading && ! elementFade.isSmoothing())

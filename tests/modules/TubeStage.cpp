@@ -871,7 +871,8 @@ void writeSaturationDiagnosis (const juce::File& root)
     auto out = csv (root, "saturation_spectra.csv", "stage,drive,drive_db,tone_hz,input_peak_dbfs,output_fundamental_dbfs,thd_percent,h2_5_dbc,h6_10_dbc,h11_up_dbc,nonharmonic_dbc,output_peak_dbfs");
     auto waves = csv (root, "saturation_waveforms.csv", "stage,drive,drive_db,tone_hz,sample,output");
     constexpr double inputPeakDb = -12.0;
-    const auto warm = static_cast<int> (rate);
+    // 3 s: the output grid's blocking settles in about 1.5 s at the hardest drive.
+    const auto warm = static_cast<int> (3 * rate);
     for (const auto& c : cases)
         for (auto value : c.values)
             for (double requested : { 100.0, 1000.0, 5000.0 })

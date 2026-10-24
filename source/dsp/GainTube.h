@@ -54,7 +54,9 @@ class Cell
 {
 public:
     void configure (Settings) noexcept;
-    double process (double x, double reductionDb) const noexcept;
+    // gridGain scales the grid swing and divides the output back (Headroom's
+    // level-compensated drive, smoothed per sample).
+    double process (double x, double reductionDb, double gridGain = 1.0) const noexcept;
 
 private:
     const Curve* tube = &curve (Tube::ge5670);

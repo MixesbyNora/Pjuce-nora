@@ -21,6 +21,14 @@ struct Descriptor
     const char* choices = nullptr; // "A|B|...": names for the integer steps of a choice.
 };
 using Word = std::uint64_t;
+// The oldest saved version a schema still reads (`readableSince`, when the newer
+// versions only added controls; missing ones keep their defaults), else its own.
+template <typename Schema>
+constexpr int readableSince() noexcept
+{
+    if constexpr (requires { Schema::readableSince; }) return Schema::readableSince;
+    else return Schema::version;
+}
 constexpr Word steps (const Descriptor& d) noexcept
 {
     return static_cast<Word> ((d.maximum - d.minimum) / d.step + 0.5);

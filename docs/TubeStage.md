@@ -328,6 +328,7 @@ saved as `TUBE_VOICING`. Sessions without it restore the defaults.
 | Supply (B+) | 200–400 V | 300 V | The cathode sits at half of it, so it sets the swing headroom before the tube runs out of plate voltage. |
 | Sections | 1 or 2 | 2 | One section doubles the output resistance (single-ended wiring only). |
 | Wiring | Push-pull / Single-ended | Push-pull | Added 2026-10-24 ([Overdrive.md](Overdrive.md)): a White cathode follower that pushes and pulls current, or the original single-ended follower. |
+| Output grid | Ideal / DC-coupled / Capacitor | Ideal | Added 2026-10-24 ([Overdrive.md](Overdrive.md#output-grid-current)): the upper grid driven from the 5751 with grid current, straight or through 0.1 µF (blocking). Only extreme overdrive changes, and it gets grittier. |
 
 - **Design rule** (`followerDesign`). The cathode is set to half the supply;
   the cathode resistor gives the chosen current; the grid bias comes from the

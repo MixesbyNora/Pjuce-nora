@@ -16,6 +16,7 @@ Stage::Stage (Design d) : design (d)
     }
     cathode = -0.5 * (lo + hi);
     rk = cathode / d.plateAmps;
+    plateOutputOhms = 1 / (1 / d.plateOhms + ModuleSpike::triodeCurrent (tube, plateQuiescent, -cathode).dVa);
     // Audio: cathode fixed by its bypass, the coupling capacitor holding the
     // quiescent plate voltage, so the plate sees Ra to B+ and Rg to that voltage.
     const auto count = static_cast<std::size_t> (2 * range / step) + 1;
@@ -80,11 +81,11 @@ void Grid::prepare (double sampleRate) noexcept
     reset();
 }
 
-double Grid::process (double x) noexcept
+double Grid::process (double x, double drive) noexcept
 {
     // Source -- Rs -- C -- grid -- Rleak to ground, grid current to the cathode.
     // Coupling current i = (a - grid) / r with the capacitor's trapezoidal step folded in.
-    const auto a = x * scale - capacitor - step * previousCurrent;
+    const auto a = drive * (x * scale - capacitor - step * previousCurrent);
     const auto r = sourceOhms + step;
     // KCL at the grid rises monotonically with the grid voltage.
     auto grid = a / (1.0 + r / leakOhms);
@@ -102,7 +103,7 @@ double Grid::process (double x) noexcept
             grid = next;
         }
     }
-    const auto current = (a - grid) / r;
+    const auto current = (a - grid) / r / drive;
     capacitor += step * (current + previousCurrent);
     previousCurrent = current;
     return grid;

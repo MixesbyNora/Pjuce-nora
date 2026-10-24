@@ -1,4 +1,26 @@
 #include "VtbTransformerCore.h"
+#include "AmpTube.h"
+
+namespace
+{
+// The 12BH7's grid network (inferred, docs/Overdrive.md, "Output grid current"):
+// driven from the 5751's plate (Ra || rp), straight or through 0.1 uF into a
+// 1 MOhm leak to the bias. The clamp uses the source's Thevenin resistance; the
+// capacitor's trapezoidal term (about 26 Ohm at 192 kHz) is left out of it.
+const ModuleSpike::ResistiveGrid& followerGridClamp (double grids, bool dcCoupled) noexcept
+{
+    const auto thevenin = [] (bool dc)
+    {
+        const ModuleSpike::StageDesign d;
+        const auto source = AmpTube::stage().outputOhms();
+        return dc ? source : 1 / (1 / source + 1 / d.gridLeakOhms);
+    };
+    static const ModuleSpike::ResistiveGrid one (thevenin (false), 1), two (thevenin (false), 2),
+        oneDc (thevenin (true), 1), twoDc (thevenin (true), 2);
+    if (dcCoupled) return grids > 1.5 ? twoDc : oneDc;
+    return grids > 1.5 ? two : one;
+}
+}
 
 ModuleSpike::TransformerParameters VtbTransformerCore::parametersFor (ModuleSpike::TransformerParameters p, TransformerVoicing::Values voice) noexcept
 {
@@ -15,12 +37,20 @@ ModuleSpike::TransformerParameters VtbTransformerCore::parametersFor (ModuleSpik
 }
 ModuleSpike::StageDesign VtbTransformerCore::designFor (TubeVoicing::Values voice) noexcept
 {
-    if (TubeVoicing::dspValue (voice, TubeVoicing::wiring) < 0.5)
-        return ModuleSpike::pushPullDesign (TubeVoicing::dspValue (voice, TubeVoicing::plateCurrent) * 1.0e-3,
-            TubeVoicing::dspValue (voice, TubeVoicing::coupling) * 1.0e-6, TubeVoicing::dspValue (voice, TubeVoicing::supply));
-    return ModuleSpike::followerDesign (TubeVoicing::dspValue (voice, TubeVoicing::plateCurrent) * 1.0e-3,
-        TubeVoicing::dspValue (voice, TubeVoicing::coupling) * 1.0e-6, TubeVoicing::dspValue (voice, TubeVoicing::supply),
-        TubeVoicing::dspValue (voice, TubeVoicing::sections));
+    auto d = TubeVoicing::dspValue (voice, TubeVoicing::wiring) < 0.5
+        ? ModuleSpike::pushPullDesign (TubeVoicing::dspValue (voice, TubeVoicing::plateCurrent) * 1.0e-3,
+              TubeVoicing::dspValue (voice, TubeVoicing::coupling) * 1.0e-6, TubeVoicing::dspValue (voice, TubeVoicing::supply))
+        : ModuleSpike::followerDesign (TubeVoicing::dspValue (voice, TubeVoicing::plateCurrent) * 1.0e-3,
+              TubeVoicing::dspValue (voice, TubeVoicing::coupling) * 1.0e-6, TubeVoicing::dspValue (voice, TubeVoicing::supply),
+              TubeVoicing::dspValue (voice, TubeVoicing::sections));
+    const auto grid = static_cast<int> (TubeVoicing::dspValue (voice, TubeVoicing::outputGrid) + 0.5);
+    if (grid > 0)
+    {
+        d.gridDcCoupled = grid == 1;
+        d.gridSourceOhms = AmpTube::stage().outputOhms();
+        d.gridClamp = &followerGridClamp (d.pushPull ? 1.0 : d.sections, d.gridDcCoupled);
+    }
+    return d;
 }
 void VtbTransformerCore::configureBank (Bank& bank, Config config) noexcept
 {
@@ -73,7 +103,13 @@ void VtbTransformerCore::prepare (double internalRate, ModuleSpike::TransformerP
 {
     rate = internalRate;
     base = calibration;
-    ModuleSpike::rca12bh7aTable(); // Built here, never when a tube is switched in on the audio thread.
+    // Built here, never when a tube is switched in on the audio thread.
+    ModuleSpike::rca12bh7aTable();
+    for (const auto dc : { false, true })
+    {
+        followerGridClamp (1, dc);
+        followerGridClamp (2, dc);
+    }
     requested = {};
     requested.transformer = TransformerVoicing::encode (voicing);
     setTube (tube);

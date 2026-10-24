@@ -30,6 +30,17 @@ struct StageDesign
     double plateOhms = 0, quiescentPlate = 0, quiescentOutput = 0, lowerCathode = 0;
     // Tabulated `tube` for the per-sample solve, or null for the exact law.
     const TriodeTable* table = nullptr;
+    // The (upper) grid's drive network, or null for an ideal voltage source
+    // (docs/Overdrive.md, "Output grid current"): the source behind
+    // gridSourceOhms, a coupling capacitor and a leak to `bias`, and grid current
+    // into the cathode. `gridClamp` is built for the Thevenin resistance of source
+    // and leak, with every driven grid (both sections when single-ended).
+    const ResistiveGrid* gridClamp = nullptr;
+    double gridSourceOhms = 0, gridCouplingFarads = 0.1e-6, gridLeakOhms = 1.0e6;
+    bool gridDcCoupled = false; // Driven straight from the source: no capacitor, no leak.
+    // Confirm every root by evaluating it (tests and research). Off, a root whose
+    // last Newton step is tiny is taken to first order without that evaluation.
+    bool strictSolve = false;
 };
 // A follower biased for a quiescent current per section, with the cathode at
 // half the supply (the widest symmetric swing). Grid bias solved from the triode law.
@@ -89,7 +100,12 @@ inline double linearInductance (const TransformerParameters& p)
     return TransformerCircuit::impedanceBase * TransformerCircuit::fluxScale * (0.1 + p.saturation / p.knee);
 }
 
-struct LoadTrial { double ip = 0, dIp = 0, vp = 0, dVp = 0, output = 0; };
+struct LoadTrial
+{
+    double ip = 0, dIp = 0, vp = 0, dVp = 0, output = 0, dOutput = 0;
+    // The trial carried to first order by a step in the unknown.
+    LoadTrial advanced (double step) const noexcept { return { ip + dIp * step, dIp, vp + dVp * step, dVp, output + dOutput * step, dOutput }; }
+};
 
 // Primary load with C's magnetizing law (the fully coupled reference).
 class MagneticLoad
@@ -106,11 +122,12 @@ public:
         const auto trial = element.evaluate (current * TransformerCircuit::impedanceBase / unit, parameters);
         const auto lambda = unit * TransformerCircuit::fluxScale * trial.flux;
         const auto slope = TransformerCircuit::impedanceBase * TransformerCircuit::fluxScale * trial.derivative;
-        trialFlux = lambda;
+        trialFlux = lambda; trialSlope = slope;
         const auto v = 2 * (lambda - flux) / dt - voltage, dv = 2 * slope / dt;
         const auto ip = current + v / load, dIp = 1 + dv / load;
-        return { ip, dIp, winding * ip + v, winding * dIp + dv, v };
+        return { ip, dIp, winding * ip + v, winding * dIp + dv, v, dv };
     }
+    void advance (double step) noexcept { trialFlux += trialSlope * step; }
     void commit (double current, const LoadTrial& t) noexcept
     {
         element.commit (current * TransformerCircuit::impedanceBase / unit, parameters);
@@ -119,7 +136,7 @@ public:
 private:
     OuterPlayElement element;
     TransformerParameters parameters;
-    double dt = 0, unit = 1, winding = 0, load = 1, flux = 0, voltage = 0, trialFlux = 0;
+    double dt = 0, unit = 1, winding = 0, load = 1, flux = 0, voltage = 0, trialFlux = 0, trialSlope = 0;
 };
 // The same primary with a linear magnetizing inductance (the tube's view in candidates a and b).
 class InductiveLoad
@@ -135,8 +152,9 @@ public:
     {
         const auto v = 2 * (inductance * current - flux) / dt - voltage, dv = 2 * inductance / dt;
         const auto ip = current + v / load, dIp = 1 + dv / load;
-        return { ip, dIp, winding * ip + v, winding * dIp + dv, v };
+        return { ip, dIp, winding * ip + v, winding * dIp + dv, v, dv };
     }
+    void advance (double) noexcept {}
     void commit (double current, const LoadTrial& t) noexcept { flux = inductance * current; voltage = t.output; }
 private:
     double dt = 0, inductance = 1, winding = 0, load = 1, flux = 0, voltage = 0;
@@ -147,7 +165,8 @@ class ResistiveLoad
 public:
     void prepare (double, const TransformerParameters& p) noexcept { resistance = p.loss * TransformerCircuit::impedanceBase + p.loadOhms; }
     void reset() noexcept {}
-    LoadTrial evaluate (double current) const noexcept { return { current, 1, resistance * current, resistance, resistance * current }; }
+    LoadTrial evaluate (double current) const noexcept { return { current, 1, resistance * current, resistance, resistance * current, resistance }; }
+    void advance (double) noexcept {}
     void commit (double, const LoadTrial&) noexcept {}
 private:
     double resistance = 1;
@@ -157,7 +176,7 @@ struct StageDiagnostics
 {
     int maximumIterations = 0, maximumInnerIterations = 0;
     std::uint64_t failures = 0, samples = 0, evaluations = 0, innerIterations = 0, fallbacks = 0; // Totals since reset: per-sample cost.
-    double minimumPlateMa = 1.0e9, maximumPlateMa = 0;
+    double minimumPlateMa = 1.0e9, maximumPlateMa = 0, maximumGridMa = 0;
 };
 
 template <typename Load>
@@ -166,14 +185,23 @@ class CathodeFollower
 public:
     void prepare (double rate, const StageDesign& d, const TransformerParameters& p) noexcept
     {
-        design = d; dt = 1 / rate; load.prepare (rate, p); quiescent = quiescentCathode (design); reset();
+        design = d; dt = 1 / rate; load.prepare (rate, p); quiescent = quiescentCathode (design);
+        // Grid network constants: the capacitor's trapezoidal step in series with the
+        // source, and the midband divider into the leak undone (unity small-signal gain).
+        const auto dc = design.gridDcCoupled;
+        gridStep = dc ? 0.0 : dt / (2 * design.gridCouplingFarads);
+        gridSeries = design.gridSourceOhms + gridStep;
+        gridThevenin = dc ? gridSeries : 1 / (1 / gridSeries + 1 / design.gridLeakOhms);
+        gridDivider = dc ? 1.0 : (design.gridSourceOhms + design.gridLeakOhms) / design.gridLeakOhms;
+        reset();
     }
     void reset() noexcept
     {
         load.reset();
         cathode = quiescent;
         upperPlate = design.quiescentPlate; upperSlope = 0; upperAt = quiescent;
-        capacitor = cathode; primaryCurrent = unknown = previousUnknown = lastOutput = 0; diagnostics = {};
+        capacitor = cathode; primaryCurrent = unknown = previousUnknown = olderUnknown = lastOutput = 0; diagnostics = {};
+        gridCapacitor = gridPrevious = 0;
     }
     // Quiescent cathode voltage: the coupling capacitor blocks DC.
     static double quiescentCathode (const StageDesign& d) noexcept
@@ -195,7 +223,13 @@ public:
     // output resistance. 1 is the plain circuit.
     double process (double signal, double drive = 1.0) noexcept
     {
-        const auto grid = design.bias + drive * signal;
+        idealGrid = design.bias + drive * signal;
+        // The grid network's source for this sample: its open-circuit voltage at the
+        // grid, Thevenin with the leak, from the capacitor's state. That state is kept
+        // per unit of `drive`, like every signal here, so a charge built up at high
+        // Tube Amount does not grow relative to the signal when the Amount comes down.
+        const auto gridDrive = drive * (signal * gridDivider - gridCapacitor - gridStep * gridPrevious);
+        gridSource = design.bias + gridThevenin * gridDrive / gridSeries;
         const auto step = dt / (2 * design.couplingFarads);
         constexpr auto epsilon = std::numeric_limits<double>::epsilon();
         // State of the most recent evaluation; the accepted root is always the
@@ -218,7 +252,8 @@ public:
                 // Upper plate for this output voltage (inner monotone root), then KCL at
                 // the output: upper current = lower current + load current.
                 // Start from the linear prediction of the last solve: usually one correction.
-                const auto solved = solveUpperPlate (tubeCathode, grid, plate + plateSlope * (tubeCathode - plateAt));
+                const auto g = gridAt (tubeCathode);
+                const auto solved = solveUpperPlate (tubeCathode, g.vgk, plate + plateSlope * (tubeCathode - plateAt));
                 plate = solved.plate;
                 inner += solved.iterations;
                 diagnostics.maximumInnerIterations = std::max (diagnostics.maximumInnerIterations, solved.iterations);
@@ -226,37 +261,40 @@ public:
                 const auto& upper = solved.current;
                 const auto lower = tubeCurrent (tubeCathode - design.lowerCathode, plate - design.quiescentPlate - design.lowerCathode);
                 plateAmps = upper.ia;
-                residual = upper.ia - lower.ia - drive * t.ip;
-                plateSlope = (upper.dVa + upper.dVg) / (1 / design.plateOhms + upper.dVa);
-                conductance = -(upper.dVa * (plateSlope - 1) - upper.dVg) + lower.dVa + lower.dVg * plateSlope;
-                scale = upper.ia + lower.ia;
+                // Grid current leaves through the upper cathode too.
+                residual = upper.ia + g.ig - lower.ia - drive * t.ip;
+                plateSlope = (upper.dVa - upper.dVg * g.dVgk) / (1 / design.plateOhms + upper.dVa);
+                conductance = -(upper.dVa * (plateSlope - 1) + upper.dVg * g.dVgk) - g.dIg + lower.dVa + lower.dVg * plateSlope;
+                scale = upper.ia + lower.ia + g.ig;
             }
             else
             {
-                const auto tube = tubeCurrent (design.supply - tubeCathode, grid - tubeCathode);
+                const auto g = gridAt (tubeCathode);
+                const auto tube = tubeCurrent (design.supply - tubeCathode, g.vgk);
                 plateAmps = design.sections * tube.ia;
-                residual = plateAmps - tubeCathode / design.cathodeOhms - drive * t.ip;
-                conductance = design.sections * (tube.dVa + tube.dVg) + 1 / design.cathodeOhms;
-                scale = plateAmps + std::abs (tubeCathode) / design.cathodeOhms;
+                residual = plateAmps + g.ig - tubeCathode / design.cathodeOhms - drive * t.ip;
+                conductance = design.sections * (tube.dVa - tube.dVg * g.dVgk) - g.dIg + 1 / design.cathodeOhms;
+                scale = plateAmps + g.ig + std::abs (tubeCathode) / design.cathodeOhms;
             }
             derivative = drive * (-conductance * dVk - t.dIp);
             // 1e-11 of the term sizes (including the cathode voltage's own scale): far
             // below audibility, and reachable without bisecting into roundoff.
-            goal = 1.0e-18 + 1.0e-11 * (scale + drive * std::abs (t.ip) + conductance * std::abs (tubeCathode));
+            goal = 1.0e-18 + relativeTolerance * (scale + drive * std::abs (t.ip) + conductance * std::abs (tubeCathode));
             return residual;
         };
-        // Start from a linear extrapolation of the last two solutions.
-        double x = 2 * unknown - previousUnknown, residual = 0;
+        // Start from a quadratic extrapolation of the last three solutions.
+        const auto guess = 3 * (unknown - previousUnknown) + olderUnknown;
+        double x = guess, residual = 0;
         bool converged = false;
         if (design.pushPull)
-            converged = solveJointly (x, grid, drive, step, t, vc, vk, plateAmps, plate, plateSlope, plateAt, evaluations);
+            converged = solveJointly (x, drive, step, t, vc, vk, plateAmps, plate, plateSlope, plateAt, evaluations);
         if (design.pushPull && ! converged) ++diagnostics.fallbacks;
         if (! converged)
         {
             // Fall back from where the joint steps got to (usually close), with the
             // inner plate solve's own prediction.
             plate = upperPlate; plateSlope = upperSlope; plateAt = upperAt;
-            if (! isFinite (x)) x = 2 * unknown - previousUnknown;
+            if (! isFinite (x)) x = guess;
         }
         // The residual falls as the unknown rises. Phase 1: Newton, tracking a
         // bracket; it converges in 3-4 evaluations at ordinary levels. Bracket ends
@@ -267,6 +305,27 @@ public:
         for (int i = 0; i < 6 && ! converged; ++i)
         {
             if (std::abs (residual) <= goal) { converged = true; break; }
+            if (! design.strictSolve && std::abs (residual) <= acceptance * goal)
+            {
+                // Within 1e-6 of the term sizes: Newton's next residual is about the
+                // square of that, far below the goal. Take the step to first order
+                // instead of evaluating it (about a third of the solve at normal levels).
+                const auto dx = -residual / derivative;
+                if (isFinite (dx))
+                {
+                    const auto dCathode = t.dVp + step * t.dIp;
+                    x += dx;
+                    load.advance (dx);
+                    t = t.advanced (dx);
+                    vc += step * t.dIp * dx;
+                    vk += dCathode * dx;
+                    lastGrid.vgk += lastGrid.dVgk * drive * dCathode * dx;
+                    lastGrid.cathode += drive * dCathode * dx;
+                    residual = 0;
+                    converged = true;
+                    break;
+                }
+            }
             if (residual > 0) { lo = x; fLo = residual; haveLo = true; } else { hi = x; fHi = residual; haveHi = true; }
             const auto next = x - residual / derivative;
             const auto inside = isFinite (next) && (! haveLo || next > lo) && (! haveHi || next < hi);
@@ -335,8 +394,16 @@ public:
         // On failure keep the state and hold the last output rather than click to 0.
         if (evaluations >= maxEvaluations || ! isFinite (x) || ! isFinite (residual)) { ++diagnostics.failures; return lastOutput; }
         load.commit (x, t);
+        if (design.gridClamp != nullptr)
+        {
+            // The grid network's capacitor current at the accepted root.
+            const auto current = (gridDrive - (lastGrid.vgk + lastGrid.cathode - design.bias)) / (gridSeries * drive);
+            gridCapacitor += gridStep * (current + gridPrevious);
+            gridPrevious = current;
+        }
+        diagnostics.maximumGridMa = std::max (diagnostics.maximumGridMa, lastGrid.ig * 1000);
         upperPlate = plate; upperSlope = plateSlope; upperAt = plateAt;
-        previousUnknown = unknown; unknown = x; capacitor = vc; cathode = vk; primaryCurrent = t.ip; lastOutput = t.output;
+        olderUnknown = previousUnknown; previousUnknown = unknown; unknown = x; capacitor = vc; cathode = vk; primaryCurrent = t.ip; lastOutput = t.output;
         diagnostics.minimumPlateMa = std::min (diagnostics.minimumPlateMa, plateAmps * 1000);
         diagnostics.maximumPlateMa = std::max (diagnostics.maximumPlateMa, plateAmps * 1000);
         return t.output;
@@ -377,13 +444,17 @@ private:
     // Push-pull: Newton on the unknown and the upper plate together, one
     // evaluation of each section per step, where the nested solve costs about 2.3
     // upper-section evaluations per outer step (owner report 2026-10-24: CPU
-    // spikes on loud hits; docs/Overdrive.md, "CPU"). Converged, it leaves the
+    // spikes on loud hits; docs/Overdrive.md, "CPU"). Damped: a step that does not
+    // reduce the current mismatch (both residuals are amperes) is halved, so it
+    // cannot cycle across the upper section's cut-off. Converged, it leaves the
     // same state the nested solve would; otherwise the caller falls back to that
-    // guaranteed, bracketed solve. KCL at the output (f1) and at the upper plate (f2).
-    bool solveJointly (double& x, double grid, double drive, double step, LoadTrial& t, double& vc, double& vk,
+    // guaranteed, bracketed solve from the best point found. KCL at the output (f1)
+    // and at the upper plate (f2).
+    bool solveJointly (double& x, double drive, double step, LoadTrial& t, double& vc, double& vk,
         double& plateAmps, double& plate, double& plateSlope, double& plateAt, int& evaluations) noexcept
     {
-        const auto plateGoal = 1.0e-15 + 1.0e-13 * design.supply / design.plateOhms;
+        double baseX = x, basePlate = plate, dx = 0, dPlate = 0, baseMerit = 0, bestX = x, bestMerit = 0, fraction = 1;
+        bool haveBase = false;
         for (int i = 0; i < jointSteps; ++i)
         {
             ++evaluations;
@@ -391,39 +462,115 @@ private:
             vc = capacitor + step * (t.ip + primaryCurrent);
             vk = t.vp + vc;
             const auto u = quiescent + drive * (vk - quiescent); // The tube's side of the level shift.
-            if (! (u < design.supply)) return false;
+            if (! (u < design.supply))
+            {
+                // The step carried the cathode past B+: shorten it, or give up.
+                if (! haveBase || ! (fraction > 1.0 / 16)) break;
+                fraction *= 0.5;
+                x = baseX + fraction * dx;
+                plate = basePlate + fraction * dPlate;
+                continue;
+            }
             if (i == 0) plate = plate + plateSlope * (u - plateAt);
             plate = std::clamp (plate, u, design.supply);
-            const auto upper = tubeCurrent (plate - u, grid - u);
+            const auto g = gridAt (u);
+            const auto upper = tubeCurrent (plate - u, g.vgk);
             const auto lower = tubeCurrent (u - design.lowerCathode, plate - design.quiescentPlate - design.lowerCathode);
-            const auto f1 = upper.ia - lower.ia - drive * t.ip;
+            const auto f1 = upper.ia + g.ig - lower.ia - drive * t.ip;
             const auto f2 = (design.supply - plate) / design.plateOhms - upper.ia;
-            const auto slope = (upper.dVa + upper.dVg) / (1 / design.plateOhms + upper.dVa);
-            const auto conductance = -(upper.dVa * (slope - 1) - upper.dVg) + lower.dVa + lower.dVg * slope;
-            const auto goal = 1.0e-18 + 1.0e-11 * (upper.ia + lower.ia + drive * std::abs (t.ip) + conductance * std::abs (u));
+            const auto slope = (upper.dVa - upper.dVg * g.dVgk) / (1 / design.plateOhms + upper.dVa);
+            const auto conductance = -(upper.dVa * (slope - 1) + upper.dVg * g.dVgk) - g.dIg + lower.dVa + lower.dVg * slope;
+            const auto goal = 1.0e-18 + relativeTolerance * (upper.ia + lower.ia + g.ig + drive * std::abs (t.ip) + conductance * std::abs (u));
+            // The plate to the same relative tolerance (about 1e-9 V), with the inner
+            // solve's absolute floor near cut-off.
+            const auto plateGoal = 1.0e-15 + 1.0e-13 * design.supply / design.plateOhms + relativeTolerance * (upper.ia + (design.supply - plate) / design.plateOhms);
             if (std::abs (f1) <= goal && std::abs (f2) <= plateGoal)
             {
                 plateAmps = upper.ia; plateSlope = slope; plateAt = u;
                 return true;
             }
             const auto du = drive * (t.dVp + step * t.dIp);
-            const auto a11 = -(upper.dVa + upper.dVg + lower.dVa) * du - drive * t.dIp, a12 = upper.dVa - lower.dVg;
-            const auto a21 = (upper.dVa + upper.dVg) * du, a22 = -1 / design.plateOhms - upper.dVa;
+            const auto a11 = (upper.dVg * g.dVgk + g.dIg - upper.dVa - lower.dVa) * du - drive * t.dIp, a12 = upper.dVa - lower.dVg;
+            const auto a21 = (upper.dVa - upper.dVg * g.dVgk) * du, a22 = -1 / design.plateOhms - upper.dVa;
             const auto determinant = a11 * a22 - a12 * a21;
-            const auto dx = (f2 * a12 - f1 * a22) / determinant, dPlate = (f1 * a21 - f2 * a11) / determinant;
-            if (! isFinite (dx) || ! isFinite (dPlate)) return false;
-            x += dx;
-            plate += dPlate;
+            const auto newtonX = (f2 * a12 - f1 * a22) / determinant, newtonPlate = (f1 * a21 - f2 * a11) / determinant;
+            if (! design.strictSolve && std::abs (f1) <= acceptance * goal && std::abs (f2) <= acceptance * plateGoal
+                && isFinite (newtonX) && isFinite (newtonPlate))
+            {
+                // Close enough that the last Newton step's error is second order: take it
+                // to first order without evaluating it (see the scalar solve).
+                x += newtonX;
+                load.advance (newtonX);
+                t = t.advanced (newtonX);
+                vc += step * t.dIp * newtonX;
+                vk += du / drive * newtonX;
+                const auto moved = du * newtonX;
+                plate += newtonPlate;
+                plateAmps = upper.ia + upper.dVa * (newtonPlate - moved) + upper.dVg * g.dVgk * moved;
+                plateSlope = slope; plateAt = u + moved;
+                lastGrid.vgk += g.dVgk * moved;
+                lastGrid.cathode = u + moved;
+                return true;
+            }
+            const auto merit = f1 * f1 + f2 * f2;
+            if (! isFinite (merit)) break;
+            if (! haveBase || merit < bestMerit) { bestX = x; bestMerit = merit; }
+            if (haveBase && ! (merit < baseMerit) && fraction > 1.0 / 16)
+            {
+                // Worse than where the step began: take a shorter one.
+                fraction *= 0.5;
+                x = baseX + fraction * dx;
+                plate = basePlate + fraction * dPlate;
+                continue;
+            }
+            dx = newtonX;
+            dPlate = newtonPlate;
+            if (! isFinite (dx) || ! isFinite (dPlate)) break;
+            // Keep the step inside the upper section's range: its plate below B+ and
+            // above its cathode (to first order), at most 90% of the way to either.
+            fraction = 1;
+            const auto gap = plate - u, gapStep = dPlate - du * dx;
+            if (gapStep < 0 && gap > 0) fraction = std::min (fraction, 0.9 * gap / -gapStep);
+            if (dPlate > 0 && plate < design.supply) fraction = std::min (fraction, 0.9 * (design.supply - plate) / dPlate);
+            // And move the (tube-side) cathode at most 5 V per step, as SPICE limits
+            // junction steps: near cut-off the section's current is exponential, and a
+            // full step from there overshoots into heavy conduction and cycles.
+            if (std::abs (du * dx) > maximumCathodeStep) fraction = std::min (fraction, maximumCathodeStep / std::abs (du * dx));
+            fraction = std::max (fraction, 1.0e-3);
+            baseX = x; basePlate = plate; baseMerit = merit; haveBase = true;
+            x += fraction * dx;
+            plate += fraction * dPlate;
         }
+        x = bestX;
         return false;
     }
-    static constexpr int jointSteps = 10; // Hot transients take 5-10; past that, the bracketed solve.
+    static constexpr int jointSteps = 16; // Hot transients take 5-12; past that, the bracketed solve.
+    static constexpr double relativeTolerance = 1.0e-11;
+    static constexpr double acceptance = 1.0e5; // Times the goal: 1e-6 of the term sizes.
+    static constexpr double maximumCathodeStep = 5.0; // Volts per joint Newton step. // Hot transients take 5-10; past that, the bracketed solve.
+    // Grid-to-cathode voltage and grid current for a (tube-side) cathode voltage,
+    // with their slopes against it. Records the evaluation for the commit.
+    struct GridDrive { double vgk, dVgk, ig, dIg; };
+    GridDrive gridAt (double cathodeVolts) noexcept
+    {
+        if (design.gridClamp == nullptr)
+        {
+            lastGrid = { cathodeVolts, idealGrid - cathodeVolts, 0, -1 };
+            return { idealGrid - cathodeVolts, -1, 0, 0 };
+        }
+        const auto g = (*design.gridClamp) (gridSource - cathodeVolts);
+        lastGrid = { cathodeVolts, g.vgk, g.ig, -g.slope };
+        return { g.vgk, -g.slope, g.ig, (g.slope - 1) / design.gridClamp->sourceOhms() };
+    }
+    struct GridState { double cathode = 0, vgk = 0, ig = 0, dVgk = -1; };
+    GridState lastGrid;
+    double idealGrid = 0, gridSource = 0, gridStep = 0, gridSeries = 1, gridThevenin = 1, gridDivider = 1, gridCapacitor = 0, gridPrevious = 0;
     TriodeCurrent tubeCurrent (double va, double vg) const noexcept
     {
         return design.table != nullptr ? (*design.table) (va, vg) : triodeCurrent (design.tube, va, vg);
     }
     struct UpperPlate { double plate; TriodeCurrent current; int iterations; };
-    UpperPlate solveUpperPlate (double output, double grid, double guess) const noexcept
+    UpperPlate solveUpperPlate (double output, double gridToCathode, double guess) const noexcept
     {
         // At absurd drive the output can sit at or above B+: the upper section is off.
         if (! (output < design.supply)) return { design.supply, {}, 0 };
@@ -433,7 +580,7 @@ private:
         int i = 0;
         for (; i < 60; ++i)
         {
-            c = tubeCurrent (vp - output, grid - output);
+            c = tubeCurrent (vp - output, gridToCathode);
             const auto g = (design.supply - vp) / design.plateOhms - c.ia;
             if (std::abs (g) <= goal || hi - lo <= 1.0e-12 * design.supply) break;
             (g > 0 ? lo : hi) = vp;
@@ -451,7 +598,7 @@ private:
         }
         return { vp, c, std::min (i + 1, 60) };
     }
-    double dt = 0, quiescent = 0, cathode = 0, capacitor = 0, primaryCurrent = 0, unknown = 0, previousUnknown = 0, lastOutput = 0, upperPlate = 0, upperSlope = 0, upperAt = 0;
+    double dt = 0, quiescent = 0, cathode = 0, capacitor = 0, primaryCurrent = 0, unknown = 0, previousUnknown = 0, olderUnknown = 0, lastOutput = 0, upperPlate = 0, upperSlope = 0, upperAt = 0;
 };
 
 }

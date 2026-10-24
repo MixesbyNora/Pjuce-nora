@@ -75,6 +75,9 @@ first run is in [saturation_spectra_before.csv](measurements/saturation/saturati
   iron alone at 440 Hz–10 kHz, and within 0.06 dB at 50 Hz.
 - **Single-ended** remains a Wiring choice. **Sections** applies only to it.
 - The tube workbench is now version 2; older tube voicings load defaults.
+  Version 3 adds Output grid and still reads version 2 saves, with Output
+  grid at Ideal: a schema whose newer versions only add controls can declare
+  `readableSince` ([Voicing.h](../source/Voicing.h)).
 
 **Coupling capacitor default 220 µF** (was 1000 µF): no ferroresonance in the
 diagnosis range. The slider still covers 22–1000 µF.
@@ -95,7 +98,8 @@ diagnosis range. The slider still covers 22–1000 µF.
     itself colder and recovers with about a 100 ms time constant. This is
     blocking.
   - It is one scalar solve per sample, only when the grid nears its cathode.
-- **Not modeled yet:** grid current at the output follower's upper grid.
+- **The output follower's upper grid:** a workbench choice, Ideal by default.
+  See "Output grid current" below.
 
 The band-limited detector planned in step 2 was not needed. With the release
 floor, the compressor's non-harmonic energy fell to −85 dBc at 4×.
@@ -120,6 +124,58 @@ Calibration reference, 100 Hz:
 - **Grid current adds a little high-order content where it clamps,** for
   example −57 dBc at Digital IN +24. That is what a real conducting grid does.
 
+## Output grid current
+
+Owner request (2026-10-24): grid current at the 12BH7's upper grid. Owner
+decision, after the measurements below: a **tube workbench choice, Ideal by
+default**, to judge by ear.
+
+**The network (inferred; no schematic is published).**
+- **Source:** the 5751's plate, so Ra ∥ rp = 100 kΩ ∥ 50 kΩ = **33 kΩ** from
+  our fit. The 5751 is the stage that drives the follower.
+- **Coupling:** 0.1 µF into a 1 MΩ leak returned to the bias, as for the 5751's
+  own grid.
+- **Grid current:** the 5670 sheet's law, as elsewhere. The 12BH7 sheet
+  publishes none.
+- **Choices:**
+  - *Ideal:* a voltage source. Today's sound, unchanged.
+  - *DC-coupled:* the source resistance and grid current only.
+  - *Capacitor:* the full network, so the grid also blocks after hits.
+
+**How it is solved** ([TriodeModel.h](../source/modules/TriodeModel.h),
+`ResistiveGrid`; [CathodeFollower.h](../source/modules/CathodeFollower.h)).
+- Grid current depends only on grid-to-cathode voltage. So for a source's open
+  circuit drive d, the grid's voltage w solves (d − w)/R = Ig(w).
+- That is a one-dimensional monotone function, tabulated once with its slope.
+- The solve gains no unknown: one more table look-up per evaluation. The grid
+  current also leaves through the upper cathode.
+- **Tube Amount:** the capacitor's charge is kept per unit of the Amount's
+  drive. Otherwise a charge built at 100% reappeared 8× larger, relative to the
+  signal, when the Amount came down: up to 1.4 full scale of offset in the
+  sweep test.
+
+**MEASUREMENT** (both Amounts at 100%, 100 Hz; the diagnosis now settles for
+3 s, because the capacitor version settles in about 1.5 s at the hardest drive):
+
+| Drive | Ideal | Capacitor | DC-coupled |
+|---|---|---|---|
+| IN +6 | 3.0% THD | 3.0% (identical) | 3.0% |
+| IN +12 | 19% THD, H11+ −39 dBc | 32%, −29 dBc | 47%, −32 dBc |
+| IN +18 | 51% | 76% | 69% |
+
+- **Grid current only flows at extreme drive,** about 12 dB past full scale on
+  the tube side. A follower's cathode tracks its grid until the stage cannot
+  supply the load.
+- **It makes extreme overdrive grittier, not smoother.** At the grid, the clamp
+  limits the current the upper section can push into the saturated iron, so the
+  stage clips harder, with more high harmonics. The output's peaks rise: that
+  is the waveform reshaping, not a softer clip.
+- **Capacitor:** after hot hits the tube biases colder, then recovers. That
+  gives a recovery thump (tested) and some slow "breathing": −65 dBc of
+  non-repeating energy at IN +12. It settles to a periodic state, with no
+  squegging (tested).
+- **DC-coupled:** no breathing, but it clips hardest.
+
 ## Headroom
 
 `headroom`: 6–30 dB, default **14**, version hint 11.
@@ -130,8 +186,17 @@ Calibration reference, 100 Hz:
   extra drive and is level-compensated.
 - **The default drives everything 4 dB softer than before.** The level stays
   within 0.02 dB from 8 to 26 dB of Headroom, while distortion falls steadily.
-- **Automation:** Headroom changes the gain element's settings, which
-  crossfade over 20 ms, one change at a time.
+- **Automation** (2026-10-24): Headroom ramps over 20 ms everywhere, like
+  Makeup.
+  - **Before:** it reached the gain tube and the 5751 through the gain
+    element's settings. Every change crossfaded to a fresh element, one change
+    at a time. Automation moved in 20 ms stages, rendered two elements while it
+    moved, and reset the 5751's blocking at every step.
+  - **Now:** it is a per-sample drive into the gain tube's grids and the 5751.
+    The 5751's capacitor charge is kept per unit of that drive.
+  - **Tested:** a 6 → 30 → 6 dB sweep has no sample step beyond what either end
+    has when held. A 0.1 dB move at Makeup +24 changes the output by 0.8% of
+    peak, against 14% when an element crossfade resets the blocking.
 
 ## CPU
 
@@ -186,8 +251,47 @@ real-time length; Apple M2 Pro, native arm64 Release):
 - On the hot drums: 3.7 evaluations per sample on average, 32 at most, no
   failures. The same root and tolerances as before, so the sound is
   unchanged.
-- **Still costly:** the push-pull stage remains the largest cost, at 192 kHz
-  inside the shared 4× region.
+
+### Further savings (owner request, 2026-10-24)
+
+Grid current made the joint Newton fall back four times as often, and the
+worst block rose to 89–99%. Traces showed why:
+- Near the upper section's cut-off its current is exponential and its slopes
+  tiny, so a full Newton step overshot by up to 150 V into heavy conduction and
+  cycled.
+- Steps that carried the plate past B+ were clamped, which broke the descent.
+
+**Changes** ([CathodeFollower.h](../source/modules/CathodeFollower.h)):
+1. **Damped joint Newton.** A step that does not reduce the current mismatch
+   is halved. Both residuals are amperes, so their squares add.
+2. **Step limits.** The tube-side cathode moves at most 5 V per step, as SPICE
+   limits junction steps. The plate stays within 90% of the way to B+ or to its
+   cathode. Up to 16 steps.
+3. **Plate tolerance** matched to the output's relative 10⁻¹¹, above the inner
+   solve's absolute floor.
+4. **The last Newton step is taken to first order** once the residual is
+   within 10⁻⁶ of the term sizes. Newton's next residual would be about its
+   square, so the confirming evaluation is skipped: about a third of the solve
+   at normal levels. `strictSolve` keeps the confirmation for tests.
+5. **A quadratic starting guess** from the last three solutions, instead of a
+   linear one from two.
+
+**MEASUREMENT** (same method as above):
+
+| | Defaults, mean | Makeup +24 drums, median / worst block |
+|---|---:|---:|
+| After the first fix | 21.6% | 23% / 53% (Ideal grid), 89–99% (grid current) |
+| Now, Ideal grid | **17.6%** | **18.5% / 38%** |
+| Now, DC-coupled or Capacitor | — | **19–20% / 34–38%** |
+
+- **Evaluations per sample:** 3.0 → 2.0 at normal levels; 3.7 → 2.45 on the
+  hot drums. Fallbacks are under 0.02% of samples, with no failures.
+- **The sound is the same:** against the exact law with every root
+  confirmed, the output differs by at most −187 dB of peak on bass and drums,
+  nominal to hot (tested to −160 dB).
+- **Not changed:** the iron's magnetic element (play operators and one tanh)
+  is now the next largest cost. It is shared by every transformer, so it is
+  left alone.
 
 ## Tests
 
@@ -202,15 +306,26 @@ real-time length; Apple M2 Pro, native arm64 Release):
 - push-pull at 3.0% THD against single-ended at 13.9%, both Amounts at 100%,
   100 Hz, −6 dBFS;
 - the tabulated 12BH7 against Koren's law, and its exact fallback;
-- hot drums through the push-pull stage: bounded evaluations per sample,
-  fallbacks and worst sample, and the exact-law output (`[cpu]`).
+- hot drums through the push-pull stage with each Output grid choice: bounded
+  evaluations per sample, fallbacks and worst sample (`[cpu]`);
+- the fast solve against the exact law with every root confirmed;
+- Tube Amount sweeps without a step, also with the capacitor-coupled grid.
+
+[OverdriveTests.cpp](../tests/OverdriveTests.cpp), output grid and Headroom
+automation:
+- the grid clamp against the source law: exact, monotone and smooth;
+- each Output grid choice transparent until overdriven, then conducting,
+  grittier, and periodic once settled;
+- the capacitor version's blocking and recovery;
+- tube workbench version 2 saves loading with Output grid at Ideal;
+- a Headroom sweep without a step, and a small move keeping the 5751's
+  blocking.
 
 Release-law tests were updated to the 20 ms floor. Tests of calibrated behavior
 set Headroom to 18 dB.
 
 ## Open
 
-- Owner listening at the new defaults.
-- Grid current at the output follower's upper grid.
-- Measured grid current for the 6386, 5751 and 12BH7, if found.
-- Headroom automation without stepwise crossfades.
+- Owner listening: the Output grid choices against Ideal.
+- Measured grid current for the 6386, 5751 and 12BH7, if found, and the real
+  output grid network.

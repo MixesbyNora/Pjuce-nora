@@ -31,12 +31,14 @@ public:
     double gridVoltsPerUnit() const noexcept { return gridScale; }
     double cathodeOhms() const noexcept { return rk; }
     double quiescentPlate() const noexcept { return plateQuiescent; }
+    // Small-signal plate output resistance, Ra || rp: the source the next grid sees.
+    double outputOhms() const noexcept { return plateOutputOhms; }
 
 private:
     double plateFor (double grid) const noexcept;
     static constexpr double step = 0.001, range = 30.0;
     Design design;
-    double rk = 0, cathode = 0, plateQuiescent = 0, smallSignalGain = -1, gridScale = 1;
+    double rk = 0, cathode = 0, plateQuiescent = 0, smallSignalGain = -1, gridScale = 1, plateOutputOhms = 0;
     std::vector<double> plate, slope;
 };
 // The live stage, built on first use (at prepare, never on the audio thread).
@@ -52,8 +54,11 @@ class Grid
 public:
     void prepare (double sampleRate) noexcept;
     void reset() noexcept { capacitor = previousCurrent = 0; }
-    // x in full-scale units; returns the absolute grid voltage.
-    double process (double x) noexcept;
+    // x in full-scale units, driven `drive` times harder (Headroom; the caller
+    // divides the stage's output back). Returns the absolute grid voltage. The
+    // capacitor's charge is kept per unit of drive, so a change of drive scales it
+    // with the signal instead of leaving an offset.
+    double process (double x, double drive = 1.0) noexcept;
     static constexpr double sourceOhms = 22.0e3, couplingFarads = 0.1e-6, leakOhms = 1.0e6;
 
 private:
