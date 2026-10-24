@@ -191,6 +191,8 @@ set(SourceFiles
     source/dsp/LowFrequencyMono.cpp
     source/dsp/GainTube.h
     source/dsp/GainTube.cpp
+    source/dsp/AmpTube.h
+    source/dsp/AmpTube.cpp
     source/dsp/BaSignalPath.h
     source/dsp/BaSignalPath.cpp
     source/dsp/SidechainFilterSettings.h

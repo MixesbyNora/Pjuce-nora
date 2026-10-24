@@ -400,6 +400,68 @@ The first unoptimized version cost 39–50% with the tube in.
 - state round-trip and old-session defaults;
 - the editor's third stage.
 
+## 5751 amplifier (owner decisions, 2026-10-23)
+
+The 5751 is the Manley-style voltage amplifier between the gain tubes and the
+12BH7 follower. It completes the core chain: input transformer → gain tubes →
+**5751** → 12BH7 → output transformer.
+
+- **Makeup drives it.** Makeup is applied before the amplifier, so more Makeup
+  is more level into the 5751. The output is normalized to unity small-signal
+  gain, so the level still follows Makeup.
+- **Amp Tube** (`ampTubeOut`): In/Out, In by default, version hint 9, appended
+  last. Out is the clean gain.
+- **Headroom will include it** and the gain tube (owner decision), once
+  Headroom is built.
+
+**Circuit** ([AmpTube.h](../source/dsp/AmpTube.h)): a textbook
+resistance-coupled common-cathode stage with the fitted GE 5751.
+- 300 V supply, 100 kΩ plate resistor, 1 mA. That puts the plate at 200 V and
+  needs a 2.29 kΩ cathode resistor (bypassed).
+- It drives the next grid's 1 MΩ leak resistor through a coupling capacitor.
+- Both capacitors are treated as ideal at audio rates, so the stage is
+  memoryless: plate voltage against grid signal is solved once (KCL, bisection)
+  and tabulated in 1 mV steps for cubic Hermite interpolation.
+- Gain 33.2 dB, inverting; the polarity is kept in the output.
+- **Levels follow the real chain:** the grid sees the signal divided by the
+  stage gain, so at 0 dBFS the plate swings the follower's line level
+  (+18 dBu peak).
+- **Placement:** inside the compressor's gain element, after Makeup. Switching
+  uses the same 20 ms crossfade.
+- **Not modeled:** grid current, and blocking at the next grid. This
+  circuit's actual Manley values and any feedback around it are unpublished.
+
+**MEASUREMENT** ([amp_tube_thd.csv](measurements/gain_tube/amp_tube_thd.csv),
+task `gain-tube-report`):
+
+| Level at the amplifier | THD | H2 | H3 |
+|---:|---:|---:|---:|
+| −10 dBu | 0.045% | −67 dBc | −140 dBc |
+| +4 dBu | 0.23% | −53 dBc | −112 dBc |
+| +18 dBu (0 dBFS) | 1.1% | −39 dBc | −84 dBc |
+| +30 dBu (Makeup pushed) | 4.5% | −27 dBc | −59 dBc |
+
+- **Almost pure H2,** the single-ended triode signature. It rises about 1:1
+  with level.
+- **More than Manley's published "<0.1%" at nominal level.** The real unit
+  probably uses feedback (the manual describes the gain-control chain as a
+  feedback circuit). Kept as the plain textbook stage for the owner to judge
+  by ear; feedback or an unbypassed cathode are possible voicing options later.
+- **Aliasing** ([amp_tube_aliasing.csv](measurements/gain_tube/amp_tube_aliasing.csv)):
+  −107.5 dB against 64× at 4×, even at +6 dBFS.
+- **CPU** ([gain_tube_cpu.csv](measurements/gain_tube/gain_tube_cpu.csv)):
+  +0.27%. The whole plugin uses 20.6% at 48 kHz with every tube in.
+
+**Tests** (`[amp-tube]` in [GainTubeTests.cpp](../tests/GainTubeTests.cpp)):
+- gain and cathode resistor;
+- unity small-signal gain with polarity kept;
+- H2 dominant and rising with level;
+- Makeup drives it harder;
+- Amp Tube is appended and switches smoothly.
+
+Older tests that isolate the input iron now set the amplifier Out too. A meter
+test allows 0.25 dB because the H2 skews the output peak.
+
 ## Open
 
 - **The size of the source-impedance effect.** It depends on C's low-level
@@ -408,9 +470,8 @@ The first unoptimized version cost 39–50% with the tube in.
 - **Stage values are a design choice:** B+, bias, cathode resistor,
   paralleled sections, coupling capacitor. Lower output impedance (more
   current, or a different follower) means less transformer distortion.
-- **Not modeled:** grid current (no published curves), power-supply sag,
-  heater-cathode leakage, and the 5751 voltage-amplifier stage before the
-  follower. The 5751 is fitted, but not yet used in a stage.
+- **Not modeled:** grid current (no published curves), power-supply sag
+  (planned last), and heater-cathode leakage.
 - **Owner listening** on the live build: the four tube controls, and Output
   Tube in and out.
 - **CPU.** The tube adds about 10 points. A table-based triode would cut it

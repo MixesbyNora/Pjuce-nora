@@ -4,6 +4,7 @@
 #include "SoftKneeGainComputer.h"
 #include "SidechainFilter.h"
 #include "GainTube.h"
+#include "AmpTube.h"
 
 class StereoCompressor
 {
@@ -12,15 +13,17 @@ public:
     void setParameters (const CompressorParameters::Values& values) noexcept;
     // Returns the block's maximum reduction for metering; it does not feed back into DSP.
     float process (juce::AudioBuffer<float>& buffer, int numInputChannels) noexcept;
-    // The vari-mu gain element (docs/GainTube.md). Off (the default) is the exact
-    // digital gain; a change crossfades over 20 ms from the previous element.
+    // The vari-mu gain element (docs/GainTube.md) and the 5751 amplifier after
+    // Makeup (docs/TubeStage.md). Off (the default) is the exact digital gain; a
+    // change crossfades over 20 ms from the previous element.
     struct GainElement
     {
         bool tube = false;
         GainTube::Settings settings;
+        bool amp = false; // Makeup drives it: the amplifier follows the makeup gain.
         bool operator== (const GainElement& other) const noexcept
         {
-            return tube == other.tube && settings.tube == other.settings.tube
+            return tube == other.tube && amp == other.amp && settings.tube == other.settings.tube
                 && std::abs (settings.gridLevelDb - other.settings.gridLevelDb) < 1.0e-9 && std::abs (settings.imbalance - other.settings.imbalance) < 1.0e-12;
         }
     };
@@ -36,7 +39,8 @@ private:
         void configure (GainElement) noexcept;
         double render (std::size_t channel, double x, double reductionDb, double digitalGain, double makeupGain) const noexcept
         {
-            return settings.tube ? cells[channel].process (x, reductionDb) * makeupGain : x * digitalGain;
+            const auto y = settings.tube ? cells[channel].process (x, reductionDb) * makeupGain : x * digitalGain;
+            return settings.amp ? AmpTube::stage().process (y) : y;
         }
     };
     Element active, next;

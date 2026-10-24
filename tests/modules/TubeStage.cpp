@@ -3,6 +3,7 @@
 #include "TubeCurveData.h"
 #include <dsp/VtbTransformerCore.h>
 #include <dsp/GainTube.h>
+#include <dsp/AmpTube.h>
 #include <PluginProcessor.h>
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <catch2/catch_test_macros.hpp>
@@ -601,15 +602,81 @@ void writeGainTubeReport (const juce::File& root)
                 alias.flush();
                 std::cout << "gain tube alias " << static_cast<int> (tube) << ' ' << reduction << ' ' << requested << std::endl;
             }
+    // 2b. The 5751 amplifier alone: THD against level, and aliasing against 64x.
+    auto ampThd = csv (root, "amp_tube_thd.csv", "level_dbu_at_amp,gain_error_db,thd_percent,h2_dbc,h3_dbc");
+    for (double dbu = -20; dbu <= 30.01; dbu += 2)
+    {
+        const auto peak = std::pow (10.0, (dbu - 18.0) / 20.0);
+        constexpr int count = 1024;
+        std::array<std::complex<double>, 12> h {};
+        for (int n = 0; n < count; ++n)
+        {
+            const auto phase = 2.0 * ShuntResearch::pi * n / count;
+            const auto y = AmpTube::stage().process (peak * std::sin (phase));
+            for (std::size_t k = 0; k < h.size(); ++k) h[k] += y * std::polar (1.0, -static_cast<double> (k) * phase) * (2.0 / count);
+        }
+        double sum = 0;
+        for (std::size_t k = 2; k < h.size(); ++k) sum += std::norm (h[k]);
+        ampThd << dbu << ',' << 20.0 * std::log10 (std::abs (h[1]) / peak) << ',' << 100.0 * std::sqrt (sum) / std::abs (h[1]) << ','
+               << 20.0 * std::log10 (std::abs (h[2]) / std::abs (h[1])) << ',' << 20.0 * std::log10 (std::abs (h[3]) / std::abs (h[1])) << '\n';
+    }
+    auto ampAlias = csv (root, "amp_tube_aliasing.csv", "factor,peak_dbfs,requested_hz,nonharmonic_dbc_audio,difference_to_64x_band_dbr");
+    for (double peakDb : { -6.0, 6.0 })
+        for (double requested : { 1000.0, 7001.0, 13001.0, 19001.0 })
+        {
+            using namespace ShuntResearch;
+            const auto bin = static_cast<int> (2 * std::round ((requested * sineSize / rate - 1) / 2) + 1);
+            const auto renderAt = [&] (int factor)
+            {
+                juce::dsp::Oversampling<double> filters { 1 };
+                filters.clearOversamplingStages();
+                if (factor == 1) filters.addDummyOversamplingStage();
+                std::size_t index = 0;
+                for (int stage = 1; stage < factor; stage *= 2, ++index)
+                {
+                    const auto up = index < MagneticAudio::upWidths.size() ? MagneticAudio::upWidths[index] : 0.08;
+                    const auto down = index < MagneticAudio::downWidths.size() ? MagneticAudio::downWidths[index] : 0.08;
+                    filters.addOversamplingStage (juce::dsp::Oversampling<double>::filterHalfBandFIREquiripple, static_cast<float> (up), -120.0f, static_cast<float> (down), -120.0f);
+                }
+                filters.setUsingIntegerLatency (false); filters.initProcessing (ModuleResearch::capacity);
+                constexpr int warm = 8192;
+                const auto count = warm + static_cast<int> (sineSize) + 1024;
+                std::vector<double> raw (static_cast<std::size_t> (count));
+                juce::AudioBuffer<double> block (1, ModuleResearch::capacity);
+                const auto amplitude = std::pow (10.0, peakDb / 20.0);
+                for (int start = 0; start < count; start += ModuleResearch::capacity)
+                {
+                    for (int n = 0; n < ModuleResearch::capacity; ++n)
+                        block.setSample (0, n, amplitude * std::sin (2 * pi * bin * static_cast<double> (start + n) / sineSize));
+                    juce::dsp::AudioBlock<double> base (block);
+                    auto high = filters.processSamplesUp (base);
+                    for (std::size_t n = 0; n < high.getNumSamples(); ++n)
+                        high.setSample (0, static_cast<int> (n), AmpTube::stage().process (high.getSample (0, static_cast<int> (n))));
+                    filters.processSamplesDown (base);
+                    for (int n = 0; n < ModuleResearch::capacity && start + n < count; ++n) raw[static_cast<std::size_t> (start + n)] = block.getSample (0, n);
+                }
+                return MagneticValidation::alignTrace (raw, warm, filters.getLatencyInSamples(), static_cast<int> (sineSize)).samples;
+            };
+            const auto reference = renderAt (64);
+            for (int factor : { 1, 2, 4, 8 })
+            {
+                const auto output = renderAt (factor);
+                const auto bands = split (output, output, bin);
+                double fundamental = 0, nonHarmonic = 0;
+                for (const auto& b : bands) { fundamental += b.fundamental; nonHarmonic += b.nonHarmonic; }
+                ampAlias << factor << ',' << peakDb << ',' << requested << ',' << powerDb (nonHarmonic / fundamental) << ',' << bandDifference (output, reference) << '\n';
+            }
+        }
     // 3. Whole plugin CPU, gain tube in and out (defaults otherwise), 48 kHz stereo.
-    auto cpu = csv (root, "gain_tube_cpu.csv", "tube,threshold_db,ns_per_host_sample_stereo,percent_core_48k");
-    for (const auto& [tubeIn, choice] : { std::pair { false, 0.0f }, std::pair { true, 0.0f }, std::pair { true, 1.0f } })
+    auto cpu = csv (root, "gain_tube_cpu.csv", "tube,amp,threshold_db,ns_per_host_sample_stereo,percent_core_48k");
+    for (const auto& [tubeIn, choice, ampIn] : { std::tuple { false, 0.0f, false }, std::tuple { true, 0.0f, false }, std::tuple { true, 1.0f, false }, std::tuple { true, 0.0f, true } })
     {
         PluginProcessor processor;
         for (auto* p : processor.getParameters())
             if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
             {
                 if (ranged->paramID == "gainTubeOut") ranged->setValueNotifyingHost (tubeIn ? 0.0f : 1.0f);
+                if (ranged->paramID == "ampTubeOut") ranged->setValueNotifyingHost (ampIn ? 0.0f : 1.0f);
                 if (ranged->paramID == "threshold") ranged->setValueNotifyingHost (ranged->convertTo0to1 (-30.0f));
             }
         processor.getGainTubeVoicing().setCurrent ({ choice });
@@ -628,8 +695,8 @@ void writeGainTubeReport (const juce::File& root)
         constexpr int blocks = 2000;
         for (int b = 0; b < blocks; ++b) block (b);
         const auto ns = 1.0e9 * std::chrono::duration<double> (std::chrono::steady_clock::now() - begin).count() / (blocks * 256.0);
-        cpu << (tubeIn ? (choice > 0.5f ? "6386" : "5670") : "out") << ",-30," << ns << ',' << 100.0 * ns * 48000.0 * 1.0e-9 << '\n';
-        std::cout << "gain tube cpu " << tubeIn << ' ' << choice << ' ' << 100.0 * ns * 48000.0 * 1.0e-9 << '%' << std::endl;
+        cpu << (tubeIn ? (choice > 0.5f ? "6386" : "5670") : "out") << ',' << (ampIn ? "in" : "out") << ",-30," << ns << ',' << 100.0 * ns * 48000.0 * 1.0e-9 << '\n';
+        std::cout << "gain tube cpu " << tubeIn << ' ' << choice << " amp " << ampIn << ' ' << 100.0 * ns * 48000.0 * 1.0e-9 << '%' << std::endl;
     }
 }
 

@@ -139,7 +139,8 @@ StereoCompressor::GainElement BaSignalPath::gainElement (const BaParameters::Val
     const auto& v = values.gainTubeVoicing;
     return { ! values.gainTubeOut,
         { GainTubeVoicing::dspValue (v, GainTubeVoicing::tube) > 0.5 ? GainTube::Tube::ge6386 : GainTube::Tube::ge5670,
-          GainTubeVoicing::dspValue (v, GainTubeVoicing::gridLevel), GainTubeVoicing::dspValue (v, GainTubeVoicing::imbalance) * 0.01 } };
+          GainTubeVoicing::dspValue (v, GainTubeVoicing::gridLevel), GainTubeVoicing::dspValue (v, GainTubeVoicing::imbalance) * 0.01 },
+        ! values.ampTubeOut };
 }
 bool BaSignalPath::outputEngaged (const BaParameters::Values& values) noexcept
 {

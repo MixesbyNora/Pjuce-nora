@@ -212,7 +212,8 @@ TEST_CASE ("Meter peaks persist through quieter blocks until the UI reads them",
     processor.processBlock (audio, midi);
     const auto peaks = processor.readLevelPeaks();
     CHECK (juce::Decibels::gainToDecibels (peaks.inL) == Catch::Approx (-6.0f).margin (0.1f));
-    CHECK (juce::Decibels::gainToDecibels (peaks.outL) == Catch::Approx (-6.0f).margin (0.1f));
+    // The 5751's H2 skews the waveform slightly, so the output peak moves a little.
+    CHECK (juce::Decibels::gainToDecibels (peaks.outL) == Catch::Approx (-6.0f).margin (0.25f));
     CHECK (juce::Decibels::gainToDecibels (peaks.inR) == Catch::Approx (-18.04f).margin (0.1f));
     CHECK (juce::Decibels::gainToDecibels (peaks.outR) == Catch::Approx (-18.04f).margin (0.1f));
 }

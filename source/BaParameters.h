@@ -38,6 +38,8 @@ inline constexpr BoolSpecification outputTubeOut { "outputTubeOut", "Output Tube
 inline constexpr FloatSpecification tubeAmount { "tubeAmount", "Tube Amount", "%", 0.0f, 100.0f, 0.1f, 400.0f / 7.0f };
 // The compressor's vari-mu gain element; Out is the exact digital gain (docs/GainTube.md).
 inline constexpr BoolSpecification gainTubeOut { "gainTubeOut", "Gain Tube", false };
+// The 5751 amplifier after Makeup (docs/TubeStage.md); Out is a clean gain.
+inline constexpr BoolSpecification ampTubeOut { "ampTubeOut", "Amp Tube", false };
 // Amounts are drive only (-24 to +18 dB; 400/7 % is the calibrated 0 dB, the
 // default). Owner decision: the In/Out switches are the only bypass.
 inline constexpr FloatSpecification xfrmAmount { "xfrmAmount", "Xfrm Amount", "%", 0.0f, 100.0f, 0.1f, 400.0f / 7.0f };
@@ -75,6 +77,7 @@ struct Values
     float tubeAmountPercent = tubeAmount.initial;
     GainTubeVoicing::Values gainTubeVoicing;
     bool gainTubeOut = BaParameters::gainTubeOut.initial;
+    bool ampTubeOut = BaParameters::ampTubeOut.initial;
 };
 
 void appendLayout (juce::AudioProcessorValueTreeState::ParameterLayout& layout);

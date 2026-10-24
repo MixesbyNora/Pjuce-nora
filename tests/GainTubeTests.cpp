@@ -196,8 +196,8 @@ TEST_CASE ("Calibration and Gain Tube are appended; the gain tube workbench roun
     CHECK (gainTube->getName (32) == "Gain Tube");
     CHECK_FALSE (gainTube->get());
     CHECK (gainTube->getVersionHint() == 8);
-    CHECK (processor.getParameters().indexOf (gainTube) == processor.getParameters().size() - 1);
-    CHECK (processor.getParameters().indexOf (calibration) == processor.getParameters().size() - 2);
+    CHECK (processor.getParameters().indexOf (gainTube) == processor.getParameters().size() - 2);
+    CHECK (processor.getParameters().indexOf (calibration) == processor.getParameters().size() - 3);
     processor.getGainTubeVoicing().setCurrent ({ 1.0f, 4.5f, 2.5f });
     juce::MemoryBlock block;
     processor.getStateInformation (block);
@@ -246,4 +246,87 @@ TEST_CASE ("Calibration reaches the plugin's detector", "[gain-tube][calibration
     };
     CHECK (meter (12.0f) > meter (0.0f) + 3.0f); // About 2.2 -> 5.8 dB on this steady tone.
     CHECK (meter (-24.0f) < 0.01f);
+}
+
+namespace
+{
+std::array<std::complex<double>, 8> ampHarmonics (double peak)
+{
+    constexpr int count = 512;
+    std::array<std::complex<double>, 8> h {};
+    for (int n = 0; n < count; ++n)
+    {
+        const auto phase = 2.0 * juce::MathConstants<double>::pi * n / count;
+        const auto y = AmpTube::stage().process (peak * std::sin (phase));
+        for (std::size_t k = 0; k < h.size(); ++k) h[k] += y * std::polar (1.0, -static_cast<double> (k) * phase) * (2.0 / count);
+    }
+    return h;
+}
+}
+
+TEST_CASE ("5751 amplifier: unity small-signal gain, single-ended H2 that grows with level", "[amp-tube]")
+{
+    const auto& amp = AmpTube::stage();
+    // A textbook resistance-coupled 5751: about 33 dB, cathode about 2.3 kOhm at 1 mA.
+    CHECK (amp.gainDb() == Catch::Approx (33.2).margin (0.5));
+    CHECK (amp.cathodeOhms() == Catch::Approx (2290.0).margin (100.0));
+    const auto small = ampHarmonics (0.001);
+    CHECK (20.0 * std::log10 (std::abs (small[1]) / 0.001) == Catch::Approx (0.0).margin (0.01));
+    CHECK (small[1].imag() < 0); // Same polarity as the input (a sine's first bin is -j/2 x 2).
+    const auto nominal = ampHarmonics (0.2), hot = ampHarmonics (1.0); // +4 dBu and 0 dBFS.
+    CHECK (dbc (nominal, 2) > dbc (nominal, 3) + 30.0);
+    CHECK (dbc (hot, 2) > dbc (nominal, 2) + 12.0); // H2 rises about 1:1 with level.
+    CHECK (thdDb (nominal) < -45.0);
+}
+
+TEST_CASE ("Makeup drives the 5751 harder; Amp Tube is appended and switches smoothly", "[amp-tube][compressor][processor]")
+{
+    // Same input and GR: 12 dB more Makeup is 12 dB more level into the amplifier.
+    const auto second = [] (float makeupDb, bool amp)
+    {
+        StereoCompressor compressor;
+        CompressorParameters::Values values;
+        values.thresholdDb = -30.0f;
+        values.makeupDb = makeupDb;
+        compressor.setGainElement ({ false, {}, amp });
+        compressor.prepare (192000.0, values);
+        auto audio = sine (192000.0, 1000.0, 0.1f, 96000);
+        compressor.process (audio, 2);
+        std::complex<double> fundamental, h2;
+        for (int n = 48000; n < 96000; ++n)
+        {
+            const auto phase = 2.0 * juce::MathConstants<double>::pi * 1000.0 * n / 192000.0;
+            fundamental += static_cast<double> (audio.getSample (0, n)) * std::polar (1.0, -phase);
+            h2 += static_cast<double> (audio.getSample (0, n)) * std::polar (1.0, -2.0 * phase);
+        }
+        return 20.0 * std::log10 (std::abs (h2) / std::abs (fundamental) + 1.0e-30);
+    };
+    CHECK (second (12.0f, true) > second (0.0f, true) + 10.0);
+    CHECK (second (0.0f, false) < -120.0);
+    PluginProcessor processor;
+    auto* amp = dynamic_cast<juce::AudioParameterBool*> (parameter (processor, "ampTubeOut"));
+    REQUIRE (amp != nullptr);
+    CHECK (amp->getName (32) == "Amp Tube");
+    CHECK_FALSE (amp->get());
+    CHECK (amp->getVersionHint() == 9);
+    CHECK (processor.getParameters().indexOf (amp) == processor.getParameters().size() - 1);
+    set (processor, "threshold", 0.0f);
+    processor.prepareToPlay (48000.0, 256);
+    const auto dry = sine (48000.0, 110.0, 0.5f, 256 * 48);
+    auto audio = dry;
+    juce::MidiBuffer midi;
+    for (int block = 0; block < 48; ++block)
+    {
+        if (block == 16) set (processor, "ampTubeOut", 1.0f);
+        if (block == 32) set (processor, "ampTubeOut", 0.0f);
+        juce::AudioBuffer<float> view (audio.getArrayOfWritePointers(), 2, block * 256, 256);
+        processor.processBlock (view, midi);
+    }
+    float largest = 0, inputStep = 0;
+    for (int n = 1024; n < audio.getNumSamples(); ++n)
+    {
+        largest = std::max (largest, std::abs (audio.getSample (0, n) - audio.getSample (0, n - 1)));
+        inputStep = std::max (inputStep, std::abs (dry.getSample (0, n) - dry.getSample (0, n - 1)));
+    }
+    CHECK (largest < 1.5f * inputStep);
 }

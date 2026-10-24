@@ -249,8 +249,10 @@ TEST_CASE ("Input transformer voicing reaches the audio and round-trips through 
     {
         PluginProcessor processor;
         set (processor, "threshold", 0.0f);
-        set (processor, "xfrmOut", 1.0f); // Output stage out: the input iron alone.
+        set (processor, "xfrmOut", 1.0f); // Output stage and tubes out: the input iron alone.
         set (processor, "outputTubeOut", 1.0f);
+        set (processor, "gainTubeOut", 1.0f);
+        set (processor, "ampTubeOut", 1.0f);
         set (processor, "inGain", 12.0f);
         if (voiced) processor.getInputTransformerVoicing().setCurrent ({ -12.0f, 24.0f });
         return renderProcessor (processor, 30.0, -12.0, 48000 + 4800);
@@ -291,8 +293,8 @@ TEST_CASE ("Input XFRM bypass is appended and removes the input iron; Output XFR
     CHECK (parameter (processor, "inputXfrmOut")->getText (0.0f, 32) == "In");
     CHECK (parameter (processor, "inputXfrmOut")->getText (1.0f, 32) == "Out");
     CHECK_FALSE (input->get());
-    // Appended before Output Tube (hint 6), Tube Amount (7), Calibration and Gain Tube (8).
-    CHECK (processor.getParameters().indexOf (input) == processor.getParameters().size() - 5);
+    // Appended before Output Tube (hint 6), Tube Amount (7), Calibration and Gain Tube (8), Amp Tube (9).
+    CHECK (processor.getParameters().indexOf (input) == processor.getParameters().size() - 6);
     CHECK (input->getVersionHint() > parameter (processor, "xfrmAmount")->getVersionHint());
     // Driven 30 Hz with the output iron out: only the input iron adds H3.
     const auto thirdWith = [] (bool inputOut)
@@ -302,6 +304,7 @@ TEST_CASE ("Input XFRM bypass is appended and removes the input iron; Output XFR
         set (p, "xfrmOut", 1.0f);
         set (p, "outputTubeOut", 1.0f);
         set (p, "gainTubeOut", 1.0f); // Only the irons may add H3 here.
+        set (p, "ampTubeOut", 1.0f);
         set (p, "inGain", 12.0f);
         set (p, "input", -12.0f); // Analog Input down: keep the compressor out of its knee.
         set (p, "inputXfrmOut", inputOut ? 1.0f : 0.0f);

@@ -31,7 +31,8 @@ PluginProcessor::PluginProcessor()
        outputTubeOut (parameters.getRawParameterValue (BaParameters::outputTubeOut.id)),
        tubeAmount (parameters.getRawParameterValue (BaParameters::tubeAmount.id)),
        calibration (parameters.getRawParameterValue (CompressorParameters::calibration.id)),
-       gainTubeOut (parameters.getRawParameterValue (BaParameters::gainTubeOut.id))
+       gainTubeOut (parameters.getRawParameterValue (BaParameters::gainTubeOut.id)),
+       ampTubeOut (parameters.getRawParameterValue (BaParameters::ampTubeOut.id))
 {
     gainLink = std::make_unique<GainLinkController> (parameters);
 }
@@ -124,6 +125,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout PluginProcessor::createParam
     const auto& gainOut = BaParameters::gainTubeOut;
     layout.add (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { gainOut.id, 8 }, gainOut.name, gainOut.initial, inOutAttributes));
+    const auto& ampOut = BaParameters::ampTubeOut;
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { ampOut.id, 9 }, ampOut.name, ampOut.initial, inOutAttributes));
     return layout;
 }
 
@@ -142,7 +146,8 @@ BaParameters::Values PluginProcessor::readBaParameters() const noexcept
         inputXfrmOut->load (std::memory_order_relaxed) >= 0.5f,
         tube.voicing, tube.levelMatch, outputTubeOut->load (std::memory_order_relaxed) >= 0.5f,
         tubeAmount->load (std::memory_order_relaxed), gainTubeVoicing.readAudio().voicing,
-        gainTubeOut->load (std::memory_order_relaxed) >= 0.5f };
+        gainTubeOut->load (std::memory_order_relaxed) >= 0.5f,
+        ampTubeOut->load (std::memory_order_relaxed) >= 0.5f };
 }
 
 juce::AudioProcessorParameter* PluginProcessor::getBypassParameter() const

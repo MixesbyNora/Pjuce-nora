@@ -13,6 +13,7 @@ void StereoCompressor::prepare (double sampleRate, const CompressorParameters::V
     // Both tubes' tables are built here, never on the audio thread.
     GainTube::curve (GainTube::Tube::ge5670);
     GainTube::curve (GainTube::Tube::ge6386);
+    AmpTube::stage();
     active.configure (requested);
     fading = false;
     inputDb.setCurrentAndTargetValue (values.inputDb);
@@ -83,7 +84,7 @@ float StereoCompressor::process (juce::AudioBuffer<float>& buffer, int numInputC
             elementFade.setTargetValue (1.0f);
             fading = true;
         }
-        if (! fading && ! active.settings.tube)
+        if (! fading && ! active.settings.tube && ! active.settings.amp)
         {
             for (int channel = 0; channel < numChannels; ++channel)
                 channels[channel][sample] *= outputGain;

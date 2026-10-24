@@ -158,12 +158,12 @@ TEST_CASE ("Output Tube and Tube Amount are appended and the tube workbench roun
     CHECK (tube->getName (32) == "Output Tube");
     CHECK (parameter (processor, "outputTubeOut")->getText (0.0f, 32) == "In");
     CHECK_FALSE (tube->get());
-    CHECK (processor.getParameters().indexOf (tube) == processor.getParameters().size() - 4);
+    CHECK (processor.getParameters().indexOf (tube) == processor.getParameters().size() - 5);
     CHECK (tube->getVersionHint() == 6);
     auto* amount = parameter (processor, "tubeAmount");
     REQUIRE (amount != nullptr);
     CHECK (amount->getName (32) == "Tube Amount");
-    CHECK (processor.getParameters().indexOf (amount) == processor.getParameters().size() - 3);
+    CHECK (processor.getParameters().indexOf (amount) == processor.getParameters().size() - 4);
     CHECK (amount->getVersionHint() == 7);
     // Both Amounts default to the calibrated 0 dB drive (57.1% on the 0.1 grid).
     for (const auto* id : { "tubeAmount", "xfrmAmount" })

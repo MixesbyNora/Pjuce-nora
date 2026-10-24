@@ -117,7 +117,7 @@ Digital IN (BA "IN")
        at 44.1/48/96/192 kHz (relaxed linear-phase design, docs/OversamplingOptions.md) ]
        Input transformer (VTB9046, always in circuit)
        -> Analog Input (compressor "Input") -> compressor (gain tube, Calibration:
-          docs/GainTube.md) -> Makeup
+          docs/GainTube.md) -> Makeup -> 5751 amplifier (Amp Tube; docs/TubeStage.md)
        -> Output stage: 12BH7 follower (Output Tube, Tube Amount) + VTB1148
           (Output XFRM, Xfrm Amount), solved jointly (docs/TubeStage.md, added 2026-10-23)
   -> LF Mono -> Digital OUT (BA "OUT") -> Mix / Delta / Monitor / bypass
