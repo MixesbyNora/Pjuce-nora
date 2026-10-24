@@ -1,6 +1,7 @@
 #pragma once
 #include "TransformerModule.h"
 #include "TriodeModel.h"
+#include <bit>
 #include <limits>
 
 // A 12BH7 cathode follower capacitor-coupled to a variant C transformer primary,
@@ -27,13 +28,15 @@ struct StageDesign
     // `cathodeOhms` the lower section's bypassed cathode resistor.
     bool pushPull = false;
     double plateOhms = 0, quiescentPlate = 0, quiescentOutput = 0, lowerCathode = 0;
+    // Tabulated `tube` for the per-sample solve, or null for the exact law.
+    const TriodeTable* table = nullptr;
 };
 // A follower biased for a quiescent current per section, with the cathode at
 // half the supply (the widest symmetric swing). Grid bias solved from the triode law.
 inline StageDesign followerDesign (double plateAmps, double couplingFarads, double supply, double sections) noexcept
 {
     StageDesign d;
-    d.supply = supply; d.sections = sections; d.couplingFarads = couplingFarads;
+    d.supply = supply; d.sections = sections; d.couplingFarads = couplingFarads; d.table = &rca12bh7aTable();
     const auto cathode = 0.5 * supply;
     d.cathodeOhms = cathode / (sections * plateAmps);
     double lo = -150, hi = 20;
@@ -51,7 +54,7 @@ inline StageDesign followerDesign (double plateAmps, double couplingFarads, doub
 inline StageDesign pushPullDesign (double plateAmps, double couplingFarads, double supply) noexcept
 {
     StageDesign d;
-    d.pushPull = true; d.sections = 1; d.supply = supply; d.couplingFarads = couplingFarads;
+    d.pushPull = true; d.sections = 1; d.supply = supply; d.couplingFarads = couplingFarads; d.table = &rca12bh7aTable();
     d.plateOhms = 1500.0;
     d.quiescentPlate = supply - d.plateOhms * plateAmps;
     const auto gridFor = [&d, plateAmps] (double plateToCathode)
@@ -150,7 +153,12 @@ private:
     double resistance = 1;
 };
 
-struct StageDiagnostics { int maximumIterations = 0; std::uint64_t failures = 0; double minimumPlateMa = 1.0e9, maximumPlateMa = 0; };
+struct StageDiagnostics
+{
+    int maximumIterations = 0, maximumInnerIterations = 0;
+    std::uint64_t failures = 0, samples = 0, evaluations = 0, innerIterations = 0, fallbacks = 0; // Totals since reset: per-sample cost.
+    double minimumPlateMa = 1.0e9, maximumPlateMa = 0;
+};
 
 template <typename Load>
 class CathodeFollower
@@ -189,22 +197,22 @@ public:
     {
         const auto grid = design.bias + drive * signal;
         const auto step = dt / (2 * design.couplingFarads);
-        // Start from a linear extrapolation of the last two solutions (about half
-        // the iterations of starting from the last one). Bracket ends are flagged,
-        // never infinite: Release builds use -Ofast (finite math only).
-        double lo = 0, hi = 0, x = 2 * unknown - previousUnknown, reach = 1.0e-3;
-        bool haveLo = false, haveHi = false;
+        constexpr auto epsilon = std::numeric_limits<double>::epsilon();
+        // State of the most recent evaluation; the accepted root is always the
+        // last one evaluated, so these are what gets committed.
         LoadTrial t;
-        double residual = 0, vk = 0, vc = 0, plateAmps = 0, plate = upperPlate, plateSlope = upperSlope, plateAt = upperAt;
-        int iteration = 0;
-        for (; iteration < 200; ++iteration)
+        double vk = 0, vc = 0, plateAmps = 0, plate = upperPlate, plateSlope = upperSlope, plateAt = upperAt, goal = 0, derivative = -1, evaluatedAt = 0;
+        int evaluations = 0, inner = 0;
+        const auto evaluate = [&] (double x) noexcept
         {
+            ++evaluations;
+            evaluatedAt = x;
             t = load.evaluate (x);
             vc = capacitor + step * (t.ip + primaryCurrent);
             vk = t.vp + vc;
             const auto dVk = t.dVp + step * t.dIp;
             const auto tubeCathode = quiescent + drive * (vk - quiescent); // The tube's side of the level shift.
-            double conductance = 0, scale = 0;
+            double conductance = 0, scale = 0, residual = 0;
             if (design.pushPull)
             {
                 // Upper plate for this output voltage (inner monotone root), then KCL at
@@ -212,9 +220,11 @@ public:
                 // Start from the linear prediction of the last solve: usually one correction.
                 const auto solved = solveUpperPlate (tubeCathode, grid, plate + plateSlope * (tubeCathode - plateAt));
                 plate = solved.plate;
+                inner += solved.iterations;
+                diagnostics.maximumInnerIterations = std::max (diagnostics.maximumInnerIterations, solved.iterations);
                 plateAt = tubeCathode;
                 const auto& upper = solved.current;
-                const auto lower = triodeCurrent (design.tube, tubeCathode - design.lowerCathode, plate - design.quiescentPlate - design.lowerCathode);
+                const auto lower = tubeCurrent (tubeCathode - design.lowerCathode, plate - design.quiescentPlate - design.lowerCathode);
                 plateAmps = upper.ia;
                 residual = upper.ia - lower.ia - drive * t.ip;
                 plateSlope = (upper.dVa + upper.dVg) / (1 / design.plateOhms + upper.dVa);
@@ -223,36 +233,107 @@ public:
             }
             else
             {
-                const auto tube = triodeCurrent (design.tube, design.supply - tubeCathode, grid - tubeCathode);
+                const auto tube = tubeCurrent (design.supply - tubeCathode, grid - tubeCathode);
                 plateAmps = design.sections * tube.ia;
                 residual = plateAmps - tubeCathode / design.cathodeOhms - drive * t.ip;
                 conductance = design.sections * (tube.dVa + tube.dVg) + 1 / design.cathodeOhms;
                 scale = plateAmps + std::abs (tubeCathode) / design.cathodeOhms;
             }
-            const auto derivative = drive * (-conductance * dVk - t.dIp);
+            derivative = drive * (-conductance * dVk - t.dIp);
             // 1e-11 of the term sizes (including the cathode voltage's own scale): far
             // below audibility, and reachable without bisecting into roundoff.
-            constexpr auto epsilon = std::numeric_limits<double>::epsilon();
-            const auto goal = 1.0e-18 + 1.0e-11 * (scale + drive * std::abs (t.ip) + conductance * std::abs (tubeCathode));
-            if (std::abs (residual) <= goal) break;
-            // Residual falls as the unknown rises.
-            if (residual > 0) { lo = x; haveLo = true; } else { hi = x; haveHi = true; }
-            const auto bracketed = haveLo && haveHi;
-            if (bracketed && hi - lo <= 4 * epsilon * std::max ({ std::abs (lo), std::abs (hi), 1.0e-12 })) break;
-            // As TransformerCircuit: bounded Newton effort, then bisection, so the
-            // hysteretic kinks cannot make Newton cycle inside the bracket.
-            auto next = x - residual / derivative;
-            const auto inside = isFinite (next) && (! haveLo || next > lo) && (! haveHi || next < hi);
-            if (iteration >= 8 || ! inside)
-            {
-                if (bracketed) next = 0.5 * (lo + hi);
-                else { next = residual > 0 ? x + reach : x - reach; reach *= 2; }
-            }
-            x = next;
+            goal = 1.0e-18 + 1.0e-11 * (scale + drive * std::abs (t.ip) + conductance * std::abs (tubeCathode));
+            return residual;
+        };
+        // Start from a linear extrapolation of the last two solutions.
+        double x = 2 * unknown - previousUnknown, residual = 0;
+        bool converged = false;
+        if (design.pushPull)
+            converged = solveJointly (x, grid, drive, step, t, vc, vk, plateAmps, plate, plateSlope, plateAt, evaluations);
+        if (design.pushPull && ! converged) ++diagnostics.fallbacks;
+        if (! converged)
+        {
+            // Fall back from where the joint steps got to (usually close), with the
+            // inner plate solve's own prediction.
+            plate = upperPlate; plateSlope = upperSlope; plateAt = upperAt;
+            if (! isFinite (x)) x = 2 * unknown - previousUnknown;
         }
-        diagnostics.maximumIterations = std::max (diagnostics.maximumIterations, iteration + 1);
+        // The residual falls as the unknown rises. Phase 1: Newton, tracking a
+        // bracket; it converges in 3-4 evaluations at ordinary levels. Bracket ends
+        // are flagged, never infinite: Release builds use -Ofast (finite math only).
+        double lo = 0, hi = 0, fLo = 0, fHi = 0, reach = 1.0e-3;
+        bool haveLo = false, haveHi = false;
+        if (! converged) residual = evaluate (x);
+        for (int i = 0; i < 6 && ! converged; ++i)
+        {
+            if (std::abs (residual) <= goal) { converged = true; break; }
+            if (residual > 0) { lo = x; fLo = residual; haveLo = true; } else { hi = x; fHi = residual; haveHi = true; }
+            const auto next = x - residual / derivative;
+            const auto inside = isFinite (next) && (! haveLo || next > lo) && (! haveHi || next < hi);
+            if (! inside && haveLo && haveHi) break; // Leave it to the bracketed phase.
+            x = inside ? next : (residual > 0 ? x + reach : x - reach);
+            if (! inside) reach *= 2;
+            residual = evaluate (x);
+        }
+        if (! converged && std::abs (residual) <= goal) converged = true;
+        if (! converged)
+        {
+            if (residual > 0) { lo = x; fLo = residual; haveLo = true; } else { hi = x; fHi = residual; haveHi = true; }
+            // Find a bracket if Newton did not (rare: a very large step in one sample).
+            while (! (haveLo && haveHi) && evaluations < maxEvaluations)
+            {
+                x = haveLo ? lo + reach : hi - reach;
+                reach *= 2;
+                residual = evaluate (x);
+                if (residual > 0) { lo = x; fLo = residual; haveLo = true; } else { hi = x; fHi = residual; haveHi = true; }
+            }
+            // Phase 2: Brent's method on the bracket. Guaranteed and superlinear even
+            // across the tubes' cut-off and positive-grid kinks, so hard transients
+            // cost a bounded handful of evaluations instead of dozens of bisections
+            // (owner report 2026-10-24: CPU spikes on loud hits; docs/Overdrive.md).
+            double a = lo, fa = fLo, b = hi, fb = fHi;
+            double c = a, fc = fa, d = b - a, e = d;
+            while (evaluations < maxEvaluations)
+            {
+                bool secant = false;
+                if ((fb > 0) == (fc > 0)) { c = a; fc = fa; d = e = b - a; secant = true; }
+                if (std::abs (fc) < std::abs (fb)) { a = b; b = c; c = a; fa = fb; fb = fc; fc = fa; secant = true; }
+                const auto tolerance = 2 * epsilon * std::abs (b) + 1.0e-15;
+                const auto half = 0.5 * (c - b);
+                if (std::abs (half) <= tolerance || std::abs (fb) <= goal) break;
+                if (std::abs (e) >= tolerance && std::abs (fa) > std::abs (fb))
+                {
+                    // Secant (two points) or inverse quadratic interpolation (three).
+                    double p, q;
+                    const auto ratio = fb / fa;
+                    if (secant) { p = 2 * half * ratio; q = 1 - ratio; }
+                    else
+                    {
+                        const auto qa = fa / fc, rb = fb / fc;
+                        p = ratio * (2 * half * qa * (qa - rb) - (b - a) * (rb - 1));
+                        q = (qa - 1) * (rb - 1) * (ratio - 1);
+                    }
+                    if (p > 0) q = -q; else p = -p;
+                    if (2 * p < std::min (3 * half * q - std::abs (tolerance * q), std::abs (e * q))) { e = d; d = p / q; }
+                    else { d = half; e = d; }
+                }
+                else { d = half; e = d; }
+                a = b; fa = fb;
+                b += std::abs (d) > tolerance ? d : (half > 0 ? tolerance : -tolerance);
+                fb = evaluate (b);
+            }
+            x = b;
+            residual = fb;
+            // The state must belong to x: Brent's swaps can leave the best point
+            // other than the last one evaluated.
+            if (std::bit_cast<std::uint64_t> (evaluatedAt) != std::bit_cast<std::uint64_t> (x)) residual = evaluate (x);
+        }
+        diagnostics.maximumIterations = std::max (diagnostics.maximumIterations, evaluations);
+        ++diagnostics.samples;
+        diagnostics.evaluations += static_cast<std::uint64_t> (evaluations);
+        diagnostics.innerIterations += static_cast<std::uint64_t> (inner);
         // On failure keep the state and hold the last output rather than click to 0.
-        if (iteration >= 200 || ! isFinite (x)) { ++diagnostics.failures; return lastOutput; }
+        if (evaluations >= maxEvaluations || ! isFinite (x) || ! isFinite (residual)) { ++diagnostics.failures; return lastOutput; }
         load.commit (x, t);
         upperPlate = plate; upperSlope = plateSlope; upperAt = plateAt;
         previousUnknown = unknown; unknown = x; capacitor = vc; cathode = vk; primaryCurrent = t.ip; lastOutput = t.output;
@@ -260,6 +341,8 @@ public:
         diagnostics.maximumPlateMa = std::max (diagnostics.maximumPlateMa, plateAmps * 1000);
         return t.output;
     }
+    // Worst case per sample: Newton, bracket search and Brent together.
+    static constexpr int maxEvaluations = 64;
     // Small-signal output resistance at the present operating point.
     double outputOhms (double signal) const noexcept
     {
@@ -291,17 +374,66 @@ private:
     // Upper plate voltage of the White follower for an output (cathode) voltage,
     // with the upper section's current there: KCL at the plate falls
     // monotonically with plate voltage. Newton from a predicted start, then bisection.
-    struct UpperPlate { double plate; TriodeCurrent current; };
+    // Push-pull: Newton on the unknown and the upper plate together, one
+    // evaluation of each section per step, where the nested solve costs about 2.3
+    // upper-section evaluations per outer step (owner report 2026-10-24: CPU
+    // spikes on loud hits; docs/Overdrive.md, "CPU"). Converged, it leaves the
+    // same state the nested solve would; otherwise the caller falls back to that
+    // guaranteed, bracketed solve. KCL at the output (f1) and at the upper plate (f2).
+    bool solveJointly (double& x, double grid, double drive, double step, LoadTrial& t, double& vc, double& vk,
+        double& plateAmps, double& plate, double& plateSlope, double& plateAt, int& evaluations) noexcept
+    {
+        const auto plateGoal = 1.0e-15 + 1.0e-13 * design.supply / design.plateOhms;
+        for (int i = 0; i < jointSteps; ++i)
+        {
+            ++evaluations;
+            t = load.evaluate (x);
+            vc = capacitor + step * (t.ip + primaryCurrent);
+            vk = t.vp + vc;
+            const auto u = quiescent + drive * (vk - quiescent); // The tube's side of the level shift.
+            if (! (u < design.supply)) return false;
+            if (i == 0) plate = plate + plateSlope * (u - plateAt);
+            plate = std::clamp (plate, u, design.supply);
+            const auto upper = tubeCurrent (plate - u, grid - u);
+            const auto lower = tubeCurrent (u - design.lowerCathode, plate - design.quiescentPlate - design.lowerCathode);
+            const auto f1 = upper.ia - lower.ia - drive * t.ip;
+            const auto f2 = (design.supply - plate) / design.plateOhms - upper.ia;
+            const auto slope = (upper.dVa + upper.dVg) / (1 / design.plateOhms + upper.dVa);
+            const auto conductance = -(upper.dVa * (slope - 1) - upper.dVg) + lower.dVa + lower.dVg * slope;
+            const auto goal = 1.0e-18 + 1.0e-11 * (upper.ia + lower.ia + drive * std::abs (t.ip) + conductance * std::abs (u));
+            if (std::abs (f1) <= goal && std::abs (f2) <= plateGoal)
+            {
+                plateAmps = upper.ia; plateSlope = slope; plateAt = u;
+                return true;
+            }
+            const auto du = drive * (t.dVp + step * t.dIp);
+            const auto a11 = -(upper.dVa + upper.dVg + lower.dVa) * du - drive * t.dIp, a12 = upper.dVa - lower.dVg;
+            const auto a21 = (upper.dVa + upper.dVg) * du, a22 = -1 / design.plateOhms - upper.dVa;
+            const auto determinant = a11 * a22 - a12 * a21;
+            const auto dx = (f2 * a12 - f1 * a22) / determinant, dPlate = (f1 * a21 - f2 * a11) / determinant;
+            if (! isFinite (dx) || ! isFinite (dPlate)) return false;
+            x += dx;
+            plate += dPlate;
+        }
+        return false;
+    }
+    static constexpr int jointSteps = 10; // Hot transients take 5-10; past that, the bracketed solve.
+    TriodeCurrent tubeCurrent (double va, double vg) const noexcept
+    {
+        return design.table != nullptr ? (*design.table) (va, vg) : triodeCurrent (design.tube, va, vg);
+    }
+    struct UpperPlate { double plate; TriodeCurrent current; int iterations; };
     UpperPlate solveUpperPlate (double output, double grid, double guess) const noexcept
     {
         // At absurd drive the output can sit at or above B+: the upper section is off.
-        if (! (output < design.supply)) return { design.supply, {} };
+        if (! (output < design.supply)) return { design.supply, {}, 0 };
         double lo = output, hi = design.supply, vp = std::clamp (guess, lo, hi);
         const auto goal = 1.0e-15 + 1.0e-13 * design.supply / design.plateOhms;
         TriodeCurrent c;
-        for (int i = 0; i < 60; ++i)
+        int i = 0;
+        for (; i < 60; ++i)
         {
-            c = triodeCurrent (design.tube, vp - output, grid - output);
+            c = tubeCurrent (vp - output, grid - output);
             const auto g = (design.supply - vp) / design.plateOhms - c.ia;
             if (std::abs (g) <= goal || hi - lo <= 1.0e-12 * design.supply) break;
             (g > 0 ? lo : hi) = vp;
@@ -311,13 +443,13 @@ private:
                 // A tiny final step: take it with the current carried to first order
                 // (the error is second order, far below the outer tolerance).
                 c.ia += c.dVa * newton;
-                return { vp + newton, c };
+                return { vp + newton, c, i + 1 };
             }
             auto next = vp + newton;
             if (! (next > lo && next < hi) || i >= 8) next = 0.5 * (lo + hi);
             vp = next;
         }
-        return { vp, c };
+        return { vp, c, std::min (i + 1, 60) };
     }
     double dt = 0, quiescent = 0, cathode = 0, capacitor = 0, primaryCurrent = 0, unknown = 0, previousUnknown = 0, lastOutput = 0, upperPlate = 0, upperSlope = 0, upperAt = 0;
 };

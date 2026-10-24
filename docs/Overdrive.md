@@ -144,10 +144,50 @@ at 48 kHz, stereo, defaults, every tube in, 0.3-peak 110 Hz tone.
   from 1317 to about 930 ns per internal sample: a linear prediction for the
   inner start, reusing its last evaluation, and a 10⁻¹¹ relative outer
   tolerance.
-- **Further option:** tabulating the 12BH7 (Ia and its slopes on a 2D grid)
-  instead of evaluating Koren's exp/log/pow.
 - The earlier CPU figures in [GainTube.md](GainTube.md) and
   [TubeStage.md](TubeStage.md) were measured before the push-pull stage.
+
+### Spikes when pushed hard (owner report 2026-10-24)
+
+"When it's pushed hard … the CPU usage shoots up and the loudest elements
+cause an audible glitch." Not at normal levels.
+
+**MEASUREMENT** (whole plugin, 48 kHz, stereo, 256-sample blocks, the drum
+fixture at 0.9 peak, Makeup +24; thread CPU time per block against the block's
+real-time length; Apple M2 Pro, native arm64 Release):
+
+| | Median block | Worst block |
+|---|---:|---:|
+| Before | about 45% | **114%** (237% wall-clock) |
+| After | 22% | **53–58%** |
+
+- **Cause:** every loud hit drove the push-pull output stage into its hardest
+  region: the saturated iron and an upper section near cut-off. Single-ended,
+  or with the output tube out, the worst block was 22%.
+  - The per-sample root then needed up to 43 evaluations, bisecting.
+  - Each evaluation solved the upper plate as an inner root: about 2.3 more
+    triode evaluations, at 35 ns each.
+  - Over 100% means a block takes longer than real time: the dropout heard on
+    the loudest hits.
+- **Three changes** ([CathodeFollower.h](../source/modules/CathodeFollower.h),
+  [TriodeModel.h](../source/modules/TriodeModel.h)):
+  1. **Brent's method** replaces bisection in the bracketed fallback: at most
+     18 evaluations, where bisection needed 43.
+  2. **A tabulated 12BH7.** Koren's law separates into a plate factor and a
+     grid factor. Each is a one-dimensional cubic Hermite table with exact
+     slopes, about 650 kB in all, built once at prepare. Outside the tables it
+     falls back to the exact law. It costs 11–15 ns where the law costs 35 ns,
+     and matches it within 1.2 × 10⁻⁹ in current and 1.6 × 10⁻⁷ in slope. On
+     the hot drums the output differs by 4 × 10⁻¹² of peak.
+  3. **Joint Newton for push-pull.** The unknown and the upper plate are
+     stepped together: one evaluation of each section per step, with no inner
+     root. Hot transients take 5–10 steps. After 10, the solve falls back to
+     the nested, bracketed one: 0.5% of samples on the hot drums.
+- On the hot drums: 3.7 evaluations per sample on average, 32 at most, no
+  failures. The same root and tolerances as before, so the sound is
+  unchanged.
+- **Still costly:** the push-pull stage remains the largest cost, at 192 kHz
+  inside the shared 4× region.
 
 ## Tests
 
@@ -160,7 +200,10 @@ at 48 kHz, stereo, defaults, every tube in, 0.3-peak 110 Hz tone.
 [OutputTubeTests.cpp](../tests/OutputTubeTests.cpp):
 - the push-pull design point;
 - push-pull at 3.0% THD against single-ended at 13.9%, both Amounts at 100%,
-  100 Hz, −6 dBFS.
+  100 Hz, −6 dBFS;
+- the tabulated 12BH7 against Koren's law, and its exact fallback;
+- hot drums through the push-pull stage: bounded evaluations per sample,
+  fallbacks and worst sample, and the exact-law output (`[cpu]`).
 
 Release-law tests were updated to the 20 ms floor. Tests of calibrated behavior
 set Headroom to 18 dB.

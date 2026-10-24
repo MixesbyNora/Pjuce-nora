@@ -1,6 +1,7 @@
 #include <PluginProcessor.h>
 #include <TransformerVoicingPanel.h>
 #include <dsp/VtbOutputTransformer.h>
+#include "modules/ShuntAnalysis.h"
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <complex>
@@ -359,4 +360,76 @@ TEST_CASE ("Tube Amount sweeps in the plugin ramp without a step", "[tube][amoun
     }
     CHECK (finite);
     CHECK (largestStep < 1.5f * inputStep);
+}
+
+TEST_CASE ("The tabulated 12BH7 matches Koren's law and falls back to it outside its range", "[tube][cpu]")
+{
+    // The per-sample solve's table (docs/Overdrive.md, "CPU").
+    const auto& table = ModuleSpike::rca12bh7aTable();
+    const auto tube = ModuleSpike::rca12bh7a();
+    double worstCurrent = 0, worstSlope = 0;
+    for (double va = 1.01; va < 450; va += 0.37)
+        for (double vg = -60; vg < 15; vg += 0.13)
+        {
+            const auto exact = ModuleSpike::triodeCurrent (tube, va, vg), fast = table (va, vg);
+            if (exact.ia < 1.0e-6) continue;
+            worstCurrent = std::max (worstCurrent, std::abs (fast.ia / exact.ia - 1));
+            worstSlope = std::max ({ worstSlope, std::abs (fast.dVa / exact.dVa - 1), std::abs (fast.dVg / exact.dVg - 1) });
+        }
+    CAPTURE (worstCurrent, worstSlope);
+    CHECK (worstCurrent < 1.0e-8);
+    CHECK (worstSlope < 1.0e-6);
+    // Below 1 V on the plate (and past the grid table) it is the law itself.
+    for (const auto [va, vg] : { std::pair { 0.5, -1.0 }, std::pair { 0.0, 2.0 }, std::pair { 20.0, 60.0 } })
+    {
+        const auto exact = ModuleSpike::triodeCurrent (tube, va, vg), fast = table (va, vg);
+        CHECK (std::bit_cast<std::uint64_t> (fast.ia) == std::bit_cast<std::uint64_t> (exact.ia));
+        CHECK (std::bit_cast<std::uint64_t> (fast.dVa) == std::bit_cast<std::uint64_t> (exact.dVa));
+        CHECK (std::bit_cast<std::uint64_t> (fast.dVg) == std::bit_cast<std::uint64_t> (exact.dVg));
+    }
+}
+
+TEST_CASE ("Hot drums through the push-pull follower keep a bounded solver cost", "[tube][overdrive][cpu]")
+{
+    // Owner report 2026-10-24: pushed hard, loud hits spiked the CPU and glitched.
+    // The drum fixture at Makeup +24's level into the output stage (about 14x full
+    // scale): every sample solves, the joint Newton rarely falls back, and the
+    // worst sample stays a bounded handful of evaluations.
+    VtbTransformerCore core;
+    core.prepare (internalRate, ModuleSpike::vtb1148OutputC(), 0.0, {}, false, stageFor (Mode::tubeAndTransformer));
+    for (int n = 0; n < static_cast<int> (internalRate); ++n)
+    {
+        std::array<double, 2> frame;
+        for (int ch = 0; ch < 2; ++ch) frame[static_cast<std::size_t> (ch)] = 14.0 * ShuntResearch::material (1, ch, n / 4.0);
+        core.processFrame (frame, 2);
+    }
+    const auto& d = core.getTubeDiagnostics (0);
+    const auto perSample = static_cast<double> (d.evaluations) / static_cast<double> (d.samples);
+    const auto fallbacks = static_cast<double> (d.fallbacks) / static_cast<double> (d.samples);
+    CAPTURE (perSample, fallbacks, d.maximumIterations);
+    CHECK (d.failures == 0);
+    CHECK (perSample < 4.5);  // 3.7 measured
+    CHECK (fallbacks < 0.01); // 0.5% measured
+    CHECK (d.maximumIterations <= 40); // 32 measured; was 43 with bisection alone
+
+    // The table changes nothing audible: the same follower with the exact law.
+    const auto p = ModuleSpike::vtb1148OutputC();
+    auto exactDesign = VtbTransformerCore::designFor ({});
+    const auto tableDesign = exactDesign;
+    exactDesign.table = nullptr;
+    ModuleSpike::CathodeFollower<ModuleSpike::MagneticLoad> fast, exact;
+    fast.prepare (internalRate, tableDesign, p);
+    exact.prepare (internalRate, exactDesign, p);
+    const auto unit = ModuleSpike::transformerUnitVolts (p);
+    double peak = 0, error = 0;
+    for (int n = 0; n < static_cast<int> (internalRate / 2); ++n)
+    {
+        const auto x = 14.0 * ShuntResearch::material (1, 0, n / 4.0) * unit;
+        const auto a = fast.process (x), b = exact.process (x);
+        peak = std::max (peak, std::abs (b));
+        error = std::max (error, std::abs (a - b));
+    }
+    CAPTURE (peak, error);
+    CHECK (fast.diagnostics.failures + exact.diagnostics.failures == 0);
+    CHECK (error < 1.0e-9 * peak); // 4e-12 measured
 }

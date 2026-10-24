@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <vector>
 
 namespace ModuleSpike
 {
@@ -34,6 +35,67 @@ inline TriodeCurrent triodeCurrent (const TriodeParameters& p, double va, double
     const auto slope = 2 * p.ex * power / e1 / p.kg1;
     return { 2 * power / p.kg1, slope * (softplus / p.kp - sigmoid * vg * va * va / (s * s * s)), slope * va * sigmoid / s };
 }
+// Koren's current is separable: Ia = 2/kg1 * (Va/kp)^ex * softplus(z)^ex, with
+// z = kp (1/mu + Vg / sqrt(kvb + Va^2)). Tabulating the two one-dimensional
+// factors (cubic Hermite with exact slopes; derivatives are the interpolant's
+// own, so Newton stays consistent) replaces exp, log1p and pow: about 3x faster,
+// within 3e-9 of the law (docs/Overdrive.md, "CPU"). Outside the tables, the
+// exact law. Built once, never on the audio thread.
+class TriodeTable
+{
+public:
+    explicit TriodeTable (const TriodeParameters& q) : p (q), kpOverMu (q.kp / q.mu), scale (2 / q.kg1)
+    {
+        build (grid, zLow, zHigh, zStep, [this] (double z)
+        {
+            const auto e = std::exp (z);
+            const auto softplus = std::log1p (e), power = std::pow (softplus, p.ex);
+            return Knot { power, p.ex * power / softplus * e / (1 + e) };
+        });
+        build (plate, vaLow, vaHigh, vaStep, [this] (double va)
+        {
+            const auto power = std::pow (va / p.kp, p.ex);
+            return Knot { power, p.ex * power / va };
+        });
+    }
+    TriodeCurrent operator() (double va, double vg) const noexcept
+    {
+        if (! (va > vaLow && va < vaHigh)) return triodeCurrent (p, va, vg);
+        const auto inverse = 1 / std::sqrt (p.kvb + va * va);
+        const auto z = kpOverMu + p.kp * vg * inverse;
+        if (! (z > zLow && z < zHigh)) return triodeCurrent (p, va, vg);
+        const auto g = at (grid, (z - zLow) / zStep, zStep), h = at (plate, (va - vaLow) / vaStep, vaStep);
+        const auto dz = p.kp * inverse;
+        return { scale * h.f * g.f, scale * (h.d * g.f - h.f * g.d * dz * vg * va * inverse * inverse), scale * h.f * g.d * dz };
+    }
+    const TriodeParameters& parameters() const noexcept { return p; }
+
+private:
+    struct Knot { double f, d; };
+    static constexpr double zLow = -40, zHigh = 40, zStep = 0.005, vaLow = 1, vaHigh = 800, vaStep = 0.05;
+    template <typename F>
+    static void build (std::vector<Knot>& knots, double low, double high, double step, F law)
+    {
+        const auto count = static_cast<std::size_t> ((high - low) / step + 0.5) + 1;
+        knots.resize (count);
+        for (std::size_t i = 0; i < count; ++i) knots[i] = law (low + static_cast<double> (i) * step);
+    }
+    // Value and slope of the cubic Hermite interpolant at a position in steps
+    // (in range by the callers' checks).
+    static Knot at (const std::vector<Knot>& knots, double position, double step) noexcept
+    {
+        const auto i = std::min (static_cast<std::size_t> (position), knots.size() - 2);
+        const auto t = position - static_cast<double> (i), t2 = t * t, t3 = t2 * t;
+        const auto& a = knots[i];
+        const auto& b = knots[i + 1];
+        const auto da = a.d * step, db = b.d * step;
+        return { (2 * t3 - 3 * t2 + 1) * a.f + (t3 - 2 * t2 + t) * da + (3 * t2 - 2 * t3) * b.f + (t3 - t2) * db,
+                 ((6 * t2 - 6 * t) * (a.f - b.f) + (3 * t2 - 4 * t + 1) * da + (3 * t2 - 2 * t) * db) / step };
+    }
+    TriodeParameters p;
+    double kpOverMu, scale;
+    std::vector<Knot> grid, plate;
+};
 // Grid current: 3/2-power in grid-to-cathode voltage above about 0 V, its onset
 // smoothed over a few tenths of a volt (contact potential). Fitted to the GE 5670
 // sheet's dashed grid-current lines (p5: 2.0 / 5.75 / 10 mA at +2 / +4 / +6 V):
@@ -72,6 +134,12 @@ inline TriodeCurrent variableMuCurrent (const VariableMuParameters& p, double va
 // RCA 12BH7-A tentative data, Mar 1955, PDF p4; each triode unit.
 inline TriodeParameters rca12bh7a() noexcept { return { 23.43635165, 1.102590463, 389.1440358, 107.4446752, 5309.767147 }; }
 // GE GL-5751, ETX-245A, Jun 1952, p2; each triode unit.
+// The 12BH7 table, shared and built on first use (the output stage's design, at prepare).
+inline const TriodeTable& rca12bh7aTable() noexcept
+{
+    static const TriodeTable table (rca12bh7a());
+    return table;
+}
 inline TriodeParameters ge5751() noexcept { return { 87.40702906, 1.0690516, 749.109422, 409.6063436, 4508.165482 }; }
 // Gain-control tubes (task gain-tube-fit, docs/GainTube.md).
 // GE 5670, ET-T1083A (Aug 1956), p5 plate family; each section.

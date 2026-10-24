@@ -73,6 +73,7 @@ void VtbTransformerCore::prepare (double internalRate, ModuleSpike::TransformerP
 {
     rate = internalRate;
     base = calibration;
+    ModuleSpike::rca12bh7aTable(); // Built here, never when a tube is switched in on the audio thread.
     requested = {};
     requested.transformer = TransformerVoicing::encode (voicing);
     setTube (tube);
