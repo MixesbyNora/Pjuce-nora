@@ -25,6 +25,7 @@ private:
     static VtbTransformerCore::Tube outputStage (const BaParameters::Values&) noexcept;
     static bool outputEngaged (const BaParameters::Values&) noexcept;
     static StereoCompressor::GainElement gainElement (const BaParameters::Values&) noexcept;
+    static StereoCompressor::Detector detector (const BaParameters::Values&) noexcept;
     // Digital IN, then one shared oversampled region (4/2/1): input transformer
     // (VTB9046, Input XFRM) -> Analog Input + compressor -> output stage: 12BH7
     // follower (Output Tube, Tube Amount) and VTB1148 (Output XFRM, Xfrm Amount),

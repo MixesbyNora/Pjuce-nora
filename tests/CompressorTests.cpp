@@ -90,7 +90,7 @@ TEST_CASE ("Compressor and BA bar expose stable parameters and persist state", "
              Expected { "attack", 0.2f, 30.0f, 5.0f },
              Expected { "release", 50.0f, 2000.0f, 200.0f },
              Expected { "makeup", 0.0f, 24.0f, 0.0f },
-             Expected { "fbff", 0.0f, 100.0f, 100.0f } })
+             Expected { "fbff", 0.0f, 100.0f, 0.0f } })
     {
         auto* parameter = findParameter (processor, expected.id);
         REQUIRE (dynamic_cast<juce::AudioParameterFloat*> (parameter) != nullptr);

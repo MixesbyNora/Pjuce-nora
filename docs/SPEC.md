@@ -124,8 +124,11 @@ and [magnetic artifact refinement](MagneticArtifactRefinement.md).
 
 ## FB/FF
 
-`fbff` / **FB/FF** ranges from 0 to 100 in 0.1 steps, defaulting to 100
-(full feedforward). Zero is full feedback and 50 is the equal blend. The generic
+`fbff` / **FB/FF** ranges from 0 to 100 in 0.1 steps, defaulting to 0
+(full feedback) since the analog detector (2026-10-24, [Detector.md](Detector.md));
+it defaulted to 100 (full feedforward) before. Zero is full feedback and 50 is the
+equal blend. The formulas below are the Digital law's; the 12AL5 detector blends
+its sidechain signal instead (see [Detector.md](Detector.md)). The generic
 editor displays FB, 50/50, FF, or the percentage followed by `% FF`; those labels
 and numeric values can be typed into the control. The feedback amount ramps
 linearly over 20 ms when the parameter changes.

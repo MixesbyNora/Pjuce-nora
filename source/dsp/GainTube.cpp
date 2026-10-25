@@ -117,6 +117,17 @@ double Curve::biasFor (double reductionDb) const noexcept
     return bias[i] + t * (bias[i + 1] - bias[i]);
 }
 
+double Curve::gainFor (double controlVolts) const noexcept
+{
+    const auto ratio = gmAt (quiescent - std::max (controlVolts, 0.0)) / gmQuiescent;
+    return std::clamp (ratio, 1.0e-3, 1.0); // 1e-3: maximumReductionDb.
+}
+
+double Curve::reductionFor (double controlVolts) const noexcept
+{
+    return -20.0 * std::log10 (gainFor (controlVolts));
+}
+
 const Curve& curve (Tube tube) noexcept
 {
     static const Curve ge5670 (Tube::ge5670, 150.0, -1.968, -30.0);

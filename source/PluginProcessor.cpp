@@ -164,7 +164,7 @@ BaParameters::Values PluginProcessor::readBaParameters() const noexcept
         tubeAmount->load (std::memory_order_relaxed), gainTubeVoicing.readAudio().voicing,
         gainTubeOut->load (std::memory_order_relaxed) >= 0.5f,
         ampTubeOut->load (std::memory_order_relaxed) >= 0.5f,
-        headroom->load (std::memory_order_relaxed) };
+        headroom->load (std::memory_order_relaxed), detectorVoicing.readAudio().voicing };
 }
 
 juce::AudioProcessorParameter* PluginProcessor::getBypassParameter() const
@@ -348,6 +348,11 @@ juce::String PluginProcessor::exportGainTubeVoicing() const
     return exportWorkbench (gainTubeVoicing.toJson(), "gainTube", "5670 / 6386 balanced gain cell");
 }
 
+juce::String PluginProcessor::exportDetectorVoicing() const
+{
+    return exportWorkbench (detectorVoicing.toJson(), "detector", "12AL5 sidechain detector");
+}
+
 juce::String PluginProcessor::exportWorkbench (juce::String text, const char* field, const char* stage) const
 {
     auto json = juce::JSON::parse (text);
@@ -373,6 +378,8 @@ void PluginProcessor::getStateInformation (juce::MemoryBlock& destData)
         { { "json", tubeVoicing.toJson() } }), -1, nullptr);
     state.addChild (juce::ValueTree ("GAIN_TUBE_VOICING",
         { { "json", gainTubeVoicing.toJson() } }), -1, nullptr);
+    state.addChild (juce::ValueTree ("DETECTOR_VOICING",
+        { { "json", detectorVoicing.toJson() } }), -1, nullptr);
     if (auto xml = state.createXml())
         copyXmlToBinary (*xml, destData);
 }
@@ -403,6 +410,17 @@ void PluginProcessor::setStateInformation (const void* data, int sizeInBytes)
             if (! gainTube.isValid() || ! gainTubeVoicing.restoreJson (gainTube.getProperty ("json").toString()))
                 gainTubeVoicing.resetAll();
             state.removeChild (gainTube, nullptr);
+            // Sessions before the detector keep the Digital law: their FB/FF was set
+            // for it (and defaulted to FF, where the 12AL5 over-compresses).
+            const auto detector = state.getChildWithName ("DETECTOR_VOICING");
+            if (! detector.isValid() || ! detectorVoicing.restoreJson (detector.getProperty ("json").toString()))
+            {
+                DetectorVoicing::Values digital;
+                digital[DetectorVoicing::detector] = 1.0f;
+                detectorVoicing.resetAll();
+                detectorVoicing.setCurrent (digital);
+            }
+            state.removeChild (detector, nullptr);
             // The retired xfrmModel choice (2026-10-22 builds only) has no parameter now.
             state.removeChild (state.getChildWithProperty ("id", "xfrmModel"), nullptr);
             gainLink->beginStateRestore();

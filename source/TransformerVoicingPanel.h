@@ -17,3 +17,4 @@ private:
 };
 using TubeVoicingPanel = VoicingPanel<TubeVoicing::Schema>;
 using GainTubeVoicingPanel = VoicingPanel<GainTubeVoicing::Schema>;
+using DetectorVoicingPanel = VoicingPanel<DetectorVoicing::Schema>;

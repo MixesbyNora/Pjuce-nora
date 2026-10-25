@@ -22,6 +22,12 @@ public:
     double currentAt (double grid) const noexcept;
     double gmAt (double grid) const noexcept;
     double biasFor (double reductionDb) const noexcept;
+    // Gain reduction for a control voltage that takes the grids below their
+    // quiescent bias (the analog detector, docs/Detector.md): gm(quiescent - v)
+    // against gm(quiescent), up to maximumReductionDb.
+    double reductionFor (double controlVolts) const noexcept;
+    // The same as a gain: gm(quiescent - v) / gm(quiescent), at least 10^(-maximumReductionDb / 20).
+    double gainFor (double controlVolts) const noexcept;
     double quiescentGrid() const noexcept { return quiescent; }
     // The grid voltage for a driving voltage when grid current flows through the
     // driving source (docs/Overdrive.md): grid + Rsource x Ig(grid) = drive.

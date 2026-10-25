@@ -16,6 +16,7 @@ void BaSignalPath::prepare (double sampleRate, int maximumBlockSize,
     // filters follow the rate it is prepared with.
     compressor.setGainElement (gainElement (values));
     compressor.prepare (internalRate, compressorValues);
+    compressor.setDetector (detector (values));
     compressor.setHeadroomDriveDb (BaParameters::headroomDriveDb (values.headroomDb), true);
     inputTransformer.prepare (internalRate, ModuleSpike::vtb9046LineInputC(), BaParameters::headroomDriveDb (values.headroomDb),
         values.inputTransformerVoicing, values.inputVoicingLevelMatch);
@@ -144,6 +145,11 @@ StereoCompressor::GainElement BaSignalPath::gainElement (const BaParameters::Val
           GainTubeVoicing::dspValue (v, GainTubeVoicing::imbalance) * 0.01 },
         ! values.ampTubeOut };
 }
+StereoCompressor::Detector BaSignalPath::detector (const BaParameters::Values& values) noexcept
+{
+    const auto& v = values.detectorVoicing;
+    return { DetectorVoicing::dspValue (v, DetectorVoicing::detector) < 0.5, DetectorVoicing::dspValue (v, DetectorVoicing::sidechainGain) };
+}
 bool BaSignalPath::outputEngaged (const BaParameters::Values& values) noexcept
 {
     // The output stage is bypassed when both parts are out.
@@ -165,6 +171,7 @@ float BaSignalPath::process (juce::AudioBuffer<float>& buffer, int channels,
 {
     compressor.setParameters (compressorValues);
     compressor.setGainElement (gainElement (values));
+    compressor.setDetector (detector (values));
     compressor.setHeadroomDriveDb (BaParameters::headroomDriveDb (values.headroomDb));
     outputTransformer.setExtraDriveDb (VtbOutputTransformer::driveDbFor (values.transformerAmountPercent) + BaParameters::headroomDriveDb (values.headroomDb));
     inputTransformer.setExtraDriveDb (BaParameters::headroomDriveDb (values.headroomDb));

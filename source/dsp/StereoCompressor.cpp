@@ -1,9 +1,13 @@
 #include "StereoCompressor.h"
+#include <bit>
 
 void StereoCompressor::prepare (double sampleRate, const CompressorParameters::Values& values) noexcept
 {
     rate = sampleRate;
     envelope.prepare (sampleRate);
+    detector.prepare (sampleRate);
+    reduction = 0.0f;
+    analogGain = 1.0;
     sidechainFilter.prepare (sampleRate);
     inputDb.reset (sampleRate, 0.02);
     makeupDb.reset (sampleRate, 0.02);
@@ -34,6 +38,33 @@ void StereoCompressor::setParameters (const CompressorParameters::Values& values
     envelope.setTimes (values.attackMs, values.releaseMs);
     envelope.setReleaseMod (values.releaseModPercent * 0.01f);
     sidechainFilter.setMode (values.scFilterMode);
+    analogSettings.thresholdDb = values.thresholdDb;
+    analogSettings.attackMs = values.attackMs;
+    analogSettings.releaseMs = values.releaseMs;
+    analogSettings.releaseMod = values.releaseModPercent * 0.01;
+    detector.configure (analogSettings);
+}
+
+void StereoCompressor::setDetector (Detector d) noexcept
+{
+    if (d.analog != analog)
+    {
+        // Carry the present gain reduction across: the control voltage that gives it,
+        // or the envelope's state.
+        const auto& tube = GainTube::curve (requested.settings.tube);
+        if (d.analog)
+        {
+            detector.reset (tube.quiescentGrid() - tube.biasFor (reduction));
+            analogGain = std::pow (10.0, -static_cast<double> (reduction) / 20.0);
+        }
+        else envelope.setGainReductionDb (reduction);
+        analog = d.analog;
+    }
+    if (std::abs (d.sidechainGainDb - analogSettings.sidechainGainDb) > 1.0e-9)
+    {
+        analogSettings.sidechainGainDb = d.sidechainGainDb;
+        detector.configure (analogSettings);
+    }
 }
 
 void StereoCompressor::Element::configure (GainElement element, double sampleRate) noexcept
@@ -66,6 +97,7 @@ float StereoCompressor::process (juce::AudioBuffer<float>& buffer, int numInputC
     {
         const auto inputGain = juce::Decibels::decibelsToGain (inputDb.getNextValue());
         auto peak = 0.0f;
+        std::array<double, 2> sidechain {};
 
         for (int channel = 0; channel < numChannels; ++channel)
         {
@@ -75,16 +107,38 @@ float StereoCompressor::process (juce::AudioBuffer<float>& buffer, int numInputC
             const auto detectionSample = static_cast<float> (
                 sidechainFilter.processSample (channel, channels[channel][sample]));
             peak = juce::jmax (peak, std::abs (detectionSample));
+            if (channel < 2) sidechain[static_cast<std::size_t> (channel)] = static_cast<double> (detectionSample);
         }
 
-        // Blend in the detector using the previous sample's applied attenuation.
-        // A single curve and envelope serve every FB/FF setting, before makeup.
-        constexpr auto detectorFloorDb = -160.0f;
         // Calibration moves only the level the detector sees.
-        const auto levelDb = juce::Decibels::gainToDecibels (peak, detectorFloorDb) + calibrationDb.getNextValue();
-        const auto detectDb = juce::jmax (detectorFloorDb,
-            levelDb - feedbackAmount.getNextValue() * envelope.getGainReductionDb());
-        const auto reductionDb = envelope.process (gainComputer.getGainReductionDb (detectDb));
+        const auto calibration = calibrationDb.getNextValue();
+        const auto feedback = feedbackAmount.getNextValue();
+        float reductionDb;
+        if (analog)
+        {
+            // FB senses the gain stage's output: the input at the previous sample's
+            // gain. The diodes see the FF/FB blend of the two.
+            const auto blend = 1.0 - static_cast<double> (feedback) * (1.0 - analogGain);
+            for (auto& s : sidechain) s *= blend;
+            if (std::bit_cast<std::uint32_t> (calibration) != calibrationBits)
+            {
+                calibrationBits = std::bit_cast<std::uint32_t> (calibration);
+                calibrationGain = std::pow (10.0, static_cast<double> (calibration) / 20.0);
+            }
+            const auto control = detector.process (sidechain.data(), juce::jmin (numChannels, 2), calibrationGain);
+            analogGain = GainTube::curve (requested.settings.tube).gainFor (control);
+            reductionDb = static_cast<float> (-20.0 * std::log10 (analogGain));
+        }
+        else
+        {
+            // Blend in the detector using the previous sample's applied attenuation.
+            // A single curve and envelope serve every FB/FF setting, before makeup.
+            constexpr auto detectorFloorDb = -160.0f;
+            const auto levelDb = juce::Decibels::gainToDecibels (peak, detectorFloorDb) + calibration;
+            const auto detectDb = juce::jmax (detectorFloorDb, levelDb - feedback * envelope.getGainReductionDb());
+            reductionDb = envelope.process (gainComputer.getGainReductionDb (detectDb));
+        }
+        reduction = reductionDb;
         blockPeakDb = juce::jmax (blockPeakDb, reductionDb);
         const auto makeup = makeupDb.getNextValue();
         const auto headroom = headroomDriveDb.getNextValue();

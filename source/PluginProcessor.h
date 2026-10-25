@@ -43,11 +43,13 @@ public:
     TransformerVoicingState& getInputTransformerVoicing() noexcept { return inputTransformerVoicing; }
     TubeVoicingState& getTubeVoicing() noexcept { return tubeVoicing; }
     GainTubeVoicingState& getGainTubeVoicing() noexcept { return gainTubeVoicing; }
+    DetectorVoicingState& getDetectorVoicing() noexcept { return detectorVoicing; }
     // Workbench feedback JSON for the output (default) or input transformer.
     juce::String exportTransformerVoicing (bool inputStage = false) const;
     // Workbench feedback JSON for the output tube and the gain tube.
     juce::String exportTubeVoicing() const;
     juce::String exportGainTubeVoicing() const;
+    juce::String exportDetectorVoicing() const;
 
     // Maximum positive attenuation in the most recent block; safe for UI polling.
     float getGainReductionDb() const noexcept
@@ -104,6 +106,7 @@ private:
     TransformerVoicingState transformerVoicing, inputTransformerVoicing;
     TubeVoicingState tubeVoicing;
     GainTubeVoicingState gainTubeVoicing;
+    DetectorVoicingState detectorVoicing;
     juce::String exportWorkbench (juce::String json, const char* field, const char* stage) const;
 
     static_assert (std::atomic<float>::is_always_lock_free);

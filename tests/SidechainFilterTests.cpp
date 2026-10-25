@@ -12,7 +12,8 @@
 
 namespace
 {
-juce::AudioBuffer<float> renderUnfilteredReference (float fbffPercent = CompressorParameters::fbff.defaultValue)
+// Captured feedforward, FB/FF's default before the analog detector (docs/Detector.md).
+juce::AudioBuffer<float> renderUnfilteredReference (float fbffPercent = 100.0f)
 {
     StereoCompressor compressor;
     CompressorParameters::Values values { -3.0f, -22.0f, 0.2f, 130.0f, 6.0f };

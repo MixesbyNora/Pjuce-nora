@@ -20,6 +20,8 @@ public:
     }
     // 0 = the Release time always; 1 = full program dependence.
     void setReleaseMod (float amount) noexcept { releaseMod = juce::jlimit (0.0, 1.0, static_cast<double> (amount)); }
+    // Continue from a gain reduction reached elsewhere (a detector switch).
+    void setGainReductionDb (float reductionDb) noexcept { gainReductionDb = static_cast<double> (reductionDb); }
 
     float process (float targetReductionDb) noexcept
     {

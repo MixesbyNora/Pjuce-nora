@@ -33,7 +33,14 @@ public:
         else jassertfalse;
     }
 
-    CompressorParameters::Values values;
+    // The law tests describe the Digital law's feedforward curve, FB/FF's default
+    // before the analog detector made it FB (docs/Detector.md).
+    CompressorParameters::Values values = []
+    {
+        CompressorParameters::Values v;
+        v.fbffPercent = 100.0f;
+        return v;
+    }();
 
 private:
     StereoCompressor compressor;

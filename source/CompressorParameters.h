@@ -24,7 +24,9 @@ inline constexpr Specification release { "release", "Release", "ms", 50.0f, 2000
 inline constexpr Specification makeup { "makeup", "Makeup", "dB", 0.0f, 24.0f, 0.0f, 0.01f };
 inline constexpr std::array specifications { input, threshold, attack, release, makeup };
 // Appended to the host layout separately to preserve all existing parameter indices.
-inline constexpr Specification fbff { "fbff", "FB/FF", "", 0.0f, 100.0f, 100.0f, 0.1f };
+// Default FB (0) since the analog detector (owner decision 2026-10-24,
+// docs/Detector.md): a vari-mu loop is feedback; FF over-compresses with the 12AL5.
+inline constexpr Specification fbff { "fbff", "FB/FF", "", 0.0f, 100.0f, 0.0f, 0.1f };
 // Level into the detector only (docs/GainTube.md); appended with version hint 8.
 inline constexpr Specification calibration { "calibration", "Calibration", "dB", -24.0f, 24.0f, 0.0f, 0.1f };
 inline constexpr double fbffSmoothingSeconds = 0.02;

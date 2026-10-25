@@ -162,6 +162,7 @@ set(SourceFiles
     source/TransformerVoicing.h
     source/TubeVoicing.h
     source/GainTubeVoicing.h
+    source/DetectorVoicing.h
     source/TransformerMeasurement.h
     source/TransformerMeasurement.cpp
     source/TransformerMeasurementView.h
@@ -193,6 +194,8 @@ set(SourceFiles
     source/dsp/GainTube.cpp
     source/dsp/AmpTube.h
     source/dsp/AmpTube.cpp
+    source/dsp/AnalogDetector.h
+    source/dsp/AnalogDetector.cpp
     source/dsp/BaSignalPath.h
     source/dsp/BaSignalPath.cpp
     source/dsp/SidechainFilterSettings.h

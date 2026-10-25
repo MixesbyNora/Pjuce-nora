@@ -80,7 +80,8 @@ TEST_CASE ("FB FF has stable range default text parsing and host ordering", "[fb
     CHECK (blend->getNormalisableRange().start == 0.0f);
     CHECK (blend->getNormalisableRange().end == 100.0f);
     CHECK (blend->getNormalisableRange().interval == Catch::Approx (0.1f));
-    CHECK (blend->convertFrom0to1 (blend->getDefaultValue()) == 100.0f);
+    // FB since the analog detector (owner decision 2026-10-24, docs/Detector.md).
+    CHECK (blend->convertFrom0to1 (blend->getDefaultValue()) == 0.0f);
     for (const auto& [value, text] : std::array {
              std::pair { 0.0f, "FB" }, std::pair { 25.0f, "25% FF" }, std::pair { 49.9f, "49.9% FF" },
              std::pair { 50.0f, "50/50" }, std::pair { 50.1f, "50.1% FF" }, std::pair { 70.0f, "70% FF" },

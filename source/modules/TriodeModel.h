@@ -165,6 +165,33 @@ private:
     double r, scale;
     HermiteTable fine, coarse;
 };
+// A diode's plate current against plate-to-cathode voltage (docs/Detector.md):
+//   I = P * (softplus(s V) / s)^n
+// The power law above about a volt (space charge), and below it the cathode's
+// initial-velocity current, exponential with slope n s = q / kT, which lets a
+// detector develop a small negative bias with no signal (contact potential).
+struct DiodeParameters
+{
+    double perveance = 1.0e-3, exponent = 1.5, sharpness = 10.0;
+};
+struct DiodeCurrent { double i = 0, slope = 0; };
+inline DiodeCurrent diodeCurrent (const DiodeParameters& p, double v) noexcept
+{
+    const auto z = p.sharpness * v;
+    const auto e = std::exp (std::min (z, 30.0));
+    const auto softplus = z > 30 ? z : std::log1p (e);
+    if (! (softplus > 0)) return {};
+    const auto x = softplus / p.sharpness;
+    const auto power = p.perveance * std::pow (x, p.exponent);
+    return { power, p.exponent * power / x * (z > 30 ? 1.0 : e / (1 + e)) };
+}
+// Tung-Sol 12AL5, Mar 1953, p2: the forward curve, each unit (task detector-fit):
+// 0.47 % RMS over 0.75-8.25 V. The sharpness sets n s = 1 / 0.0905 V, kT/q at an
+// oxide cathode's 1050 K; it gives 0.47-0.57 V of self-bias into 0.5-2 MOhm, as
+// the sheet's detector curves show about 0.6 V. Those curves are not fitted: they
+// imply about 20x less current than the forward curve, so they include a test
+// circuit the sheet does not give.
+inline DiodeParameters tungSol12al5() noexcept { return { 2.750585398e-3, 1.346428335, 8.206692822 }; }
 // Remote-cutoff (variable-mu) triode, such as the 6386: its variable-pitch grid
 // behaves like sections in parallel with different cutoffs. Each section is a
 // Koren triode and the currents add (docs/GainTube.md).

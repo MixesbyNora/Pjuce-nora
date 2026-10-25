@@ -5,6 +5,7 @@
 #include "SidechainFilter.h"
 #include "GainTube.h"
 #include "AmpTube.h"
+#include "AnalogDetector.h"
 
 class StereoCompressor
 {
@@ -32,8 +33,18 @@ public:
     // It ramps over 20 ms like Makeup, so automating it is smooth; it is not part
     // of the element, whose changes crossfade.
     void setHeadroomDriveDb (double driveDb, bool immediately = false) noexcept;
+    // The detector (docs/Detector.md): the 12AL5 analog sidechain, whose control
+    // voltage biases the gain tube, or the Digital law (fixed 4:1, 6 dB knee, dB
+    // envelope). Digital here by default; the plugin's default voicing is analog.
+    // A switch carries the present gain reduction across.
+    struct Detector
+    {
+        bool analog = false;
+        double sidechainGainDb = 0.0;
+    };
+    void setDetector (Detector) noexcept;
 
-    float getGainReductionDb() const noexcept { return envelope.getGainReductionDb(); }
+    float getGainReductionDb() const noexcept { return reduction; }
 
 private:
     struct Element
@@ -56,6 +67,12 @@ private:
     juce::SmoothedValue<float> calibrationDb;
     SoftKneeGainComputer gainComputer;
     DbGainEnvelope envelope;
+    AnalogDetector detector;
+    AnalogDetector::Settings analogSettings;
+    bool analog = false;
+    float reduction = 0.0f;
+    double analogGain = 1.0, calibrationGain = 1.0;
+    std::uint32_t calibrationBits = 0; // The cached gain's Calibration (0 dB).
     SidechainFilter sidechainFilter;
     juce::SmoothedValue<float> inputDb;
     juce::SmoothedValue<float> makeupDb;

@@ -4,6 +4,7 @@
 #include "TransformerVoicing.h"
 #include "TubeVoicing.h"
 #include "GainTubeVoicing.h"
+#include "DetectorVoicing.h"
 
 namespace BaParameters
 {
@@ -87,6 +88,8 @@ struct Values
     bool gainTubeOut = BaParameters::gainTubeOut.initial;
     bool ampTubeOut = BaParameters::ampTubeOut.initial;
     float headroomDb = headroom.initial;
+    // Detector workbench (docs/Detector.md): 12AL5 by default.
+    DetectorVoicing::Values detectorVoicing;
 };
 
 void appendLayout (juce::AudioProcessorValueTreeState::ParameterLayout& layout);

@@ -184,7 +184,8 @@ See [Overdrive.md](Overdrive.md).
   - the control-voltage path's own filtering;
   - the T-Bar 6BA6 (no triode-connected curves published).
 - **The fully physical alternative,** with ratio and knee emerging from the
-  tube and a feedback detector, remains possible later.
+  tube and a feedback detector, is now built: the 12AL5 detector, the default
+  since 2026-10-24 ([Detector.md](Detector.md)). This law remains as Digital law.
 - **6386 above 30 dB of GR** follows the fit's remote section; there is no
   data that deep beyond the −16 V / 100 µS anchor.
 
